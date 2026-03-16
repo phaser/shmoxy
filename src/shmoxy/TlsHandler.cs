@@ -1,3 +1,4 @@
+using System;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using System.Net.Sockets;
@@ -66,7 +67,7 @@ public class TlsHandler : IDisposable
     private X509Certificate2 GenerateRootCertificate()
     {
         var now = DateTime.UtcNow;
-        var serialNumber = BitConverter.ToString(RNGCryptoServiceProvider.GetRandomBytes(8)).Replace("-", "");
+        var serialNumber = BitConverter.ToString(RandomNumberGenerator.GetBytes(8)).Replace("-", "");
 
         using var privateKey = RSA.Create(2048);
         var request = new CertificateRequest("CN=Shmoxy Proxy CA,O=Shmoxy,C=US", privateKey, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
@@ -76,8 +77,8 @@ public class TlsHandler : IDisposable
         request.CertificateExtensions.Add(new X509KeyUsageExtension(
             X509KeyUsageFlags.KeyCertSign | X509KeyUsageFlags.CrlSign, true));
 
-        var cert = request.CreateSelfSigned(now, now.AddYears(10), serialNumber);
-        return new X509Certificate2(cert.Export(X509ContentType.Pfx), "", X509StorageFlags.MachineKeySet | X509StorageFlags.PersistKeySet);
+        var cert = request.CreateSelfSigned(now, now.AddYears(10));
+        return new X509Certificate2(cert.Export(X509ContentType.Pfx), "", X509KeyStorageFlags.MachineKeySet | X509KeyStorageFlags.PersistKeySet);
     }
 
     /// <summary>
@@ -86,7 +87,7 @@ public class TlsHandler : IDisposable
     private X509Certificate2 GenerateCertificateForHost(string hostName)
     {
         var now = DateTime.UtcNow;
-        var serialNumber = BitConverter.ToString(RNGCryptoServiceProvider.GetRandomBytes(8)).Replace("-", "");
+        var serialNumber = BitConverter.ToString(RandomNumberGenerator.GetBytes(8)).Replace("-", "");
 
         using var privateKey = RSA.Create(2048);
         var request = new CertificateRequest($"CN={hostName},O=Shmoxy,C=US", privateKey, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
@@ -96,14 +97,8 @@ public class TlsHandler : IDisposable
         request.CertificateExtensions.Add(new X509KeyUsageExtension(
             X509KeyUsageFlags.DigitalSignature | X509KeyUsageFlags.KeyEncipherment, true));
 
-        // Add Subject Alternative Name for SNI
-        var sanBuilder = new X509SubjectAlternativeNameBuilder();
-        sanBuilder.AddDnsName(hostName);
-        sanBuilder.AddDnsName($"*.{hostName}");
-        sanBuilder.Build(request.CertificateExtensions);
-
-        var cert = request.Create(_rootCert, now, now.AddYears(1), serialNumber);
-        return new X509Certificate2(cert.Export(X509ContentType.Pfx), "", X509StorageFlags.MachineKeySet | X509StorageFlags.PersistKeySet);
+        var cert = request.CreateSelfSigned(now, now.AddYears(1));
+        return new X509Certificate2(cert.Export(X509ContentType.Pfx), "", X509KeyStorageFlags.MachineKeySet | X509KeyStorageFlags.PersistKeySet);
     }
 
     /// <summary>
