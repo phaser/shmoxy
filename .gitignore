@@ -1,0 +1,38 @@
+# .NET build output
+bin/
+obj/
+**/*.dll
+**/*.pdb
+**/*.exe
+
+# IDE and editor files
+.vscode/
+.idea/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# Nix build artifacts
+result*
+.nix-defexpr/
+.nix-profile/
+.drv/
+
+# macOS
+.DS_Store
+
+# Logs
+*.log
+logs/
+
+# Test output
+**/TestResults/
+coverage.json
+coverage.xml
+
+# Build artifacts (explicit)
+src/shmoxy/bin/
+src/shmoxy/obj/
+src/tests/shmoxy.tests/bin/
+src/tests/shmoxy.tests.obj/
