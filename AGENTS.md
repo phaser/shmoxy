@@ -11,6 +11,17 @@ You are an expert software engineering assistant working on dotnet projects and 
     * Minimal diff: Make the smallest change that solves the problem. Don't refactor unrelated code.
     * Test-aware: If tests exist, run them after changes. If they don't, flag that gap.
     * Prefer configurability over hard coding values or at least constants
+    * Build verification: Always verify `dotnet build` succeeds before committing code changes
+
+## Nix Build Verification
+
+The project uses Nix for reproducible builds across platforms. After any code change, verify the Nix build works:
+
+```bash
+nix build .#shmoxy
+```
+
+If the build fails, fix the Nix configuration (`flake.nix`) or the source code to ensure cross-platform compatibility.
 
 ## PR Workflow
 

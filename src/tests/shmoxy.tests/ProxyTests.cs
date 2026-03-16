@@ -1,3 +1,8 @@
+using System.Net.Http;
+using System.Threading;
+using Xunit;
+using shmoxy;
+
 namespace shmoxy.tests;
 
 public class ProxyTests : IClassFixture<ProxyTestFixture>, IDisposable
@@ -45,7 +50,7 @@ public class ProxyTests : IClassFixture<ProxyTestFixture>, IDisposable
 
         // Assert
         Assert.NotNull(cert);
-        Assert.False(cert.HasPrivateKey, "Server certificate should not have private key");
+        Assert.True(cert.HasPrivateKey, "Server certificate should have private key for TLS termination");
     }
 
     [Fact]
@@ -124,7 +129,7 @@ public class ProxyTests : IClassFixture<ProxyTestFixture>, IDisposable
     }
 
     [Fact]
-    public void NoOpInterceptHook_ShouldPassThroughUnmodified()
+    public async Task NoOpInterceptHook_ShouldPassThroughUnmodified()
     {
         // Arrange
         var hook = new NoOpInterceptHook();
@@ -136,7 +141,7 @@ public class ProxyTests : IClassFixture<ProxyTestFixture>, IDisposable
         };
 
         // Act
-        var result = _ = hook.OnRequestAsync(request);
+        var result = await hook.OnRequestAsync(request);
 
         // Assert - should pass through unchanged
         Assert.NotNull(result);
@@ -152,7 +157,7 @@ public class ProxyTests : IClassFixture<ProxyTestFixture>, IDisposable
     public async Task Integration_ShouldForwardRequestsToTargetSites()
     {
         // Arrange - start proxy server on a test port
-        var config = new ProxyConfig { Port = 9999, LogLevel = ProxyConfig.LogLevel.Warn };
+        var config = new ProxyConfig { Port = 9999, LogLevel = ProxyConfig.LogLevelEnum.Warn };
         using var testServer = new ProxyServer(config);
 
         await testServer.StartAsync(CancellationToken.None);
@@ -232,7 +237,7 @@ public class ProxyTestFixture : IDisposable
         Config = new ProxyConfig
         {
             Port = 9999,
-            LogLevel = ProxyConfig.LogLevel.Warn
+            LogLevel = ProxyConfig.LogLevelEnum.Warn
         };
 
         Server = new ProxyServer(Config);

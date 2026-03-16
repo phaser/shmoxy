@@ -1,3 +1,5 @@
+using System.Net.Sockets;
+using System.Security.Authentication;
 using System.Text;
 
 namespace shmoxy;
@@ -117,7 +119,7 @@ public class ProxyHttpClient : IDisposable
     /// <summary>
     /// Reads the full HTTP response including body.
     /// </summary>
-    private async Task<byte[]> ReadResponseAsync()
+    public async Task<byte[]> ReadResponseAsync()
     {
         var result = new MemoryStream();
         var buffer = new byte[8192];

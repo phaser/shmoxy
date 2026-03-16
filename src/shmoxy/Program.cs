@@ -1,35 +1,46 @@
+using System;
 using System.CommandLine;
 using System.CommandLine.Invocation;
 
 namespace shmoxy;
 
 /// <summary>
-/// CLI entry point for the proxy server.
-/// </summary>
-class Program
-{
-    static async Task<int> Main(string[] args)
+    /// CLI entry point for the proxy server.
+    /// </summary>
+    class Program
     {
-        // Define command-line options
-        var portOption = new Option<int>(
-            aliases: new[] { "--port", "-p" },
-            description: "Listening port for the proxy server (default: 8080)",
-            defaultValue: 8080);
+        static async Task<int> Main(string[] args)
+        {
+            // Define command-line options
+            var portOption = new Option<int>(
+                aliases: new[] { "--port", "-p" },
+                description: "Listening port for the proxy server (default: 8080)",
+                parseArgument: result =>
+                {
+                    if (!int.TryParse(result.Tokens.FirstOrDefault()?.Value, out var port))
+                        port = 8080;
+                    return port;
+                });
 
-        var certPathOption = new Option<string?>(
-            aliases: new[] { "--cert" },
-            description: "Path to TLS certificate file (for provided certs mode)");
+            var certPathOption = new Option<string?>(
+                aliases: new[] { "--cert" },
+                description: "Path to TLS certificate file (for provided certs mode)");
 
-        var keyPathOption = new Option<string?>(
-            aliases: new[] { "--key" },
-            description: "Path to TLS private key file (required with --cert)");
+            var keyPathOption = new Option<string?>(
+                aliases: new[] { "--key" },
+                description: "Path to TLS private key file (required with --cert)");
 
-        var logLevelOption = new Option<ProxyConfig.LogLevel>(
-            aliases: new[] { "--log-level", "-l" },
-            description: "Logging verbosity level (Debug, Info, Warn, Error)",
-            defaultValue: ProxyConfig.LogLevel.Info);
+            var logLevelOption = new Option<ProxyConfig.LogLevelEnum>(
+                aliases: new[] { "--log-level", "-l" },
+                description: "Logging verbosity level (Debug, Info, Warn, Error)",
+                parseArgument: result =>
+                {
+                    if (!Enum.TryParse<ProxyConfig.LogLevelEnum>(result.Tokens.FirstOrDefault()?.Value, true, out var level))
+                        level = ProxyConfig.LogLevelEnum.Info;
+                    return level;
+                });
 
-        var rootCommand = new RootCommand("Shmoxy HTTP/HTTPS Proxy Server with TLS Termination");
+            RootCommand rootCommand = new RootCommand("Shmoxy HTTP/HTTPS Proxy Server with TLS Termination");
         rootCommand.AddOption(portOption);
         rootCommand.AddOption(certPathOption);
         rootCommand.AddOption(keyPathOption);
@@ -49,7 +60,6 @@ class Program
             if ((certPath != null && keyPath == null) || (certPath == null && keyPath != null))
             {
                 Console.Error.WriteLine("Error: Both --cert and --key must be specified together");
-                await rootCommand.ParseAsync("--help");
                 Environment.Exit(1);
             }
 

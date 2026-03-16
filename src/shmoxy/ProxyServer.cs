@@ -1,4 +1,7 @@
+using System;
 using System.Net.Sockets;
+using System.Security.Authentication;
+using System.Security.Cryptography.X509Certificates;
 using System.Text;
 using System.Threading.Channels;
 
@@ -12,12 +15,12 @@ public class ProxyConfig
     public int Port { get; set; } = 8080;
     public string? CertPath { get; set; }
     public string? KeyPath { get; set; }
-    public LogLevel LogLevel { get; set; } = LogLevel.Info;
+    public LogLevelEnum LogLevel { get; set; } = LogLevelEnum.Info;
 
     /// <summary>
     /// Logging levels.
     /// </summary>
-    public enum LogLevel
+    public enum LogLevelEnum
     {
         Debug,
         Info,
@@ -54,7 +57,7 @@ public class ProxyServer : IDisposable
         _tlsHandler = new TlsHandler();
         _interceptor = new NoOpInterceptHook();
 
-        Log(LogLevel.Info, $"Proxy server initialized on port {config.Port}");
+        Log(ProxyConfig.LogLevelEnum.Info, $"Proxy server initialized on port {config.Port}");
     }
 
     /// <summary>
@@ -79,7 +82,7 @@ public class ProxyServer : IDisposable
         try
         {
             _listener.Start();
-            Log(LogLevel.Info, "Proxy server started");
+            Log(ProxyConfig.LogLevelEnum.Info, "Proxy server started");
 
             while (!combinedCts.Token.IsCancellationRequested)
             {
@@ -96,7 +99,7 @@ public class ProxyServer : IDisposable
         }
         catch (OperationCanceledException)
         {
-            Log(LogLevel.Debug, "Proxy server stopping");
+            Log(ProxyConfig.LogLevelEnum.Debug, "Proxy server stopping");
         }
         finally
         {
@@ -135,7 +138,7 @@ public class ProxyServer : IDisposable
 
                 if (parts.Length < 2)
                 {
-                    Log(LogLevel.Error, "Invalid request line");
+                    Log(ProxyConfig.LogLevelEnum.Error, "Invalid request line");
                     return;
                 }
 
@@ -152,7 +155,7 @@ public class ProxyServer : IDisposable
             }
             catch (Exception ex) when (ex is not OperationCanceledException and not IOException)
             {
-                Log(LogLevel.Error, $"Connection error: {ex.Message}");
+                Log(ProxyConfig.LogLevelEnum.Error, $"Connection error: {ex.Message}");
             }
         }
     }
@@ -165,7 +168,7 @@ public class ProxyServer : IDisposable
         var request = Encoding.ASCII.GetString(buffer, 0, bytesRead);
         var hostPort = request.Split('\r')[0].Split(' ')[1];
 
-        Log(LogLevel.Info, $"CONNECT request to {hostPort}");
+        Log(ProxyConfig.LogLevelEnum.Info, $"CONNECT request to {hostPort}");
 
         // Parse host and port
         var parts = hostPort.Split(':');
@@ -179,7 +182,7 @@ public class ProxyServer : IDisposable
         await SendResponseAsync(client, "HTTP/1.1 200 Connection Established\r\n\r\n");
 
         // Switch to TLS mode - encrypt all subsequent traffic
-        using (var sslStream = new System.Security.Authentication.SslStream(
+        using (var sslStream = new global::System.Net.Security.SslStream(
             client.GetStream(),
             false,
             ValidateCertificate,
@@ -187,7 +190,7 @@ public class ProxyServer : IDisposable
         {
             await sslStream.AuthenticateAsServerAsync(cert);
 
-            Log(LogLevel.Info, $"TLS tunnel established to {host}:{port}");
+            Log(ProxyConfig.LogLevelEnum.Info, $"TLS tunnel established to {host}:{port}");
 
             // Proxy traffic in both directions
             var proxyTask = ProxyTunnelAsync(sslStream, host, port);
@@ -204,7 +207,7 @@ public class ProxyServer : IDisposable
         {
             // Parse the request to get target host and port
             var request = Encoding.ASCII.GetString(buffer, 0, bytesRead);
-            var lines = request.Split('\r\n');
+            var lines = request.Split("\r\n");
 
             if (lines.Length < 1) return;
 
@@ -236,14 +239,14 @@ public class ProxyServer : IDisposable
 
             int port = int.TryParse(portStr, out var p) ? p : 80;
 
-            Log(LogLevel.Info, $"{method} {path} to {host}:{port}");
+            Log(ProxyConfig.LogLevelEnum.Info, $"{method} {path} to {host}:{port}");
 
             // Forward request through proxy tunnel
             await ForwardHttpRequestAsync(client, method, path, host, port);
         }
         catch (Exception ex) when (ex is not OperationCanceledException and not IOException)
         {
-            Log(LogLevel.Error, $"Request handling error: {ex.Message}");
+            Log(ProxyConfig.LogLevelEnum.Error, $"Request handling error: {ex.Message}");
         }
     }
 
@@ -337,7 +340,7 @@ public class ProxyServer : IDisposable
     /// <summary>
     /// Proxies traffic between TLS tunnel and target server.
     /// </summary>
-    private async Task ProxyTunnelAsync(System.Security.Authentication.SslStream clientStream, string host, int port)
+    private async Task ProxyTunnelAsync(Stream clientStream, string host, int port)
     {
         using var targetClient = new TcpClient();
         await targetClient.ConnectAsync(host, port);
@@ -389,7 +392,7 @@ public class ProxyServer : IDisposable
     /// <summary>
     /// Logs a message if the log level permits.
     /// </summary>
-    private void Log(ProxyConfig.LogLevel level, string message)
+    private void Log(ProxyConfig.LogLevelEnum level, string message)
     {
         lock (_lock)
         {
@@ -397,16 +400,16 @@ public class ProxyServer : IDisposable
 
             switch (level)
             {
-                case ProxyConfig.LogLevel.Debug when _config.LogLevel <= ProxyConfig.LogLevel.Debug:
+                case ProxyConfig.LogLevelEnum.Debug when _config.LogLevel <= ProxyConfig.LogLevelEnum.Debug:
                     Console.WriteLine($"[{timestamp}] DEBUG: {message}");
                     break;
-                case ProxyConfig.LogLevel.Info when _config.LogLevel <= ProxyConfig.LogLevel.Info:
+                case ProxyConfig.LogLevelEnum.Info when _config.LogLevel <= ProxyConfig.LogLevelEnum.Info:
                     Console.WriteLine($"[{timestamp}] INFO: {message}");
                     break;
-                case ProxyConfig.LogLevel.Warn when _config.LogLevel <= ProxyConfig.LogLevel.Warn:
+                case ProxyConfig.LogLevelEnum.Warn when _config.LogLevel <= ProxyConfig.LogLevelEnum.Warn:
                     Console.WriteLine($"[{timestamp}] WARN: {message}");
                     break;
-                case ProxyConfig.LogLevel.Error when _config.LogLevel <= ProxyConfig.LogLevel.Error:
+                case ProxyConfig.LogLevelEnum.Error when _config.LogLevel <= ProxyConfig.LogLevelEnum.Error:
                     Console.WriteLine($"[{timestamp}] ERROR: {message}");
                     break;
             }
