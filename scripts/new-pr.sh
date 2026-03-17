@@ -6,8 +6,8 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(git rev-parse --show-toplevel)"
-WORKTREES_DIR="$REPO_ROOT/worktrees"
-DOCS_PRS_DIR="$REPO_ROOT/docs/prs"
+WORKTREES_DIR="$REPO_ROOT/../shmoxy-worktrees"
+DOCS_PRS_DIR="$WORKTREES_DIR/$SANITIZED_NAME/docs/prs"
 
 # Color codes for output
 RED='\033[0;31m'
@@ -38,6 +38,8 @@ DESCRIPTION="${2:-}"
 
 # Sanitize PR name for use in branch and worktree names
 SANITIZED_NAME=$(echo "$PR_NAME" | tr '[:upper:]' '[:lower:]' | tr ' ' '-' | sed 's/[^a-z0-9-]//g')
+
+DOCS_PRS_DIR="$WORKTREES_DIR/$SANITIZED_NAME/docs/prs"
 
 if [ -z "$SANITIZED_NAME" ]; then
     log_error "PR name cannot be empty after sanitization"

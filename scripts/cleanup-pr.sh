@@ -6,8 +6,8 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(git rev-parse --show-toplevel)"
-WORKTREES_DIR="$REPO_ROOT/worktrees"
-DOCS_PRS_DIR="$REPO_ROOT/docs/prs"
+WORKTREES_DIR="$REPO_ROOT/../shmoxy-worktrees"
+DOCS_PRS_DIR=""
 
 # Color codes for output
 RED='\033[0;31m'
@@ -42,6 +42,7 @@ if [ -z "$SANITIZED_NAME" ]; then
 fi
 
 WORKTREE_PATH="$WORKTREES_DIR/$SANITIZED_NAME"
+DOCS_PRS_DIR="$WORKTREE_PATH/docs/prs"
 DOC_FILE="$DOCS_PRS_DIR/${SANITIZED_NAME}.md"
 
 # Check if worktree exists
