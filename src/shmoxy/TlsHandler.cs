@@ -78,7 +78,7 @@ public class TlsHandler : IDisposable
             X509KeyUsageFlags.KeyCertSign | X509KeyUsageFlags.CrlSign, true));
 
         var cert = request.CreateSelfSigned(now, now.AddYears(10));
-        return new X509Certificate2(cert.Export(X509ContentType.Pfx), "", X509KeyStorageFlags.MachineKeySet | X509KeyStorageFlags.PersistKeySet);
+        return cert;
     }
 
     /// <summary>
@@ -98,7 +98,7 @@ public class TlsHandler : IDisposable
             X509KeyUsageFlags.DigitalSignature | X509KeyUsageFlags.KeyEncipherment, true));
 
         var cert = request.CreateSelfSigned(now, now.AddYears(1));
-        return new X509Certificate2(cert.Export(X509ContentType.Pfx), "", X509KeyStorageFlags.MachineKeySet | X509KeyStorageFlags.PersistKeySet);
+        return cert;
     }
 
     /// <summary>
