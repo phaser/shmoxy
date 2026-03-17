@@ -42,6 +42,8 @@ public class ProxyServer : IDisposable
     private CancellationTokenSource? _cts;
     private bool _disposed;
     private bool _isListening;
+    private readonly DateTime _startTime;
+    private InfoPageHandler? _infoPageHandler;
 
     /// <summary>
     /// Gets whether the server is currently listening for connections.
@@ -54,6 +56,11 @@ public class ProxyServer : IDisposable
     /// Only valid after <see cref="StartAsync"/> has been called.
     /// </summary>
     public int ListeningPort => ((System.Net.IPEndPoint)_listener.LocalEndpoint).Port;
+
+    /// <summary>
+    /// Gets the start time of the proxy server, used to calculate uptime.
+    /// </summary>
+    public DateTime StartTime => _startTime;
 
     /// <summary>
     /// Creates a new proxy server with default configuration.
@@ -69,6 +76,7 @@ public class ProxyServer : IDisposable
         _listener = TcpListener.Create(config.Port);
         _tlsHandler = new TlsHandler();
         _interceptor = new NoOpInterceptHook();
+        _startTime = DateTime.UtcNow;
 
         Log(ProxyConfig.LogLevelEnum.Info, $"Proxy server initialized on port {config.Port}");
     }
@@ -79,6 +87,46 @@ public class ProxyServer : IDisposable
     public ProxyServer(ProxyConfig config, IInterceptHook interceptor) : this(config)
     {
         _interceptor = interceptor ?? throw new ArgumentNullException(nameof(interceptor));
+    }
+
+    /// <summary>
+    /// Checks if a request is directed at the proxy itself.
+    /// A request is "for self" when:
+    /// - It uses a relative path (not absolute URL) -- the client connected directly to us
+    /// - OR it uses an absolute URL targeting localhost/127.0.0.1/::1 on our listening port
+    /// </summary>
+    private bool IsRequestForSelf(string host, int port, string path)
+    {
+        // Absolute URL like "GET http://localhost:8080/ HTTP/1.1"
+        if (path.StartsWith("http://", StringComparison.OrdinalIgnoreCase) || 
+            path.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+        {
+            try
+            {
+                var uri = new Uri(path);
+                var uriHost = uri.Host.ToLowerInvariant();
+                var uriPort = uri.IsDefaultPort ? 80 : uri.Port;
+
+                if (uriPort == ListeningPort && IsLoopbackHost(uriHost))
+                    return true;
+            }
+            catch { /* Invalid URL, not for us */ }
+
+            return false;
+        }
+
+        // Relative path like "GET / HTTP/1.1" with Host header
+        // If the host is a loopback address, this is for us.
+        // For relative paths, the client connected directly to our listener,
+        // so if Host matches loopback, it's definitely addressed to us.
+        return IsLoopbackHost(host.ToLowerInvariant());
+    }
+
+    private static bool IsLoopbackHost(string host)
+    {
+        return host == "localhost" || 
+               host == "127.0.0.1" || 
+               host == "::1";
     }
 
     /// <summary>
@@ -282,6 +330,14 @@ public class ProxyServer : IDisposable
                 Buffer.BlockCopy(buffer, headerEndIndex + 4, body, 0, body.Length);
             }
 
+            // Check if this is a request for the proxy itself
+            if (IsRequestForSelf(host, port, path))
+            {
+                Log(ProxyConfig.LogLevelEnum.Info, "Request directed at proxy itself");
+                await HandleSelfRequestAsync(client, method, relativePath);
+                return;
+            }
+
             // Intercept request
             var interceptedRequest = new InterceptedRequest
             {
@@ -410,6 +466,15 @@ public class ProxyServer : IDisposable
     }
 
     /// <summary>
+    /// Handles requests directed at the proxy itself.
+    /// </summary>
+    private async Task HandleSelfRequestAsync(TcpClient client, string method, string path)
+    {
+        _infoPageHandler ??= new InfoPageHandler(_config, _tlsHandler, _startTime, ListeningPort);
+        await _infoPageHandler.HandleAsync(client, method, path);
+    }
+
+    /// <summary>
     /// Logs a message if the log level permits.
     /// </summary>
     private void Log(ProxyConfig.LogLevelEnum level, string message)
@@ -441,6 +506,7 @@ public class ProxyServer : IDisposable
         if (_disposed) return;
 
         StopAsync().Wait();
+        _infoPageHandler?.Dispose();
         _tlsHandler.Dispose();
         _disposed = true;
     }
