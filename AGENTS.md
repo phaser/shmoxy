@@ -16,6 +16,15 @@ You are an expert software engineering assistant working on dotnet projects and 
     * Security first: Never write code that exposes secrets, credentials, or keys. Validate inputs rigorously.
     * Highlight assumptions: If you make any assumptions or think you're making assumptions, highlight them and give the user a chance to clarify.
 
+## Test File Organization
+
+Each source class or `.cs` file must have its own dedicated test file. Test files follow the naming convention `{ClassName}Tests.cs` and live in the corresponding test project directory.
+
+* **One test file per source file:** Every `.cs` file in the main project (except `Program.cs` entry point) must have a corresponding `{ClassName}Tests.cs` in the test project.
+* **Shared fixtures in separate files:** Test fixtures (e.g., `IClassFixture<T>` implementations) should be in their own dedicated files (e.g., `ProxyTestFixture.cs`).
+* **No monolithic test files:** Do not combine tests for multiple classes into a single test file.
+* **Naming convention:** For a source file `Foo.cs`, the test file must be named `FooTests.cs`.
+
 ## Nix Build Verification
 
 The project uses Nix for reproducible builds across platforms. After any code change, verify the Nix build works:
