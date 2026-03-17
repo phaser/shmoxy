@@ -14,6 +14,7 @@ You are an expert software engineering assistant working on dotnet projects and 
     * Prefer configurability over hard coding values or at least constants
     * Build verification: Always verify `dotnet build` succeeds before committing code changes
     * Security first: Never write code that exposes secrets, credentials, or keys. Validate inputs rigorously.
+    * Highlight assumptions: If you make any assumptions or think you're making assumptions, highlight them and give the user a chance to clarify.
 
 ## Nix Build Verification
 

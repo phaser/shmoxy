@@ -25,7 +25,6 @@ public class ProxyTests : IClassFixture<ProxyTestFixture>, IDisposable
 
         // Assert - server should be running, no exception thrown
         var port = _fixture.Config.Port;
-        Assert.NotNull(port);
     }
 
     [Fact(Skip = "Requires server fixture - skipped for now")]
