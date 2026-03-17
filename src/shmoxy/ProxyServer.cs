@@ -41,6 +41,19 @@ public class ProxyServer : IDisposable
     private readonly object _lock = new();
     private CancellationTokenSource? _cts;
     private bool _disposed;
+    private bool _isListening;
+
+    /// <summary>
+    /// Gets whether the server is currently listening for connections.
+    /// </summary>
+    public bool IsListening => _isListening;
+
+    /// <summary>
+    /// Gets the actual port the server is listening on.
+    /// Useful when configured with port 0 (OS-assigned).
+    /// Only valid after <see cref="StartAsync"/> has been called.
+    /// </summary>
+    public int ListeningPort => ((System.Net.IPEndPoint)_listener.LocalEndpoint).Port;
 
     /// <summary>
     /// Creates a new proxy server with default configuration.
@@ -82,6 +95,7 @@ public class ProxyServer : IDisposable
         try
         {
             _listener.Start();
+            _isListening = true;
             Log(ProxyConfig.LogLevelEnum.Info, "Proxy server started");
 
             while (!combinedCts.Token.IsCancellationRequested)
@@ -114,6 +128,7 @@ public class ProxyServer : IDisposable
     {
         _cts?.Cancel();
         _listener.Stop();
+        _isListening = false;
         await Task.Delay(100); // Allow pending connections to complete
     }
 
@@ -200,12 +215,13 @@ public class ProxyServer : IDisposable
 
     /// <summary>
     /// Handles regular HTTP requests (not CONNECT).
+    /// The full initial request is already in buffer[0..bytesRead].
     /// </summary>
     private async Task HandleHttpRequestAsync(TcpClient client, string method, string path, byte[] buffer, int bytesRead)
     {
         try
         {
-            // Parse the request to get target host and port
+            // Parse the request that was already read by HandleConnectionAsync
             var request = Encoding.ASCII.GetString(buffer, 0, bytesRead);
             var lines = request.Split("\r\n");
 
@@ -215,14 +231,17 @@ public class ProxyServer : IDisposable
             method = firstLineParts[0];
             path = firstLineParts.Length > 1 ? firstLineParts[1] : "/";
 
-            // Extract host from request or headers
-            string host, portStr;
+            // Extract host and port from the request
+            string host;
+            int port;
+            string relativePath;
 
             if (path.StartsWith("http://") || path.StartsWith("https://"))
             {
                 var uri = new Uri(path);
                 host = uri.Host;
-                portStr = uri.IsDefaultPort ? "80" : uri.Port.ToString();
+                port = uri.IsDefaultPort ? 80 : uri.Port;
+                relativePath = uri.PathAndQuery;
             }
             else
             {
@@ -232,17 +251,54 @@ public class ProxyServer : IDisposable
 
                 if (hostHeader == null) return;
 
-                var hostValue = hostHeader.Split(':')[0].Trim();
-                host = hostValue;
-                portStr = "80"; // Default for HTTP
+                var hostParts = hostHeader.Substring("Host:".Length).Trim().Split(':');
+                host = hostParts[0];
+                port = hostParts.Length > 1 && int.TryParse(hostParts[1], out var hp) ? hp : 80;
+                relativePath = path;
             }
-
-            int port = int.TryParse(portStr, out var p) ? p : 80;
 
             Log(ProxyConfig.LogLevelEnum.Info, $"{method} {path} to {host}:{port}");
 
-            // Forward request through proxy tunnel
-            await ForwardHttpRequestAsync(client, method, path, host, port);
+            // Parse headers from the already-read buffer
+            var headersDict = new Dictionary<string, string>();
+            for (int i = 1; i < lines.Length; i++)
+            {
+                if (string.IsNullOrWhiteSpace(lines[i])) break; // End of headers
+                var colonIndex = lines[i].IndexOf(':');
+                if (colonIndex > 0)
+                {
+                    var key = lines[i].Substring(0, colonIndex).Trim();
+                    var value = lines[i].Substring(colonIndex + 1).Trim();
+                    headersDict[key] = value;
+                }
+            }
+
+            // Parse body from the already-read buffer
+            var headerEndIndex = request.IndexOf("\r\n\r\n");
+            byte[]? body = null;
+            if (headerEndIndex >= 0 && headerEndIndex + 4 < bytesRead)
+            {
+                body = new byte[bytesRead - (headerEndIndex + 4)];
+                Buffer.BlockCopy(buffer, headerEndIndex + 4, body, 0, body.Length);
+            }
+
+            // Intercept request
+            var interceptedRequest = new InterceptedRequest
+            {
+                Method = method,
+                Url = new Uri($"http://{host}:{port}{relativePath}"),
+                Host = host,
+                Port = port,
+                Path = relativePath,
+                Headers = headersDict,
+                Body = body
+            };
+
+            var result = await _interceptor.OnRequestAsync(interceptedRequest);
+            if (result == null || result.Cancel) return;
+
+            // Forward the request to the target server via a new TCP connection
+            await ForwardHttpRequestAsync(client, result, host, port);
         }
         catch (Exception ex) when (ex is not OperationCanceledException and not IOException)
         {
@@ -251,90 +307,54 @@ public class ProxyServer : IDisposable
     }
 
     /// <summary>
-    /// Forwards an HTTP request through a proxy tunnel.
+    /// Forwards an intercepted HTTP request to the target server and relays the response back to the client.
+    /// Opens a new TCP connection to the target rather than reusing the client connection.
     /// </summary>
-    private async Task ForwardHttpRequestAsync(TcpClient client, string method, string path, string host, int port)
+    private async Task ForwardHttpRequestAsync(TcpClient client, InterceptedRequest request, string host, int port)
     {
-        using var proxyClient = new ProxyHttpClient(client, host, port, useTunnel: true);
+        using var targetClient = new TcpClient();
+        await targetClient.ConnectAsync(host, port);
+        using var targetStream = targetClient.GetStream();
 
-        // Read full request
-        var stream = proxyClient.Stream;
-        var buffer = new byte[8192];
-        var totalRead = 0;
-        var headersEnd = false;
+        // Build the outgoing HTTP request with a relative path
+        var outgoing = new StringBuilder();
+        outgoing.Append($"{request.Method} {request.Path} HTTP/1.1\r\n");
+        outgoing.Append($"Host: {host}\r\n");
 
-        while (!headersEnd)
+        foreach (var header in request.Headers
+            .Where(h => !h.Key.Equals("Host", StringComparison.OrdinalIgnoreCase)
+                     && !h.Key.Equals("Proxy-Connection", StringComparison.OrdinalIgnoreCase)))
         {
-            var bytesRead = await stream.ReadAsync(buffer, totalRead, buffer.Length - totalRead);
-            if (bytesRead == 0) break;
-
-            var chunk = Encoding.ASCII.GetString(buffer, 0, bytesRead);
-            if (chunk.Contains("\r\n\r\n")) headersEnd = true;
-
-            totalRead += bytesRead;
+            outgoing.Append($"{header.Key}: {header.Value}\r\n");
         }
 
-        // Parse request to get body and headers for interception
-        var requestText = Encoding.ASCII.GetString(buffer, 0, totalRead);
-        var headerEndIndex = requestText.IndexOf("\r\n\r\n");
+        // Add Connection: close so the target closes the connection after the response,
+        // which makes it straightforward to detect the end of the response.
+        outgoing.Append("Connection: close\r\n");
 
-        var headersDict = new Dictionary<string, string>();
-        string? bodyStr = null;
+        if (request.Body != null && request.Body.Length > 0)
+            outgoing.Append($"Content-Length: {request.Body.Length}\r\n");
 
-        foreach (var line in requestText.Substring(0, Math.Min(headerEndIndex + 1, headerEndIndex)).Split('\n'))
+        outgoing.Append("\r\n");
+
+        var requestBytes = Encoding.ASCII.GetBytes(outgoing.ToString());
+        await targetStream.WriteAsync(requestBytes, 0, requestBytes.Length);
+
+        if (request.Body != null && request.Body.Length > 0)
+            await targetStream.WriteAsync(request.Body, 0, request.Body.Length);
+
+        await targetStream.FlushAsync();
+
+        // Read the full response from the target and relay it back to the client
+        var clientStream = client.GetStream();
+        var responseBuffer = new byte[8192];
+        int read;
+        while ((read = await targetStream.ReadAsync(responseBuffer, 0, responseBuffer.Length)) > 0)
         {
-            if (line.Contains(':') && !line.StartsWith("HTTP"))
-            {
-                var parts = line.Split(':', 2);
-                headersDict[parts[0].Trim()] = parts.Length > 1 ? parts[1].Trim() : "";
-            }
+            await clientStream.WriteAsync(responseBuffer, 0, read);
         }
 
-        // Check for body in first chunk
-        if (headerEndIndex >= 0 && headerEndIndex + 4 < totalRead)
-        {
-            var remainingText = Encoding.ASCII.GetString(buffer, headerEndIndex + 4, totalRead - (headerEndIndex + 4));
-            if (!string.IsNullOrEmpty(remainingText))
-                bodyStr = remainingText;
-        }
-
-        // Intercept request
-        var interceptedRequest = new InterceptedRequest
-        {
-            Method = method,
-            Url = new Uri($"http://{host}:{port}{path}"),
-            Host = host,
-            Port = port,
-            Path = path,
-            Headers = headersDict,
-            Body = bodyStr != null ? Encoding.UTF8.GetBytes(bodyStr) : null
-        };
-
-        var result = await _interceptor.OnRequestAsync(interceptedRequest);
-        if (result?.Cancel ?? false) return;
-
-        // Send the request through tunnel
-        var proxyRequest = new StringBuilder();
-        proxyRequest.AppendLine($"{method} {path} HTTP/1.1");
-        proxyRequest.AppendLine($"Host: {host}:{port}");
-
-        foreach (var header in result.Headers.Where(h => !h.Key.Equals("Connection", StringComparison.OrdinalIgnoreCase) && !h.Key.Equals("Keep-Alive", StringComparison.OrdinalIgnoreCase)))
-            proxyRequest.AppendLine($"{header.Key}: {header.Value}");
-
-        if (result.Body != null && result.Body.Length > 0)
-            proxyRequest.AppendLine($"Content-Length: {result.Body.Length}");
-
-        proxyRequest.Append("\r\n");
-
-        var requestBytes = Encoding.ASCII.GetBytes(proxyRequest.ToString());
-        await stream.WriteAsync(requestBytes, 0, requestBytes.Length);
-
-        if (result.Body != null && result.Body.Length > 0)
-            await stream.WriteAsync(result.Body, 0, result.Body.Length);
-
-        // Read and forward response back to client
-        var response = await proxyClient.ReadResponseAsync();
-        await SendResponseAsync(client, Encoding.ASCII.GetString(response));
+        await clientStream.FlushAsync();
     }
 
     /// <summary>
