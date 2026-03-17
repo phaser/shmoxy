@@ -1,7 +1,6 @@
 using System;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
-using System.Net.Sockets;
 
 namespace shmoxy;
 
@@ -15,6 +14,11 @@ public class TlsHandler : IDisposable
     private readonly Dictionary<string, X509Certificate2> _certCache = new();
     private readonly object _cacheLock = new();
     private bool _disposed;
+
+    /// <summary>
+    /// Gets the root CA certificate used to sign per-host certificates.
+    /// </summary>
+    public X509Certificate2 RootCertificate => _rootCert;
 
     /// <summary>
     /// Creates a TLS handler with dynamic certificate generation.
@@ -67,7 +71,6 @@ public class TlsHandler : IDisposable
     private X509Certificate2 GenerateRootCertificate()
     {
         var now = DateTime.UtcNow;
-        var serialNumber = BitConverter.ToString(RandomNumberGenerator.GetBytes(8)).Replace("-", "");
 
         using var privateKey = RSA.Create(2048);
         var request = new CertificateRequest("CN=Shmoxy Proxy CA,O=Shmoxy,C=US", privateKey, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
@@ -87,18 +90,24 @@ public class TlsHandler : IDisposable
     private X509Certificate2 GenerateCertificateForHost(string hostName)
     {
         var now = DateTime.UtcNow;
-        var serialNumber = BitConverter.ToString(RandomNumberGenerator.GetBytes(8)).Replace("-", "");
 
         using var privateKey = RSA.Create(2048);
         var request = new CertificateRequest($"CN={hostName},O=Shmoxy,C=US", privateKey, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
 
-        // Add extensions for server authentication with SNI support
+        // Add Subject Alternative Name for browser compatibility
+        var sanBuilder = new SubjectAlternativeNameBuilder();
+        sanBuilder.AddDnsName(hostName);
+        request.CertificateExtensions.Add(sanBuilder.Build());
+
+        // Add extensions for server authentication
         request.CertificateExtensions.Add(new X509BasicConstraintsExtension(false, false, 0, false));
         request.CertificateExtensions.Add(new X509KeyUsageExtension(
             X509KeyUsageFlags.DigitalSignature | X509KeyUsageFlags.KeyEncipherment, true));
 
-        var cert = request.CreateSelfSigned(now, now.AddYears(1));
-        return cert;
+        // Sign with the root CA instead of self-signing
+        var serialNumber = RandomNumberGenerator.GetBytes(8);
+        using var issuedCert = request.Create(_rootCert, now, now.AddYears(1), serialNumber);
+        return issuedCert.CopyWithPrivateKey(privateKey);
     }
 
     /// <summary>
@@ -114,6 +123,32 @@ public class TlsHandler : IDisposable
         }
     }
 
+    /// <summary>
+    /// Exports the root CA certificate as a PEM-encoded string.
+    /// </summary>
+    public string ExportRootCertificatePem()
+    {
+        var certBase64 = Convert.ToBase64String(_rootCert.Export(X509ContentType.Cert));
+        var sb = new System.Text.StringBuilder();
+        sb.Append("-----BEGIN CERTIFICATE-----\r\n");
+        // Wrap at 64 characters per line as per PEM spec
+        for (int i = 0; i < certBase64.Length; i += 64)
+        {
+            sb.Append(certBase64.AsSpan(i, Math.Min(64, certBase64.Length - i)));
+            sb.Append("\r\n");
+        }
+        sb.Append("-----END CERTIFICATE-----\r\n");
+        return sb.ToString();
+    }
+
+    /// <summary>
+    /// Exports the root CA certificate as DER-encoded bytes.
+    /// </summary>
+    public byte[] ExportRootCertificateDer()
+    {
+        return _rootCert.Export(X509ContentType.Cert);
+    }
+
     public void Dispose()
     {
         if (_disposed) return;
@@ -121,18 +156,5 @@ public class TlsHandler : IDisposable
         ClearCache();
         _rootCert?.Dispose();
         _disposed = true;
-    }
-}
-
-// Simple wrapper for random bytes
-internal static class RNGCryptoServiceProvider
-{
-    private static readonly RandomNumberGenerator _rng = RandomNumberGenerator.Create();
-
-    public static byte[] GetRandomBytes(int count)
-    {
-        var buffer = new byte[count];
-        _rng.GetBytes(buffer);
-        return buffer;
     }
 }
