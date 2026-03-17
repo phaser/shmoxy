@@ -93,10 +93,14 @@ public class InterceptHookChain : IInterceptHook, IDisposable
         foreach (var hook in _hooks)
         {
             var result = await hook.OnRequestAsync(request);
-            if (result == null || result.Cancel)
-                return result;
+            if (result == null)
+                return null;
 
-            request = result;
+            if (result.Cancel)
+                return null;
+
+            if (!ReferenceEquals(result, request))
+                request = result;
         }
         return request;
     }
