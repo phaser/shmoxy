@@ -127,7 +127,7 @@ ipch/
 *.sap
 
 # Visual Studio Trace Files
-*.e2e
+# *.e2e  # Commented to allow .e2e test project files
 
 # TFS 2012 Local Workspace
 $tf/
