@@ -95,7 +95,7 @@ public class TlsHandler : IDisposable
     private X509Certificate2 GenerateCertificateForHost(string hostName)
     {
         var now = DateTime.UtcNow;
-        var serialNumber = BitConverter.ToString(RandomNumberGenerator.GetBytes(8)).Replace("-", "");
+        var serialNumberBytes = RandomNumberGenerator.GetBytes(8);
 
         using var privateKey = RSA.Create(2048);
         var request = new CertificateRequest($"CN={hostName},O=Shmoxy,C=US", privateKey, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
@@ -104,9 +104,21 @@ public class TlsHandler : IDisposable
         request.CertificateExtensions.Add(new X509BasicConstraintsExtension(false, false, 0, false));
         request.CertificateExtensions.Add(new X509KeyUsageExtension(
             X509KeyUsageFlags.DigitalSignature | X509KeyUsageFlags.KeyEncipherment, true));
+        request.CertificateExtensions.Add(new X509EnhancedKeyUsageExtension(
+            new OidCollection { new Oid("1.3.6.1.5.5.7.3.1") }, // TLS Web Server Authentication
+            false));
+        
+        // Add Subject Alternative Name (SAN) extension - required by modern browsers
+        var sanBuilder = new SubjectAlternativeNameBuilder();
+        sanBuilder.AddDnsName(hostName);
+        request.CertificateExtensions.Add(sanBuilder.Build());
 
-        var cert = request.CreateSelfSigned(now, now.AddYears(1));
-        return cert;
+        // Sign with root CA instead of self-signing
+        var cert = request.Create(_rootCert, now, now.AddYears(1), serialNumberBytes);
+        
+        // Attach the private key to the generated certificate for TLS termination
+        var certWithKey = cert.CopyWithPrivateKey(privateKey);
+        return certWithKey;
     }
 
     /// <summary>

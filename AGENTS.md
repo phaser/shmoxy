@@ -25,6 +25,19 @@ Each source class or `.cs` file must have its own dedicated test file. Test file
 * **No monolithic test files:** Do not combine tests for multiple classes into a single test file.
 * **Naming convention:** For a source file `Foo.cs`, the test file must be named `FooTests.cs`.
 
+## Test Verification
+
+After any code change, run all tests to verify correctness:
+
+```bash
+# Run all tests including e2e
+dotnet test
+```
+
+The test suite includes:
+- **Unit tests** (`shmoxy.tests`): Fast tests for individual components
+- **E2E tests** (`shmoxy.e2e`): Browser-based tests using Playwright
+
 ## Nix Build Verification
 
 The project uses Nix for reproducible builds across platforms. After any code change, verify the Nix build works:
