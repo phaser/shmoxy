@@ -1,5 +1,7 @@
 using Xunit;
-using shmoxy;
+using shmoxy.models.dto;
+using shmoxy.server.hooks;
+using shmoxy.server.interfaces;
 
 namespace shmoxy.tests;
 

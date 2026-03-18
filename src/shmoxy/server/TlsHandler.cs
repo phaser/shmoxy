@@ -3,7 +3,7 @@ using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using System.Net.Sockets;
 
-namespace shmoxy;
+namespace shmoxy.server;
 
 /// <summary>
 /// Handles TLS termination and dynamic certificate generation.
@@ -75,7 +75,7 @@ public class TlsHandler : IDisposable
     private X509Certificate2 GenerateRootCertificate()
     {
         var now = DateTime.UtcNow;
-        var serialNumber = BitConverter.ToString(RandomNumberGenerator.GetBytes(8)).Replace("-", "");
+        var serialNumber = BitConverter.ToString(server.helpers.RNGCryptoServiceProvider.GetRandomBytes(8)).Replace("-", "");
 
         using var privateKey = RSA.Create(2048);
         var request = new CertificateRequest("CN=Shmoxy Proxy CA,O=Shmoxy,C=US", privateKey, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
@@ -95,7 +95,7 @@ public class TlsHandler : IDisposable
     private X509Certificate2 GenerateCertificateForHost(string hostName)
     {
         var now = DateTime.UtcNow;
-        var serialNumberBytes = RandomNumberGenerator.GetBytes(8);
+        var serialNumberBytes = server.helpers.RNGCryptoServiceProvider.GetRandomBytes(8);
 
         using var privateKey = RSA.Create(2048);
         var request = new CertificateRequest($"CN={hostName},O=Shmoxy,C=US", privateKey, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
@@ -141,18 +141,5 @@ public class TlsHandler : IDisposable
         ClearCache();
         _rootCert?.Dispose();
         _disposed = true;
-    }
-}
-
-// Simple wrapper for random bytes
-internal static class RNGCryptoServiceProvider
-{
-    private static readonly RandomNumberGenerator _rng = RandomNumberGenerator.Create();
-
-    public static byte[] GetRandomBytes(int count)
-    {
-        var buffer = new byte[count];
-        _rng.GetBytes(buffer);
-        return buffer;
     }
 }
