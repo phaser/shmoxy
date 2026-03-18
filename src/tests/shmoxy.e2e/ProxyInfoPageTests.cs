@@ -25,78 +25,122 @@ public class ProxyInfoPageTests : IAsyncLifetime
     [Fact]
     public async Task InfoPage_ShowsProxyStatus()
     {
-        var context = await _fixture!.Browser.NewContextAsync(new()
+        IBrowserContext context = null!;
+        try
         {
-            IgnoreHTTPSErrors = true
-        });
+            context = await _fixture!.CreateContextWithTracingAsync(nameof(InfoPage_ShowsProxyStatus));
 
-        var page = await context.NewPageAsync();
-        await page.GotoAsync(_fixture.BaseUrl);
+            var page = await context.NewPageAsync();
+            await page.GotoAsync(_fixture.BaseUrl);
 
-        await Expect(page).ToHaveTitleAsync("Shmoxy Proxy Server");
+            await Expect(page).ToHaveTitleAsync("Shmoxy Proxy Server");
 
-        var statusText = page.GetByText("Proxy is running");
-        await Expect(statusText).ToBeVisibleAsync();
+            var statusText = page.GetByText("Proxy is running");
+            await Expect(statusText).ToBeVisibleAsync();
 
-        var serverInfo = page.GetByText("Server Information");
-        await Expect(serverInfo).ToBeVisibleAsync();
+            var serverInfo = page.GetByText("Server Information");
+            await Expect(serverInfo).ToBeVisibleAsync();
 
-        var listeningInfo = page.GetByText($"http://localhost:{_fixture.Port}");
-        await Expect(listeningInfo).ToBeVisibleAsync();
+            var listeningInfo = page.GetByText($"http://localhost:{_fixture.Port}");
+            await Expect(listeningInfo).ToBeVisibleAsync();
+            
+            await _fixture.SaveTracingAsync(context, nameof(InfoPage_ShowsProxyStatus), success: true);
+        }
+        catch
+        {
+            if (context != null)
+            {
+                await _fixture!.SaveTracingAsync(context, nameof(InfoPage_ShowsProxyStatus), success: false);
+            }
+            throw;
+        }
     }
 
     [Fact]
     public async Task InfoPage_ContainsUsageInstructions()
     {
-        var context = await _fixture!.Browser.NewContextAsync(new()
+        IBrowserContext context = null!;
+        try
         {
-            IgnoreHTTPSErrors = true
-        });
+            context = await _fixture!.CreateContextWithTracingAsync(nameof(InfoPage_ContainsUsageInstructions));
 
-        var page = await context.NewPageAsync();
-        await page.GotoAsync(_fixture.BaseUrl);
+            var page = await context.NewPageAsync();
+            await page.GotoAsync(_fixture.BaseUrl);
 
-        var howToUse = page.GetByText("How to use");
-        await Expect(howToUse).ToBeVisibleAsync();
+            var howToUse = page.GetByText("How to use");
+            await Expect(howToUse).ToBeVisibleAsync();
 
-        var httpProxyLabel = page.GetByText("HTTP Proxy:");
-        await Expect(httpProxyLabel).ToBeVisibleAsync();
+            var httpProxyLabel = page.GetByText("HTTP Proxy:");
+            await Expect(httpProxyLabel).ToBeVisibleAsync();
+            
+            await _fixture.SaveTracingAsync(context, nameof(InfoPage_ContainsUsageInstructions), success: true);
+        }
+        catch
+        {
+            if (context != null)
+            {
+                await _fixture!.SaveTracingAsync(context, nameof(InfoPage_ContainsUsageInstructions), success: false);
+            }
+            throw;
+        }
     }
 
     [Fact]
     public async Task InfoPage_ReturnsHtmlContentType()
     {
-        var context = await _fixture!.Browser.NewContextAsync(new()
+        IBrowserContext context = null!;
+        try
         {
-            IgnoreHTTPSErrors = true
-        });
+            context = await _fixture!.CreateContextWithTracingAsync(nameof(InfoPage_ReturnsHtmlContentType));
 
-        var page = await context.NewPageAsync();
-        var response = await page.GotoAsync(_fixture.BaseUrl);
+            var page = await context.NewPageAsync();
+            var response = await page.GotoAsync(_fixture.BaseUrl);
 
-        Assert.NotNull(response);
-        Assert.Equal(200, response.Status);
-        
-        var contentType = response.Headers["content-type"];
-        Assert.Contains("text/html", contentType);
+            Assert.NotNull(response);
+            Assert.Equal(200, response.Status);
+            
+            var contentType = response.Headers["content-type"];
+            Assert.Contains("text/html", contentType);
+            
+            await _fixture.SaveTracingAsync(context, nameof(InfoPage_ReturnsHtmlContentType), success: true);
+        }
+        catch
+        {
+            if (context != null)
+            {
+                await _fixture!.SaveTracingAsync(context, nameof(InfoPage_ReturnsHtmlContentType), success: false);
+            }
+            throw;
+        }
     }
 
     [Fact]
     public async Task InfoPage_HasCertificateDownloadLinks()
     {
-        var context = await _fixture!.Browser.NewContextAsync(new()
+        IBrowserContext context = null!;
+        try
         {
-            IgnoreHTTPSErrors = true
-        });
+            context = await _fixture!.CreateContextWithTracingAsync(nameof(InfoPage_HasCertificateDownloadLinks));
 
-        var page = await context.NewPageAsync();
-        await page.GotoAsync(_fixture.BaseUrl);
+            var page = await context.NewPageAsync();
+            await page.GotoAsync(_fixture.BaseUrl);
 
-        var pemLink = page.GetByRole(AriaRole.Link, new() { Name = "Download PEM" });
-        await Expect(pemLink).ToBeVisibleAsync();
-        
-        var derLink = page.GetByRole(AriaRole.Link, new() { Name = "Download DER" });
-        await Expect(derLink).ToBeVisibleAsync();
+            var pemLink = page.GetByRole(AriaRole.Link, new() { Name = "Download PEM" });
+            await Expect(pemLink).ToBeVisibleAsync();
+            
+            var derLink = page.GetByRole(AriaRole.Link, new() { Name = "Download DER" });
+            await Expect(derLink).ToBeVisibleAsync();
+            
+            await _fixture.SaveTracingAsync(context, nameof(InfoPage_HasCertificateDownloadLinks), success: true);
+        }
+        catch
+        {
+            if (context != null)
+            {
+                await _fixture!.SaveTracingAsync(context, nameof(InfoPage_HasCertificateDownloadLinks), success: false);
+            }
+            throw;
+        }
     }
 
     [Fact]

@@ -536,13 +536,30 @@ public class ProxyServer : IDisposable
         using var targetClient = new TcpClient();
         await targetClient.ConnectAsync(host, port);
 
-        using var targetStream = targetClient.GetStream();
+        // Re-encrypt the connection to the upstream server (TLS termination and re-encryption)
+        Stream targetStream;
+        if (port == 443)
+        {
+            var sslTargetStream = new global::System.Net.Security.SslStream(
+                targetClient.GetStream(),
+                false,
+                (sender, cert, chain, errors) => true); // Accept upstream certs
+            await sslTargetStream.AuthenticateAsClientAsync(host);
+            targetStream = sslTargetStream;
+        }
+        else
+        {
+            targetStream = targetClient.GetStream();
+        }
 
-        // Bidirectional copy
-        var clientToTargetTask = CopyStreamAsync(clientStream, targetStream);
-        var targetToClientTask = CopyStreamAsync(targetStream, clientStream);
+        using (targetStream)
+        {
+            // Bidirectional copy
+            var clientToTargetTask = CopyStreamAsync(clientStream, targetStream);
+            var targetToClientTask = CopyStreamAsync(targetStream, clientStream);
 
-        await Task.WhenAll(clientToTargetTask, targetToClientTask);
+            await Task.WhenAll(clientToTargetTask, targetToClientTask);
+        }
     }
 
     /// <summary>

@@ -9,6 +9,7 @@ public sealed class ProxyTestFixture : IAsyncLifetime
     public IBrowser Browser { get; private set; } = null!;
     public int Port { get; private set; }
     public string BaseUrl => $"http://127.0.0.1:{Port}";
+    public string ArtifactsDir { get; private set; } = "";
     private IPlaywright? _playwright;
     private ProxyServer? _server;
     private CancellationTokenSource? _cts;
@@ -32,6 +33,12 @@ public sealed class ProxyTestFixture : IAsyncLifetime
         Port = _server.ListeningPort;
         Console.WriteLine($"Proxy started on port {Port}");
         
+        // Create artifacts directory with random identifier
+        var randomId = Guid.NewGuid().ToString("N")[..8];
+        ArtifactsDir = Path.Combine(Directory.GetCurrentDirectory(), "playwright_run_" + randomId);
+        Directory.CreateDirectory(ArtifactsDir);
+        Console.WriteLine($"Artifacts will be saved to: {ArtifactsDir}");
+        
         _playwright = await Playwright.CreateAsync();
         Browser = await _playwright.Chromium.LaunchAsync(new()
         {
@@ -54,5 +61,79 @@ public sealed class ProxyTestFixture : IAsyncLifetime
         }
         
         _server?.Dispose();
+    }
+
+    /// <summary>
+    /// Creates a browser context with tracing enabled.
+    /// Call this in your test and pass the test name for proper artifact organization.
+    /// </summary>
+    public async Task<IBrowserContext> CreateContextWithTracingAsync(string testName, bool useProxy = false)
+    {
+        var sanitizedTestName = SanitizeFileName(testName);
+        var testArtifactsDir = Path.Combine(ArtifactsDir, sanitizedTestName);
+        Directory.CreateDirectory(testArtifactsDir);
+        
+        var contextOptions = new BrowserNewContextOptions
+        {
+            IgnoreHTTPSErrors = false
+        };
+        
+        // Only set proxy if explicitly requested
+        if (useProxy)
+        {
+            contextOptions.Proxy = new() { Server = $"http://127.0.0.1:{Port}" };
+        }
+        
+        var context = await Browser.NewContextAsync(contextOptions);
+        
+        // Start tracing
+        await context.Tracing.StartAsync(new()
+        {
+            Screenshots = true,
+            Snapshots = true,
+            Sources = true
+        });
+        
+        return context;
+    }
+
+    /// <summary>
+    /// Stops tracing and saves artifacts (trace, screenshots) to the test's artifacts directory.
+    /// Call this at the end of each test.
+    /// </summary>
+    public async Task SaveTracingAsync(IBrowserContext context, string testName, bool success = true)
+    {
+        var sanitizedTestName = SanitizeFileName(testName);
+        var testArtifactsDir = Path.Combine(ArtifactsDir, sanitizedTestName);
+        Directory.CreateDirectory(testArtifactsDir);
+        
+        var tracePath = Path.Combine(testArtifactsDir, $"trace{(success ? "" : "_failed")}.zip");
+        await context.Tracing.StopAsync(new() { Path = tracePath });
+        
+        // Take screenshot
+        var screenshotPath = Path.Combine(testArtifactsDir, $"screenshot{(success ? "" : "_failed")}.png");
+        try
+        {
+            var page = context.Pages.FirstOrDefault();
+            if (page != null)
+            {
+                await page.ScreenshotAsync(new() { Path = screenshotPath, FullPage = true });
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Could not take screenshot: {ex.Message}");
+        }
+        
+        Console.WriteLine($"Artifacts saved to: {testArtifactsDir}");
+    }
+
+    private static string SanitizeFileName(string name)
+    {
+        foreach (var c in Path.GetInvalidFileNameChars())
+        {
+            name = name.Replace(c, '_');
+        }
+        return name.Length > 100 ? name[..100] : name;
     }
 }
