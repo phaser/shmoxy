@@ -80,4 +80,36 @@ public class ProxyInfoPageTests : IAsyncLifetime
         var contentType = response.Headers["content-type"];
         Assert.Contains("text/html", contentType);
     }
+
+    [Fact]
+    public async Task InfoPage_HasCertificateDownloadLinks()
+    {
+        var context = await _fixture!.Browser.NewContextAsync(new()
+        {
+            IgnoreHTTPSErrors = true
+        });
+
+        var page = await context.NewPageAsync();
+        await page.GotoAsync(_fixture.BaseUrl);
+
+        var pemLink = page.GetByRole(AriaRole.Link, new() { Name = "Download PEM" });
+        await Expect(pemLink).ToBeVisibleAsync();
+        
+        var derLink = page.GetByRole(AriaRole.Link, new() { Name = "Download DER" });
+        await Expect(derLink).ToBeVisibleAsync();
+    }
+
+    [Fact]
+    public async Task RootCaPem_Endpoint_ReturnsCertificate()
+    {
+        using var client = new System.Net.Http.HttpClient();
+        var response = await client.GetAsync($"{_fixture.BaseUrl}/root-ca.pem");
+
+        Assert.Equal(200, (int)response.StatusCode);
+        Assert.Contains("pem", response.Content.Headers.ContentType?.MediaType?.ToLowerInvariant());
+        
+        var content = await response.Content.ReadAsStringAsync();
+        Assert.Contains("-----BEGIN CERTIFICATE-----", content);
+        Assert.Contains("-----END CERTIFICATE-----", content);
+    }
 }
