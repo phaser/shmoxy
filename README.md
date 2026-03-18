@@ -1,4 +1,4 @@
-# Shmoxy - HTTP/HTTPS Proxy Server with TLS Termination
+# Shmoxy - HTTP/HTTPS Intercepting Proxy
 
 A .NET proxy server that terminates TLS connections and forwards traffic to target servers. Supports dynamic certificate generation for HTTPS interception.
 

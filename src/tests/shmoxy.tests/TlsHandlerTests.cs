@@ -1,5 +1,5 @@
 using Xunit;
-using shmoxy;
+using shmoxy.server;
 
 namespace shmoxy.tests;
 

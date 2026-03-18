@@ -1,6 +1,8 @@
 using System;
 using System.CommandLine;
 using System.CommandLine.Invocation;
+using shmoxy.models.configuration;
+using shmoxy.server;
 
 namespace shmoxy;
 
@@ -40,7 +42,7 @@ class Program
                 return level;
             });
 
-        RootCommand rootCommand = new RootCommand("Shmoxy HTTP/HTTPS Proxy Server with TLS Termination");
+        RootCommand rootCommand = new RootCommand("Shmoxy HTTP/HTTPS Intercepting Proxy");
         rootCommand.AddOption(portOption);
         rootCommand.AddOption(certPathOption);
         rootCommand.AddOption(keyPathOption);

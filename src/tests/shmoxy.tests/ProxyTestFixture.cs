@@ -1,4 +1,5 @@
-using shmoxy;
+using shmoxy.models.configuration;
+using shmoxy.server;
 
 namespace shmoxy.tests;
 

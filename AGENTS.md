@@ -16,6 +16,28 @@ You are an expert software engineering assistant working on dotnet projects and 
     * Security first: Never write code that exposes secrets, credentials, or keys. Validate inputs rigorously.
     * Highlight assumptions: If you make any assumptions or think you're making assumptions, highlight them and give the user a chance to clarify.
 
+## Code Organization Rules
+
+### Models Folder Structure
+- All model classes go in the `models/` folder
+- Configuration classes → `models/configuration/`
+- DTOs (Data Transfer Objects) → `models/dto/`
+
+### Server Code Structure
+- Server implementation code goes in the `server/` folder
+- Interfaces → `server/interfaces/`
+- Hook implementations → `server/hooks/`
+- Helper classes → `server/helpers/`
+
+### One Type Per File
+- Each class, interface, enum, or record gets its own file
+- File naming: `{TypeName}.cs`
+- Exception: nested types that are tightly coupled (e.g., `ProxyConfig.LogLevelEnum`)
+
+### Prefer Separate Files
+- Default to separate files for maintainability
+- Only combine types in same file when there's strong coupling
+
 ## Test File Organization
 
 Each source class or `.cs` file must have its own dedicated test file. Test files follow the naming convention `{ClassName}Tests.cs` and live in the corresponding test project directory.

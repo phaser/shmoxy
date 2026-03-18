@@ -1,5 +1,5 @@
 {
-  description = "Shmoxy - HTTP/HTTPS Proxy Server with TLS Termination";
+  description = "Shmoxy - HTTP/HTTPS Intercepting Proxy";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
