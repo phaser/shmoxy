@@ -1,10 +1,12 @@
+using Xunit;
+
 namespace shmoxy.e2e;
 
 public class BasicTest
 {
-    [Test]
+    [Fact]
     public void Test_Plugin_Is_Loaded()
     {
-        Assert.Pass("E2E test project is set up correctly");
+        Assert.True(true, "E2E test project is set up correctly");
     }
 }
