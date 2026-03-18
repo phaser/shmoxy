@@ -42,6 +42,7 @@ public class ProxyServer : IDisposable
     private CancellationTokenSource? _cts;
     private bool _disposed;
     private bool _isListening;
+    private X509Certificate2? _rootCert;
 
     /// <summary>
     /// Gets whether the server is currently listening for connections.
@@ -54,6 +55,28 @@ public class ProxyServer : IDisposable
     /// Only valid after <see cref="StartAsync"/> has been called.
     /// </summary>
     public int ListeningPort => ((System.Net.IPEndPoint)_listener.LocalEndpoint).Port;
+
+    /// <summary>
+    /// Gets the root CA certificate in PEM format.
+    /// </summary>
+    public string GetRootCertificatePem()
+    {
+        if (_rootCert == null)
+            throw new InvalidOperationException("Root certificate not available");
+        
+        return _rootCert.ExportCertificatePem();
+    }
+
+    /// <summary>
+    /// Gets the root CA certificate in DER format.
+    /// </summary>
+    public byte[] GetRootCertificateDer()
+    {
+        if (_rootCert == null)
+            throw new InvalidOperationException("Root certificate not available");
+        
+        return _rootCert.Export(X509ContentType.Cert);
+    }
 
     /// <summary>
     /// Creates a new proxy server with default configuration.
@@ -69,6 +92,7 @@ public class ProxyServer : IDisposable
         _listener = TcpListener.Create(config.Port);
         _tlsHandler = new TlsHandler();
         _interceptor = new NoOpInterceptHook();
+        _rootCert = _tlsHandler.GetRootCertificate();
 
         Log(ProxyConfig.LogLevelEnum.Info, $"Proxy server initialized on port {config.Port}");
     }
@@ -249,15 +273,43 @@ public class ProxyServer : IDisposable
                 var hostHeader = lines.Skip(1)
                     .FirstOrDefault(l => l.StartsWith("Host:", StringComparison.OrdinalIgnoreCase));
 
-                if (hostHeader == null) return;
-
-                var hostParts = hostHeader.Substring("Host:".Length).Trim().Split(':');
-                host = hostParts[0];
-                port = hostParts.Length > 1 && int.TryParse(hostParts[1], out var hp) ? hp : 80;
-                relativePath = path;
+                if (hostHeader == null)
+                {
+                    // For requests without Host header, assume it's to the proxy itself
+                    host = "localhost";
+                    port = ListeningPort;
+                    relativePath = path;
+                }
+                else
+                {
+                    var hostParts = hostHeader.Substring("Host:".Length).Trim().Split(':');
+                    host = hostParts[0];
+                    port = hostParts.Length > 1 && int.TryParse(hostParts[1], out var hp) ? hp : 80;
+                    relativePath = path;
+                }
             }
 
             Log(ProxyConfig.LogLevelEnum.Info, $"{method} {path} to {host}:{port}");
+
+            // Serve info page when request is directed to the proxy itself
+            if (IsRequestToProxyItself(host, port, path))
+            {
+                if (path.Equals("/root-ca.pem", StringComparison.OrdinalIgnoreCase))
+                {
+                    await ServeRootCertificatePemAsync(client);
+                    return;
+                }
+                if (path.Equals("/root-ca.der", StringComparison.OrdinalIgnoreCase))
+                {
+                    await ServeRootCertificateDerAsync(client);
+                    return;
+                }
+                if (path.Equals("/") || string.IsNullOrEmpty(path))
+                {
+                    await ServeInfoPageAsync(client, method, path);
+                    return;
+                }
+            }
 
             // Parse headers from the already-read buffer
             var headersDict = new Dictionary<string, string>();
@@ -304,6 +356,125 @@ public class ProxyServer : IDisposable
         {
             Log(ProxyConfig.LogLevelEnum.Error, $"Request handling error: {ex.Message}");
         }
+    }
+
+    /// <summary>
+    /// Checks if the request is directed to the proxy server itself.
+    /// </summary>
+    private bool IsRequestToProxyItself(string host, int port, string path)
+    {
+        var isLocalhost = host.Equals("localhost", StringComparison.OrdinalIgnoreCase)
+                       || host.Equals("127.0.0.1", StringComparison.OrdinalIgnoreCase)
+                       || host.Equals("::1", StringComparison.OrdinalIgnoreCase);
+        
+        return isLocalhost && port == ListeningPort;
+    }
+
+    /// <summary>
+    /// Serves the root CA certificate in PEM format.
+    /// </summary>
+    private async Task ServeRootCertificatePemAsync(TcpClient client)
+    {
+        try
+        {
+            var pem = GetRootCertificatePem();
+            var response = $"HTTP/1.1 200 OK\r\nContent-Type: application/x-pem-file\r\nContent-Length: {Encoding.UTF8.GetByteCount(pem)}\r\nContent-Disposition: attachment; filename=\"shmoxy-root-ca.pem\"\r\nConnection: close\r\n\r\n{pem}";
+            await SendResponseAsync(client, response);
+        }
+        catch (Exception ex)
+        {
+            var error = $"HTTP/1.1 500 Internal Server Error\r\nContent-Type: text/plain\r\n\r\nError: {ex.Message}";
+            await SendResponseAsync(client, error);
+        }
+    }
+
+    /// <summary>
+    /// Serves the root CA certificate in DER format.
+    /// </summary>
+    private async Task ServeRootCertificateDerAsync(TcpClient client)
+    {
+        try
+        {
+            var der = GetRootCertificateDer();
+            var header = $"HTTP/1.1 200 OK\r\nContent-Type: application/x-x509-ca-cert\r\nContent-Length: {der.Length}\r\nContent-Disposition: attachment; filename=\"shmoxy-root-ca.der\"\r\nConnection: close\r\n\r\n";
+            var headerBytes = Encoding.ASCII.GetBytes(header);
+            var stream = client.GetStream();
+            await stream.WriteAsync(headerBytes, 0, headerBytes.Length);
+            await stream.WriteAsync(der, 0, der.Length);
+            await stream.FlushAsync();
+        }
+        catch (Exception ex)
+        {
+            var error = $"HTTP/1.1 500 Internal Server Error\r\nContent-Type: text/plain\r\n\r\nError: {ex.Message}";
+            await SendResponseAsync(client, error);
+        }
+    }
+
+    /// <summary>
+    /// Serves an HTML info page for requests directed to the proxy itself.
+    /// </summary>
+    private async Task ServeInfoPageAsync(TcpClient client, string method, string path)
+    {
+        if (!method.Equals("GET", StringComparison.OrdinalIgnoreCase))
+        {
+            await SendResponseAsync(client, "HTTP/1.1 405 Method Not Allowed\r\nContent-Type: text/plain\r\n\r\nMethod Not Allowed");
+            return;
+        }
+
+        var html = $@"<!DOCTYPE html>
+<html>
+<head>
+    <title>Shmoxy Proxy Server</title>
+    <style>
+        body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 800px; margin: 50px auto; padding: 20px; }}
+        h1 {{ color: #333; }}
+        .status {{ background: #e8f5e9; padding: 15px; border-radius: 5px; margin: 20px 0; }}
+        .info {{ background: #e3f2fd; padding: 15px; border-radius: 5px; margin: 20px 0; }}
+        .certs {{ background: #fff3e0; padding: 15px; border-radius: 5px; margin: 20px 0; }}
+        code {{ background: #f5f5f5; padding: 2px 6px; border-radius: 3px; }}
+        a {{ color: #1976d2; }}
+        .btn {{ display: inline-block; padding: 8px 16px; background: #1976d2; color: white; text-decoration: none; border-radius: 4px; margin: 5px 5px 5px 0; }}
+        .btn:hover {{ background: #1565c0; }}
+    </style>
+</head>
+<body>
+    <h1>Shmoxy Proxy Server</h1>
+    <div class=""status"">
+        <strong>Proxy is running</strong>
+    </div>
+    <div class=""info"">
+        <h2>Server Information</h2>
+        <p><strong>Listening on:</strong> <code>http://localhost:{ListeningPort}</code></p>
+        <p><strong>Mode:</strong> HTTP/HTTPS Proxy with TLS Termination</p>
+        <p><strong>Status:</strong> Accepting connections</p>
+    </div>
+    <div class=""certs"">
+        <h2>Root CA Certificate</h2>
+        <p>Download and install the root CA certificate to trust HTTPS connections through this proxy:</p>
+        <p>
+            <a href=""/root-ca.pem"" class=""btn"">Download PEM</a>
+            <a href=""/root-ca.der"" class=""btn"">Download DER</a>
+        </p>
+        <h3>Installation Instructions</h3>
+        <ul>
+            <li><strong>Windows:</strong> Import .DER file into Trusted Root Certification Authorities</li>
+            <li><strong>macOS:</strong> Add .PEM to Keychain and set to ""Always Trust""</li>
+            <li><strong>Firefox:</strong> Import .PEM in Settings > Privacy & Security > Certificates</li>
+            <li><strong>Chrome:</strong> Uses system certificate store</li>
+        </ul>
+    </div>
+    <h2>How to use</h2>
+    <p>Configure your browser or application to use this proxy:</p>
+    <ul>
+        <li>HTTP Proxy: <code>localhost:{ListeningPort}</code></li>
+        <li>HTTPS Proxy: <code>localhost:{ListeningPort}</code></li>
+    </ul>
+    <p>This proxy intercepts HTTP/HTTPS traffic and can be used for debugging, testing, or monitoring network requests.</p>
+</body>
+</html>";
+
+        var response = $"HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: {Encoding.UTF8.GetByteCount(html)}\r\nConnection: close\r\n\r\n{html}";
+        await SendResponseAsync(client, response);
     }
 
     /// <summary>
@@ -391,8 +562,10 @@ public class ProxyServer : IDisposable
     /// </summary>
     private async Task SendResponseAsync(TcpClient client, string response)
     {
-        var bytes = Encoding.ASCII.GetBytes(response);
-        await client.GetStream().WriteAsync(bytes, 0, bytes.Length);
+        var bytes = Encoding.UTF8.GetBytes(response);
+        var stream = client.GetStream();
+        await stream.WriteAsync(bytes, 0, bytes.Length);
+        await stream.FlushAsync();
     }
 
     /// <summary>
