@@ -1,5 +1,6 @@
 <Solution>
   <Folder Name="/Tests/">
+    <Project Path="tests/shmoxy.e2e/shmoxy.e2e.csproj" />
     <Project Path="tests/shmoxy.tests/shmoxy.tests.csproj" />
   </Folder>
   <Project Path="shmoxy/shmoxy.csproj" />
