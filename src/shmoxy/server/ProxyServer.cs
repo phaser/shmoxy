@@ -427,7 +427,7 @@ public class ProxyServer : IDisposable
     <div class=""info"">
         <h2>Server Information</h2>
         <p><strong>Listening on:</strong> <code>http://localhost:{ListeningPort}</code></p>
-        <p><strong>Mode:</strong> HTTP/HTTPS Proxy with TLS Termination</p>
+        <p><strong>Mode:</strong> HTTP/HTTPS Intercepting Proxy</p>
         <p><strong>Status:</strong> Accepting connections</p>
     </div>
     <div class=""certs"">

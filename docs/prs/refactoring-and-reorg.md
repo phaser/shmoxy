@@ -39,7 +39,7 @@
 - [x] Run `dotnet test` to verify all tests pass
   - Unit tests: 10/10 passed
   - E2E tests: 9/9 passed
-- [ ] Run `nix build .#shmoxy` (requires committing changes first - Nix builds from git)
+- [x] Run `nix build .#shmoxy` - successful
 
 ## Summary
 
