@@ -34,6 +34,14 @@ public class TlsHandler : IDisposable
     }
 
     /// <summary>
+    /// Gets the root CA certificate.
+    /// </summary>
+    public X509Certificate2 GetRootCertificate()
+    {
+        return _rootCert;
+    }
+
+    /// <summary>
     /// Gets or generates a certificate for the specified hostname.
     /// Uses SNI to determine which certificate to serve.
     /// </summary>
