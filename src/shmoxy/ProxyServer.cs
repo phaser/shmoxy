@@ -249,15 +249,30 @@ public class ProxyServer : IDisposable
                 var hostHeader = lines.Skip(1)
                     .FirstOrDefault(l => l.StartsWith("Host:", StringComparison.OrdinalIgnoreCase));
 
-                if (hostHeader == null) return;
-
-                var hostParts = hostHeader.Substring("Host:".Length).Trim().Split(':');
-                host = hostParts[0];
-                port = hostParts.Length > 1 && int.TryParse(hostParts[1], out var hp) ? hp : 80;
-                relativePath = path;
+                if (hostHeader == null)
+                {
+                    // For requests without Host header, assume it's to the proxy itself
+                    host = "localhost";
+                    port = ListeningPort;
+                    relativePath = path;
+                }
+                else
+                {
+                    var hostParts = hostHeader.Substring("Host:".Length).Trim().Split(':');
+                    host = hostParts[0];
+                    port = hostParts.Length > 1 && int.TryParse(hostParts[1], out var hp) ? hp : 80;
+                    relativePath = path;
+                }
             }
 
             Log(ProxyConfig.LogLevelEnum.Info, $"{method} {path} to {host}:{port}");
+
+            // Serve info page when request is directed to the proxy itself
+            if (IsRequestToProxyItself(host, port, relativePath))
+            {
+                await ServeInfoPageAsync(client, method, relativePath);
+                return;
+            }
 
             // Parse headers from the already-read buffer
             var headersDict = new Dictionary<string, string>();
@@ -304,6 +319,66 @@ public class ProxyServer : IDisposable
         {
             Log(ProxyConfig.LogLevelEnum.Error, $"Request handling error: {ex.Message}");
         }
+    }
+
+    /// <summary>
+    /// Checks if the request is directed to the proxy server itself.
+    /// </summary>
+    private bool IsRequestToProxyItself(string host, int port, string path)
+    {
+        var isLocalhost = host.Equals("localhost", StringComparison.OrdinalIgnoreCase)
+                       || host.Equals("127.0.0.1", StringComparison.OrdinalIgnoreCase)
+                       || host.Equals("::1", StringComparison.OrdinalIgnoreCase);
+        
+        return isLocalhost && port == ListeningPort;
+    }
+
+    /// <summary>
+    /// Serves an HTML info page for requests directed to the proxy itself.
+    /// </summary>
+    private async Task ServeInfoPageAsync(TcpClient client, string method, string path)
+    {
+        if (!method.Equals("GET", StringComparison.OrdinalIgnoreCase))
+        {
+            await SendResponseAsync(client, "HTTP/1.1 405 Method Not Allowed\r\nContent-Type: text/plain\r\n\r\nMethod Not Allowed");
+            return;
+        }
+
+        var html = $@"<!DOCTYPE html>
+<html>
+<head>
+    <title>Shmoxy Proxy Server</title>
+    <style>
+        body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 800px; margin: 50px auto; padding: 20px; }}
+        h1 {{ color: #333; }}
+        .status {{ background: #e8f5e9; padding: 15px; border-radius: 5px; margin: 20px 0; }}
+        .info {{ background: #e3f2fd; padding: 15px; border-radius: 5px; margin: 20px 0; }}
+        code {{ background: #f5f5f5; padding: 2px 6px; border-radius: 3px; }}
+    </style>
+</head>
+<body>
+    <h1>Shmoxy Proxy Server</h1>
+    <div class=""status"">
+        <strong>Proxy is running</strong>
+    </div>
+    <div class=""info"">
+        <h2>Server Information</h2>
+        <p><strong>Listening on:</strong> <code>http://localhost:{ListeningPort}</code></p>
+        <p><strong>Mode:</strong> HTTP/HTTPS Proxy with TLS Termination</p>
+        <p><strong>Status:</strong> Accepting connections</p>
+    </div>
+    <h2>How to use</h2>
+    <p>Configure your browser or application to use this proxy:</p>
+    <ul>
+        <li>HTTP Proxy: <code>localhost:{ListeningPort}</code></li>
+        <li>HTTPS Proxy: <code>localhost:{ListeningPort}</code></li>
+    </ul>
+    <p>This proxy intercepts HTTP/HTTPS traffic and can be used for debugging, testing, or monitoring network requests.</p>
+</body>
+</html>";
+
+        var response = $"HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: {Encoding.UTF8.GetByteCount(html)}\r\nConnection: close\r\n\r\n{html}";
+        await SendResponseAsync(client, response);
     }
 
     /// <summary>
@@ -391,8 +466,10 @@ public class ProxyServer : IDisposable
     /// </summary>
     private async Task SendResponseAsync(TcpClient client, string response)
     {
-        var bytes = Encoding.ASCII.GetBytes(response);
-        await client.GetStream().WriteAsync(bytes, 0, bytes.Length);
+        var bytes = Encoding.UTF8.GetBytes(response);
+        var stream = client.GetStream();
+        await stream.WriteAsync(bytes, 0, bytes.Length);
+        await stream.FlushAsync();
     }
 
     /// <summary>
