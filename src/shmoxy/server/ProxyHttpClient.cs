@@ -2,7 +2,7 @@ using System.Net.Sockets;
 using System.Security.Authentication;
 using System.Text;
 
-namespace shmoxy;
+namespace shmoxy.server;
 
 /// <summary>
 /// Handles HTTP requests through a proxy tunnel.

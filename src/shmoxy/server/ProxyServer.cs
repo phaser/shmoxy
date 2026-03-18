@@ -4,30 +4,12 @@ using System.Security.Authentication;
 using System.Security.Cryptography.X509Certificates;
 using System.Text;
 using System.Threading.Channels;
+using shmoxy.models.configuration;
+using shmoxy.models.dto;
+using shmoxy.server.hooks;
+using shmoxy.server.interfaces;
 
-namespace shmoxy;
-
-/// <summary>
-/// Configuration for the proxy server.
-/// </summary>
-public class ProxyConfig
-{
-    public int Port { get; set; } = 8080;
-    public string? CertPath { get; set; }
-    public string? KeyPath { get; set; }
-    public LogLevelEnum LogLevel { get; set; } = LogLevelEnum.Info;
-
-    /// <summary>
-    /// Logging levels.
-    /// </summary>
-    public enum LogLevelEnum
-    {
-        Debug,
-        Info,
-        Warn,
-        Error
-    }
-}
+namespace shmoxy.server;
 
 /// <summary>
 /// Core proxy server that handles HTTP/HTTPS requests with TLS termination.
@@ -445,7 +427,7 @@ public class ProxyServer : IDisposable
     <div class=""info"">
         <h2>Server Information</h2>
         <p><strong>Listening on:</strong> <code>http://localhost:{ListeningPort}</code></p>
-        <p><strong>Mode:</strong> HTTP/HTTPS Proxy with TLS Termination</p>
+        <p><strong>Mode:</strong> HTTP/HTTPS Intercepting Proxy</p>
         <p><strong>Status:</strong> Accepting connections</p>
     </div>
     <div class=""certs"">
@@ -570,7 +552,7 @@ public class ProxyServer : IDisposable
         var buffer = new byte[8192];
         int bytesRead;
 
-        while ((bytesRead = await source.ReadAsync(buffer)) > 0)
+        while ((bytesRead = await source.ReadAsync(buffer, 0, buffer.Length)) > 0)
             await destination.WriteAsync(buffer.AsMemory(0, bytesRead));
     }
 
