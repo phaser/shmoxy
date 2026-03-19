@@ -111,7 +111,12 @@ All development must follow this isolated PR workflow:
    This creates:
    - A git worktree at `worktrees/[sanitized-name]`
    - A dedicated branch `pr/[sanitized-name]`
-   - Documentation at `docs/prs/[sanitized-name].md`
+   - Documentation at `docs/prs/[YYYY-MM-DD-HHMM]-[sanitized-name].md`
+
+2. **PR documentation naming:**
+   - All PR documentation files must be prefixed with an approximate timestamp in `YYYY-MM-DD-HHMM` format
+   - Use the date and time when the PR branch was created or first committed
+   - Example: `2024-03-17-1005-initial-proxy-implementation.md`
 
 2. **Make changes in the worktree:**
    ```bash
