@@ -24,7 +24,10 @@ public class ProxyPerformanceTests : IAsyncLifetime
     {
         "https://finance.yahoo.com",
         "https://www.reddit.com",
-        "https://arstechnica.com"
+        "https://arstechnica.com",
+        "https://www.microsoft.com",
+        "https://european-union.europa.eu/index_en",
+        "https://developers.google.com/"
     };
 
     public ProxyPerformanceTests(ITestOutputHelper output)
