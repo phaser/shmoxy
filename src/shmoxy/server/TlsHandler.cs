@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Concurrent;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using System.Net.Sockets;
@@ -12,8 +13,7 @@ namespace shmoxy.server;
 public class TlsHandler : IDisposable
 {
     private readonly X509Certificate2 _rootCert;
-    private readonly Dictionary<string, X509Certificate2> _certCache = new();
-    private readonly object _cacheLock = new();
+    private readonly ConcurrentDictionary<string, X509Certificate2> _certCache = new();
     private bool _disposed;
 
     /// <summary>
@@ -50,23 +50,9 @@ public class TlsHandler : IDisposable
         if (string.IsNullOrWhiteSpace(serverName))
             throw new ArgumentException("Server name is required", nameof(serverName));
 
-        // Normalize hostname (remove port, lowercase)
         var normalizedName = serverName.ToLowerInvariant().Split(':')[0];
 
-        lock (_cacheLock)
-        {
-            if (_certCache.TryGetValue(normalizedName, out var cachedCert))
-                return cachedCert;
-        }
-
-        var cert = GenerateCertificateForHost(normalizedName);
-
-        lock (_cacheLock)
-        {
-            _certCache[normalizedName] = cert;
-        }
-
-        return cert;
+        return _certCache.GetOrAdd(normalizedName, host => GenerateCertificateForHost(host));
     }
 
     /// <summary>
@@ -126,12 +112,9 @@ public class TlsHandler : IDisposable
     /// </summary>
     public void ClearCache()
     {
-        lock (_cacheLock)
-        {
-            foreach (var cert in _certCache.Values)
-                cert.Dispose();
-            _certCache.Clear();
-        }
+        foreach (var cert in _certCache.Values)
+            cert.Dispose();
+        _certCache.Clear();
     }
 
     public void Dispose()
