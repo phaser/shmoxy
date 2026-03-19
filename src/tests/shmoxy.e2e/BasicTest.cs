@@ -2,6 +2,7 @@ using Xunit;
 
 namespace shmoxy.e2e;
 
+[Trait("Category", "Integration")]
 public class BasicTest
 {
     [Fact]
