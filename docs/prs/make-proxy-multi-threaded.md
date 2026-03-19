@@ -127,13 +127,34 @@ dotnet test --filter "FullyQualifiedName~ProxyPerformanceTests.Baseline_NoProxy_
 
 ## Implementation Plan
 
-1. [ ] Document current behavior and performance issue (this file)
-2. [ ] Create performance e2e test to measure the issue
-3. [ ] Run baseline test to confirm performance problem
-4. [ ] Implement multi-threaded connection handling
-5. [ ] Add configuration for concurrency limits
-6. [ ] Run performance test to verify improvement
+1. [x] Document current behavior and performance issue (this file)
+2. [x] Create performance e2e test to measure the issue
+3. [x] Run baseline test to confirm performance problem
+4. [x] Implement multi-threaded connection handling
+5. [x] Add configuration for concurrency limits
+6. [ ] Run performance test to verify improvement (in progress - see known issues)
 7. [ ] Run existing test suite to ensure no regressions
+
+## Implementation Status
+
+**COMPLETED:**
+- Multi-threaded connection handling with `Task.Run()`
+- Concurrency limiting with `SemaphoreSlim` (default: `ProcessorCount * 4`)
+- Thread-safe certificate cache with `ConcurrentDictionary`
+- Configuration option `MaxConcurrentConnections`
+
+**KNOWN ISSUES:**
+1. **Connection cleanup**: Some sites with persistent keep-alive connections (microsoft.com) experience timeouts after 30+ seconds. The semaphore slots are not being released promptly when connections stay open.
+2. **Connection timeout handling**: Need to implement read/write timeouts to force cleanup of idle keep-alive connections.
+
+**WORKAROUND:**
+- For now, the high concurrency limit (56 on 14-core machines) allows most sites to complete successfully
+- arstechnica.com improved from 41s to 2.5s (16x faster)
+
+**TODO:**
+- Add read/write timeouts to `CopyStreamAsync`
+- Implement connection idle timeout for keep-alive connections
+- Consider adding connection pool for frequently accessed domains
 
 ## Open Questions
 
