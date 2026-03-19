@@ -11,6 +11,7 @@ namespace shmoxy.e2e;
 /// with a real browser (Chromium). Uses --ignore-certificate-errors-spki-list
 /// to trust the proxy's root CA by its public key hash.
 /// </summary>
+[Trait("Category", "Integration")]
 public class HttpsInterceptionTests : IAsyncLifetime
 {
     private ProxyTestFixture? _fixture;
