@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Concurrent;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using System.Net.Sockets;
@@ -11,17 +12,32 @@ namespace shmoxy.server;
 /// </summary>
 public class TlsHandler : IDisposable
 {
+    private const string RootCertFileName = "shmoxy-root-ca.pfx";
+
     private readonly X509Certificate2 _rootCert;
-    private readonly Dictionary<string, X509Certificate2> _certCache = new();
-    private readonly object _cacheLock = new();
+    private readonly ConcurrentDictionary<string, X509Certificate2> _certCache = new();
     private bool _disposed;
 
     /// <summary>
     /// Creates a TLS handler with dynamic certificate generation.
+    /// Generates a new root CA on every run (no persistence).
     /// </summary>
     public TlsHandler()
     {
         _rootCert = GenerateRootCertificate();
+    }
+
+    /// <summary>
+    /// Creates a TLS handler that persists the root CA certificate to disk.
+    /// If a root CA PFX exists at the storage path, it is loaded.
+    /// Otherwise a new one is generated and saved.
+    /// </summary>
+    public TlsHandler(string certStoragePath)
+    {
+        if (string.IsNullOrWhiteSpace(certStoragePath))
+            throw new ArgumentException("Certificate storage path is required", nameof(certStoragePath));
+
+        _rootCert = LoadOrGenerateRootCertificate(certStoragePath);
     }
 
     /// <summary>
@@ -50,21 +66,33 @@ public class TlsHandler : IDisposable
         if (string.IsNullOrWhiteSpace(serverName))
             throw new ArgumentException("Server name is required", nameof(serverName));
 
-        // Normalize hostname (remove port, lowercase)
         var normalizedName = serverName.ToLowerInvariant().Split(':')[0];
 
-        lock (_cacheLock)
+        return _certCache.GetOrAdd(normalizedName, host => GenerateCertificateForHost(host));
+    }
+
+    /// <summary>
+    /// Loads an existing root CA from disk, or generates a new one and saves it.
+    /// </summary>
+    private X509Certificate2 LoadOrGenerateRootCertificate(string certStoragePath)
+    {
+        Directory.CreateDirectory(certStoragePath);
+        var pfxPath = Path.Combine(certStoragePath, RootCertFileName);
+
+        if (File.Exists(pfxPath))
         {
-            if (_certCache.TryGetValue(normalizedName, out var cachedCert))
-                return cachedCert;
+            return X509CertificateLoader.LoadPkcs12FromFile(pfxPath, null);
         }
 
-        var cert = GenerateCertificateForHost(normalizedName);
+        var cert = GenerateRootCertificate();
 
-        lock (_cacheLock)
-        {
-            _certCache[normalizedName] = cert;
-        }
+        // Export with private key so it can be reloaded later
+        var pfxBytes = cert.Export(X509ContentType.Pfx);
+        File.WriteAllBytes(pfxPath, pfxBytes);
+
+        // Also export PEM for easy installation in browsers/OS trust stores
+        var pemPath = Path.Combine(certStoragePath, "shmoxy-root-ca.pem");
+        File.WriteAllText(pemPath, cert.ExportCertificatePem());
 
         return cert;
     }
@@ -126,12 +154,9 @@ public class TlsHandler : IDisposable
     /// </summary>
     public void ClearCache()
     {
-        lock (_cacheLock)
-        {
-            foreach (var cert in _certCache.Values)
-                cert.Dispose();
-            _certCache.Clear();
-        }
+        foreach (var cert in _certCache.Values)
+            cert.Dispose();
+        _certCache.Clear();
     }
 
     public void Dispose()

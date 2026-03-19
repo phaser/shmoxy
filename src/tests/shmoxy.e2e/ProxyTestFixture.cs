@@ -44,7 +44,7 @@ public sealed class ProxyTestFixture : IAsyncLifetime
         Browser = await _playwright.Chromium.LaunchAsync(new()
         {
             Headless = true,
-            Args = new[] { "--no-sandbox", "--disable-setuid-sandbox", "--disable-gpu" },
+            Args = new[] { "--no-sandbox", "--disable-setuid-sandbox", "--disable-gpu", "--ignore-certificate-errors" },
             Timeout = 30000
         });
         Console.WriteLine("Browser launched");

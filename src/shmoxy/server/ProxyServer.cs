@@ -72,11 +72,12 @@ public class ProxyServer : IDisposable
     {
         _config = config ?? throw new ArgumentNullException(nameof(config));
         _listener = TcpListener.Create(config.Port);
-        _tlsHandler = new TlsHandler();
+        _tlsHandler = new TlsHandler(config.CertStoragePath);
         _interceptor = new NoOpInterceptHook();
         _rootCert = _tlsHandler.GetRootCertificate();
 
         Log(ProxyConfig.LogLevelEnum.Info, $"Proxy server initialized on port {config.Port}");
+        Log(ProxyConfig.LogLevelEnum.Info, $"Certificate storage: {config.CertStoragePath}");
     }
 
     /// <summary>
@@ -113,7 +114,7 @@ public class ProxyServer : IDisposable
                 if (clientTask.Status == TaskStatus.RanToCompletion && !combinedCts.Token.IsCancellationRequested)
                 {
                     var client = await clientTask;
-                    _ = HandleConnectionAsync(client);
+                    _ = Task.Run(() => HandleConnectionAsync(client));
                 }
             }
         }
@@ -213,9 +214,8 @@ public class ProxyServer : IDisposable
 
             Log(ProxyConfig.LogLevelEnum.Info, $"TLS tunnel established to {host}:{port}");
 
-            // Proxy traffic in both directions
-            var proxyTask = ProxyTunnelAsync(sslStream, host, port);
-            await Task.WhenAll(proxyTask, Task.CompletedTask);
+            // Proxy traffic in both directions with timeout
+            await ProxyTunnelAsync(sslStream, host, port);
         }
     }
 
