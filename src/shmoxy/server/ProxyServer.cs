@@ -20,6 +20,7 @@ public class ProxyServer : IDisposable
     private readonly TlsHandler _tlsHandler;
     private readonly IInterceptHook _interceptor;
     private readonly ProxyConfig _config;
+    private readonly SemaphoreSlim _concurrencyLimiter;
     private readonly object _lock = new();
     private CancellationTokenSource? _cts;
     private bool _disposed;
@@ -75,8 +76,10 @@ public class ProxyServer : IDisposable
         _tlsHandler = new TlsHandler();
         _interceptor = new NoOpInterceptHook();
         _rootCert = _tlsHandler.GetRootCertificate();
+        _concurrencyLimiter = new SemaphoreSlim(config.MaxConcurrentConnections);
 
         Log(ProxyConfig.LogLevelEnum.Info, $"Proxy server initialized on port {config.Port}");
+        Log(ProxyConfig.LogLevelEnum.Debug, $"Max concurrent connections: {config.MaxConcurrentConnections}");
     }
 
     /// <summary>
@@ -113,7 +116,18 @@ public class ProxyServer : IDisposable
                 if (clientTask.Status == TaskStatus.RanToCompletion && !combinedCts.Token.IsCancellationRequested)
                 {
                     var client = await clientTask;
-                    _ = HandleConnectionAsync(client);
+                    await _concurrencyLimiter.WaitAsync(combinedCts.Token);
+                    _ = Task.Run(async () =>
+                    {
+                        try
+                        {
+                            await HandleConnectionAsync(client);
+                        }
+                        finally
+                        {
+                            _concurrencyLimiter.Release();
+                        }
+                    });
                 }
             }
         }
@@ -213,9 +227,8 @@ public class ProxyServer : IDisposable
 
             Log(ProxyConfig.LogLevelEnum.Info, $"TLS tunnel established to {host}:{port}");
 
-            // Proxy traffic in both directions
-            var proxyTask = ProxyTunnelAsync(sslStream, host, port);
-            await Task.WhenAll(proxyTask, Task.CompletedTask);
+            // Proxy traffic in both directions with timeout
+            await ProxyTunnelAsync(sslStream, host, port);
         }
     }
 
@@ -614,6 +627,7 @@ public class ProxyServer : IDisposable
 
         StopAsync().Wait();
         _tlsHandler.Dispose();
+        _concurrencyLimiter.Dispose();
         _disposed = true;
     }
 }
