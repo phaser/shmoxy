@@ -72,11 +72,12 @@ public class ProxyServer : IDisposable
     {
         _config = config ?? throw new ArgumentNullException(nameof(config));
         _listener = TcpListener.Create(config.Port);
-        _tlsHandler = new TlsHandler();
+        _tlsHandler = new TlsHandler(config.CertStoragePath);
         _interceptor = new NoOpInterceptHook();
         _rootCert = _tlsHandler.GetRootCertificate();
 
         Log(ProxyConfig.LogLevelEnum.Info, $"Proxy server initialized on port {config.Port}");
+        Log(ProxyConfig.LogLevelEnum.Info, $"Certificate storage: {config.CertStoragePath}");
     }
 
     /// <summary>
