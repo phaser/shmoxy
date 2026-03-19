@@ -27,7 +27,11 @@ public class ProxyPerformanceTests : IAsyncLifetime
         "https://arstechnica.com",
         "https://www.microsoft.com",
         "https://european-union.europa.eu/index_en",
-        "https://developers.google.com/"
+        "https://developers.google.com/",
+        "https://www.andimayr.de/",
+        "https://playhundreds.com/",
+        "https://mariusroosendaal.com/",
+        "https://www.radoslavholan.cz/"
     };
 
     public ProxyPerformanceTests(ITestOutputHelper output)
