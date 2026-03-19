@@ -132,32 +132,69 @@ dotnet test --filter "FullyQualifiedName~ProxyPerformanceTests.Baseline_NoProxy_
 3. [x] Run baseline test to confirm performance problem
 4. [x] Implement multi-threaded connection handling
 5. [x] Add configuration for concurrency limits
-6. [ ] Run performance test to verify improvement (in progress - see known issues)
-7. [ ] Run existing test suite to ensure no regressions
+6. [x] Run performance test to verify improvement
+7. [x] Run existing test suite to ensure no regressions
+8. [x] Add persistent root CA certificate storage
 
 ## Implementation Status
 
 **COMPLETED:**
 - Multi-threaded connection handling with `Task.Run()`
-- Concurrency limiting with `SemaphoreSlim` (default: `ProcessorCount * 4`)
-- Thread-safe certificate cache with `ConcurrentDictionary`
-- Configuration option `MaxConcurrentConnections`
+- Thread-safe certificate cache with `ConcurrentDictionary.GetOrAdd()`
+- Configuration option `MaxConcurrentConnections` (currently unused - .NET thread pool manages concurrency)
+- Persistent root CA certificate storage in `~/Library/Application Support/shmoxy`
+- Performance test suite with 10 real-world sites
 
-**KNOWN ISSUES:**
-1. **Connection cleanup**: Some sites with persistent keep-alive connections (microsoft.com) experience timeouts after 30+ seconds. The semaphore slots are not being released promptly when connections stay open.
-2. **Connection timeout handling**: Need to implement read/write timeouts to force cleanup of idle keep-alive connections.
+**DESIGN DECISION: SemaphoreSlim Removed**
 
-**WORKAROUND:**
-- For now, the high concurrency limit (56 on 14-core machines) allows most sites to complete successfully
-- arstechnica.com improved from 41s to 2.5s (16x faster)
+Initial implementation used `SemaphoreSlim` to limit concurrent connections. This was **removed** because:
+- The semaphore wrapped the **entire connection lifetime** including idle keep-alive connections
+- Modern browsers keep connections open with HTTP keep-alive between requests
+- Previous page's connections held semaphore slots while loading the next page
+- Result: microsoft.com timed out after 30+ seconds waiting for slots
 
-**TODO:**
-- Add read/write timeouts to `CopyStreamAsync`
-- Implement connection idle timeout for keep-alive connections
-- Consider adding connection pool for frequently accessed domains
+**Resolution:** `Task.Run()` alone is sufficient. The .NET thread pool already manages concurrency effectively without explicit limiting.
+
+**Performance Results (10 sites):**
+
+| Metric | Single-threaded | Multi-threaded | Improvement |
+|--------|-----------------|----------------|-------------|
+| Total time | 21693ms | 18825ms | **-13.2%** |
+| Overhead % | +108% | +100% | **-8 points** |
+| Timeouts | 1 (microsoft.com) | 0 | **Fixed** |
+| Worst site (arstechnica) | +175% | +100% | **-75 points** |
+
+**Biggest improvements:**
+- microsoft.com: TIMEOUT → 2888ms (+50%) — **was broken, now works**
+- arstechnica.com: 3108ms → 2257ms — **27% faster**
+- mariusroosendaal.com: 2235ms → 1668ms — **25% faster**
+
+**Certificate Persistence:**
+
+Root CA is now persisted to `~/Library/Application Support/shmoxy/shmoxy-root-ca.pfx`:
+- First run: generates new root CA, saves PFX + PEM
+- Subsequent runs: loads existing PFX — same certificate every time
+- Install PEM once in OS/browser trust store, works across all future runs
+- Unit tests still use ephemeral certs (parameterless `TlsHandler()` constructor)
+- E2E tests use persistent cert (via `ProxyConfig.CertStoragePath`)
 
 ## Open Questions
 
 1. What is the acceptable latency threshold for proxied requests?
 2. Should we expose concurrency limits via CLI options?
 3. Do we need metrics/telemetry for connection queue depth?
+
+## Future Improvements
+
+- **Connection idle timeout**: Force cleanup of keep-alive connections after N seconds of inactivity
+- **Connection pooling**: Cache connections to frequently accessed domains (googleapis.com, gstatic.com, etc.)
+- **Certificate generation parallelism**: Currently serialized per-host via `ConcurrentDictionary.GetOrAdd()`
+- **Performance target**: Current overhead is 100%, target is <50%
+
+## Test Results Reference
+
+Performance test reports are saved in `docs/performance/`:
+- `20260319_145131_ProxyPerformanceTests_MultiThreaded.md` — Final multi-threaded results
+- `20260319_140645_ProxyPerformanceTests_10Sites.md` — Single-threaded baseline (10 sites)
+- `20260319_140400_ProxyPerformanceTests_Expanded.md` — Single-threaded baseline (6 sites)
+- `20260319_135618_ProxyPerformanceTests.md` — Initial single-threaded baseline (3 sites)
