@@ -2,7 +2,7 @@ using shmoxy.models.dto;
 using shmoxy.server.hooks;
 using shmoxy.server.interfaces;
 
-namespace shmoxy.tests;
+namespace shmoxy.tests.server.hooks;
 
 public class InterceptHookTests
 {

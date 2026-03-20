@@ -1,6 +1,6 @@
 using shmoxy.server;
 
-namespace shmoxy.tests;
+namespace shmoxy.tests.server;
 
 public class TlsHandlerTests
 {
