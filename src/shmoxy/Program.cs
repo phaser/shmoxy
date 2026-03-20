@@ -1,9 +1,9 @@
-using System;
 using System.CommandLine;
-using System.CommandLine.Invocation;
-using Microsoft.AspNetCore.Builder;
-using Microsoft.AspNetCore.Hosting;
-using Microsoft.AspNetCore.Server.Kestrel.Core;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using shmoxy.ipc;
 using shmoxy.models.configuration;
 using shmoxy.server;
@@ -11,23 +11,14 @@ using shmoxy.server.hooks;
 
 namespace shmoxy;
 
-/// <summary>
-/// CLI entry point for the proxy server.
-/// </summary>
 class Program
 {
     static async Task<int> Main(string[] args)
     {
-        // Define command-line options
         var portOption = new Option<int>(
             aliases: new[] { "--port", "-p" },
             description: "Listening port for the proxy server (default: 8080)",
-            parseArgument: result =>
-            {
-                if (!int.TryParse(result.Tokens.FirstOrDefault()?.Value, out var port))
-                    port = 8080;
-                return port;
-            });
+            getDefaultValue: () => 8080);
 
         var certPathOption = new Option<string?>(
             aliases: new[] { "--cert" },
@@ -40,12 +31,7 @@ class Program
         var logLevelOption = new Option<ProxyConfig.LogLevelEnum>(
             aliases: new[] { "--log-level", "-l" },
             description: "Logging verbosity level (Debug, Info, Warn, Error)",
-            parseArgument: result =>
-            {
-                if (!Enum.TryParse<ProxyConfig.LogLevelEnum>(result.Tokens.FirstOrDefault()?.Value, true, out var level))
-                    level = ProxyConfig.LogLevelEnum.Info;
-                return level;
-            });
+            getDefaultValue: () => ProxyConfig.LogLevelEnum.Info);
 
         var ipcSocketOption = new Option<string?>(
             aliases: new[] { "--ipc-socket" },
@@ -60,76 +46,77 @@ class Program
 
         rootCommand.SetHandler(async (port, certPath, keyPath, logLevel, ipcSocket) =>
         {
-            var config = new ProxyConfig
-            {
-                Port = port,
-                CertPath = certPath,
-                KeyPath = keyPath,
-                LogLevel = logLevel
-            };
-
-            // Validate cert/key pair if provided
             if ((certPath != null && keyPath == null) || (certPath == null && keyPath != null))
             {
                 Console.Error.WriteLine("Error: Both --cert and --key must be specified together");
                 Environment.Exit(1);
             }
 
-            try
+            var builder = Host.CreateDefaultBuilder(args);
+            
+            builder.ConfigureAppConfiguration((context, config) =>
             {
-                var inspectionHook = new InspectionHook();
-                var hookChain = new InterceptHookChain().Add(inspectionHook);
-                
-                var server = new ProxyServer(config, hookChain);
+                config.AddInMemoryCollection(new Dictionary<string, string?>
+                {
+                    { "ProxyConfig:Port", port.ToString() },
+                    { "ProxyConfig:CertPath", certPath },
+                    { "ProxyConfig:KeyPath", keyPath },
+                    { "ProxyConfig:LogLevel", logLevel.ToString() },
+                    { "IpcOptions:SocketPath", ipcSocket },
+                }!);
+            });
 
-                // Graceful shutdown handling
-                using var cts = new CancellationTokenSource();
-                Console.CancelKeyPress += (_, __) => cts.Cancel();
+            builder.ConfigureLogging((context, logging) =>
+            {
+                logging.AddConsole();
+                logging.SetMinimumLevel(logLevel switch
+                {
+                    ProxyConfig.LogLevelEnum.Debug => LogLevel.Debug,
+                    ProxyConfig.LogLevelEnum.Info => LogLevel.Information,
+                    ProxyConfig.LogLevelEnum.Warn => LogLevel.Warning,
+                    ProxyConfig.LogLevelEnum.Error => LogLevel.Error,
+                    _ => LogLevel.Information
+                });
+            });
 
-                // Start IPC control API if socket path provided
-                Task? ipcTask = null;
+            builder.ConfigureServices((context, services) =>
+            {
+                services.Configure<ProxyConfig>(context.Configuration.GetSection("ProxyConfig"));
+                services.Configure<IpcOptions>(context.Configuration.GetSection("IpcOptions"));
+
+                services.AddSingleton<InspectionHook>();
+                services.AddSingleton<InterceptHookChain>(sp =>
+                {
+                    var inspectionHook = sp.GetRequiredService<InspectionHook>();
+                    return new InterceptHookChain().Add(inspectionHook);
+                });
+
+                services.AddSingleton<ProxyServer>(sp =>
+                {
+                    var config = sp.GetRequiredService<IOptions<ProxyConfig>>().Value;
+                    var hookChain = sp.GetRequiredService<InterceptHookChain>();
+                    return new ProxyServer(config, hookChain);
+                });
+
+                services.AddSingleton<ProxyStateService>(sp =>
+                {
+                    var proxy = sp.GetRequiredService<ProxyServer>();
+                    var inspectionHook = sp.GetRequiredService<InspectionHook>();
+                    return new ProxyStateService(proxy, inspectionHook);
+                });
+
+                services.AddHostedService<ProxyHostedService>();
+
                 if (!string.IsNullOrEmpty(ipcSocket))
                 {
-                    var stateService = new ProxyStateService(server, inspectionHook);
-                    ipcTask = StartIpcApiAsync(ipcSocket, stateService, config, cts.Token);
+                    services.AddHostedService<IpcHostedService>();
                 }
+            });
 
-                var proxyTask = server.StartAsync(cts.Token);
-
-                await Task.WhenAny(proxyTask, ipcTask ?? Task.CompletedTask);
-                
-                if (ipcTask != null)
-                {
-                    await ipcTask;
-                }
-            }
-            catch (Exception ex)
-            {
-                Console.Error.WriteLine($"Fatal error: {ex.Message}");
-                Environment.Exit(1);
-            }
+            var host = builder.Build();
+            await host.RunAsync();
         }, portOption, certPathOption, keyPathOption, logLevelOption, ipcSocketOption);
 
         return await rootCommand.InvokeAsync(args);
-    }
-
-    private static async Task StartIpcApiAsync(string socketPath, ProxyStateService stateService, ProxyConfig config, CancellationToken cancellationToken)
-    {
-        var host = new WebHostBuilder()
-            .UseKestrel(kestrelOptions =>
-            {
-                kestrelOptions.ListenUnixSocket(socketPath);
-            })
-            .Configure(app =>
-            {
-                app.UseRouting();
-                app.UseEndpoints(endpoints =>
-                {
-                    endpoints.MapProxyControlApi(stateService, config);
-                });
-            })
-            .Build();
-
-        await host.RunAsync(cancellationToken);
     }
 }

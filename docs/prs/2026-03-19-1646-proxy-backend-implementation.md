@@ -2,7 +2,7 @@
 
 **Created:** 2026-03-19
 **Branch:** pr/proxy-backend-implementation
-**Status:** Design Phase
+**Status:** Implementation Phase
 
 ## Description
 
@@ -206,7 +206,7 @@ public class InspectionHook : IInterceptHook
 
 ## Key Design Decisions
 
-1. **Proxy stays as an Exe project** but adds `Microsoft.AspNetCore.App` framework reference for embedded Kestrel on UDS. Lightweight -- just a few extra endpoints, not a full web app.
+1. **Proxy uses Generic Host** with `IHostedService` for clean lifecycle management. Both the proxy TCP listener and IPC API run as hosted services.
 
 2. **The `--ipc-socket` CLI argument** is how the API process tells the proxy where to create the UDS. Avoids hardcoded paths and allows multiple instances.
 
@@ -216,23 +216,43 @@ public class InspectionHook : IInterceptHook
 
 5. **Changes to existing `shmoxy` project are minimal:**
    - Add `--ipc-socket` CLI option
-   - Add `ipc/` folder with ~2 files for the internal Kestrel endpoints
+   - Add `ipc/` folder with `ProxyControlApi.cs`, `ProxyStateService.cs`, and `IpcHostedService.cs`
    - Add `InspectionHook` to hooks
-   - Modify `Program.cs` to optionally start Kestrel alongside the TCP listener
+   - Refactor `Program.cs` to use Generic Host pattern
 
 ## Status
 
 - [x] Architecture design
-- [ ] Create shmoxy.shared project with IPC contracts
-- [ ] Add IPC control API to shmoxy proxy process
+- [x] Create shmoxy.shared project with IPC contracts
+  - [x] `IpcCommands.cs` - DTOs for IPC messages
+  - [x] `ProxyStatus.cs` - Status model
+  - [x] `HookDescriptor.cs` - Hook registration model
+  - [x] `InspectionEvent.cs` - Event model for inspection stream
+- [x] Add IPC control API to shmoxy proxy process
+  - [x] `ProxyControlApi.cs` - Minimal API endpoints
+  - [x] `ProxyStateService.cs` - Singleton exposing proxy state
+  - [x] All IPC endpoints implemented and tested
+- [x] Implement InspectionHook with on/off toggle
+  - [x] Channel-based event streaming
+  - [x] SSE endpoint at `/ipc/inspect/stream`
+  - [x] Enable/disable via `/ipc/inspect/enable|disable`
+- [ ] Refactor shmoxy to use Generic Host pattern
+  - [ ] `ProxyHostedService` - wraps ProxyServer lifecycle
+  - [ ] `IpcHostedService` - wraps IPC API lifecycle (conditional)
+  - [ ] Update Program.cs to use `Host.CreateDefaultBuilder()`
+  - [ ] Configuration binding via `IOptions<ProxyConfig>`
 - [ ] Create shmoxy.api project
-- [ ] Implement ProxyProcessManager (spawn/monitor proxy)
-- [ ] Implement ProxyIpcClient (HttpClient over UDS)
-- [ ] Implement user-facing REST endpoints
-- [ ] Implement InspectionHook with on/off toggle
+  - [ ] `ProxyProcessManager` - spawn/monitor proxy child process
+  - [ ] `ProxyIpcClient` - HttpClient over UDS
+  - [ ] User-facing REST endpoints
+- [ ] Implement certificate endpoints
+  - [ ] `/ipc/certs/root.pem` - Root CA in PEM format
+  - [ ] `/ipc/certs/root.der` - Root CA in DER format
 - [ ] Add tests
-- [ ] Verify dotnet build succeeds
-- [ ] Verify dotnet test passes
+  - [ ] IPC API unit tests
+  - [ ] Integration tests for hosted services
+- [x] Verify dotnet build succeeds
+- [x] Verify dotnet test passes
 
 ## Notes
 
