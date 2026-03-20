@@ -1,4 +1,3 @@
-using Xunit;
 using shmoxy.models.dto;
 using shmoxy.server.hooks;
 using shmoxy.server.interfaces;

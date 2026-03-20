@@ -1,7 +1,4 @@
 using System.Net;
-using System.Net.Http;
-using System.Threading;
-using Xunit;
 using shmoxy.models.configuration;
 using shmoxy.server;
 

@@ -1,6 +1,3 @@
-using Xunit;
-using shmoxy.server;
-
 namespace shmoxy.tests;
 
 /// <summary>
