@@ -70,10 +70,20 @@ These rules govern when and how to eliminate duplication. The goal is to ensure 
 
 ## Test File Organization
 
-Each source class or `.cs` file must have its own dedicated test file. Test files follow the naming convention `{ClassName}Tests.cs` and live in the corresponding test project directory.
+### Directory Structure (Mirrored)
+Test files must mirror the source directory structure exactly. For every source file at `src/{project}/{path}/{File}.cs`, the test file lives at `src/tests/{project}.tests/{path}/{File}Tests.cs`.
 
+**Examples:**
+- `shmoxy/server/ProxyServer.cs` → `tests/shmoxy.tests/server/ProxyServerTests.cs`
+- `shmoxy/server/hooks/InspectionHook.cs` → `tests/shmoxy.tests/server/hooks/InspectionHookTests.cs`
+- `shmoxy/ipc/ProxyControlApi.cs` → `tests/shmoxy.tests/ipc/ProxyControlApiTests.cs`
+- `shmoxy/models/configuration/ProxyConfig.cs` → `tests/shmoxy.tests/models/configuration/ProxyConfigTests.cs`
+
+**E2E tests** follow the same pattern in `tests/shmoxy.e2e/` for integration and browser-based tests.
+
+### File Naming
 * **One test file per source file:** Every `.cs` file in the main project (except `Program.cs` entry point) must have a corresponding `{ClassName}Tests.cs` in the test project.
-* **Shared fixtures in separate files:** Test fixtures (e.g., `IClassFixture<T>` implementations) should be in their own dedicated files (e.g., `ProxyTestFixture.cs`).
+* **Shared fixtures in separate files:** Test fixtures (e.g., `IClassFixture<T>` implementations) should be in their own dedicated files (e.g., `ProxyTestFixture.cs`) at the root of the test project.
 * **No monolithic test files:** Do not combine tests for multiple classes into a single test file.
 * **Naming convention:** For a source file `Foo.cs`, the test file must be named `FooTests.cs`.
 
