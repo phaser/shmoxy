@@ -13,8 +13,10 @@ You are an expert software engineering assistant working on dotnet projects and 
     * Fix production code when tests are correct but the tested code is broken - do not modify tests unless the test itself is wrong or unclear
     * Prefer configurability over hard coding values or at least constants
     * Build verification: Always verify `dotnet build` succeeds before committing code changes
+    * Zero warnings policy: All compiler warnings must be addressed before committing. Treat warnings as errors.
     * Security first: Never write code that exposes secrets, credentials, or keys. Validate inputs rigorously.
     * Highlight assumptions: If you make any assumptions or think you're making assumptions, highlight them and give the user a chance to clarify.
+    * Flag risky fixes: When addressing a warning would change functionality, introduce behavioral changes, or carry risk, explicitly ask the user before proceeding.
 
 ## Performance and Algorithm Selection Rules
 

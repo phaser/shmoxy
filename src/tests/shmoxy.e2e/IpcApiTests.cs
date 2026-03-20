@@ -3,7 +3,6 @@ using System.Net.Sockets;
 using System.Text.Json;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
-using Microsoft.AspNetCore.Server.Kestrel.Core;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using shmoxy.models.configuration;
@@ -20,7 +19,7 @@ public class IpcApiTests : IAsyncLifetime
     private ProxyServer? _server;
     private InspectionHook? _inspectionHook;
     private CancellationTokenSource? _cts;
-    private IWebHost? _ipcHost;
+    private IHost? _ipcHost;
     private string _socketPath = null!;
     private HttpClient? _ipcClient;
 
@@ -37,7 +36,7 @@ public class IpcApiTests : IAsyncLifetime
         
         _ = _server.StartAsync(_cts.Token);
         
-        for (int i = 0; i < 20 && !_server.IsListening; i++)
+        for (var i = 0; i < 20 && !_server.IsListening; i++)
             await Task.Delay(50);
 
         if (!_server.IsListening)
@@ -47,22 +46,25 @@ public class IpcApiTests : IAsyncLifetime
         
         var stateService = new ProxyStateService(_server, _inspectionHook);
         
-        _ipcHost = new WebHostBuilder()
-            .UseKestrel(kestrelOptions =>
+        _ipcHost = Host.CreateDefaultBuilder()
+            .ConfigureWebHostDefaults(webBuilder =>
             {
-                kestrelOptions.ListenUnixSocket(_socketPath);
-            })
-            .ConfigureServices(services =>
-            {
-                services.AddRouting();
-                services.AddSingleton(stateService);
-            })
-            .Configure(app =>
-            {
-                app.UseRouting();
-                app.UseEndpoints(endpoints =>
+                webBuilder.UseKestrel(kestrelOptions =>
                 {
-                    endpoints.MapProxyControlApi(stateService, config);
+                    kestrelOptions.ListenUnixSocket(_socketPath);
+                });
+                webBuilder.ConfigureServices(services =>
+                {
+                    services.AddRouting();
+                    services.AddSingleton(stateService);
+                });
+                webBuilder.Configure(app =>
+                {
+                    app.UseRouting();
+                    app.UseEndpoints(endpoints =>
+                    {
+                        endpoints.MapProxyControlApi(stateService, config);
+                    });
                 });
             })
             .Build();

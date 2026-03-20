@@ -14,7 +14,7 @@ public class IpcHostedService : IHostedService, IDisposable
     private readonly ProxyStateService _stateService;
     private readonly ProxyConfig _config;
     private readonly ILogger<IpcHostedService> _logger;
-    private IWebHost? _ipcHost;
+    private IHost? _ipcHost;
     private bool _disposed;
 
     public IpcHostedService(
@@ -31,22 +31,25 @@ public class IpcHostedService : IHostedService, IDisposable
 
     public Task StartAsync(CancellationToken cancellationToken)
     {
-        _ipcHost = new WebHostBuilder()
-            .UseKestrel(kestrelOptions =>
+        _ipcHost = Host.CreateDefaultBuilder()
+            .ConfigureWebHostDefaults(webBuilder =>
             {
-                kestrelOptions.ListenUnixSocket(_socketPath);
-            })
-            .ConfigureServices(services =>
-            {
-                services.AddRouting();
-                services.AddSingleton(_stateService);
-            })
-            .Configure(app =>
-            {
-                app.UseRouting();
-                app.UseEndpoints(endpoints =>
+                webBuilder.UseKestrel(kestrelOptions =>
                 {
-                    endpoints.MapProxyControlApi(_stateService, _config);
+                    kestrelOptions.ListenUnixSocket(_socketPath);
+                });
+                webBuilder.ConfigureServices(services =>
+                {
+                    services.AddRouting();
+                    services.AddSingleton(_stateService);
+                });
+                webBuilder.Configure(app =>
+                {
+                    app.UseRouting();
+                    app.UseEndpoints(endpoints =>
+                    {
+                        endpoints.MapProxyControlApi(_stateService, _config);
+                    });
                 });
             })
             .Build();
