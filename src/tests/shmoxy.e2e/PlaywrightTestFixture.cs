@@ -12,7 +12,7 @@ public sealed class PlaywrightFixture : IAsyncLifetime
     public async Task InitializeAsync()
     {
         BaseUrl = Environment.GetEnvironmentVariable("SHMOXY_BASE_URL") ?? "http://localhost:5000";
-        
+
         _playwright = await Playwright.CreateAsync();
         Browser = await _playwright.Chromium.LaunchAsync(new()
         {

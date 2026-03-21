@@ -1,10 +1,10 @@
 using System.Net.Sockets;
 using System.Security.Cryptography.X509Certificates;
 using System.Text;
-using shmoxy.models.configuration;
 using shmoxy.models.dto;
 using shmoxy.server.hooks;
 using shmoxy.server.interfaces;
+using shmoxy.shared.ipc;
 
 namespace shmoxy.server;
 
@@ -42,7 +42,7 @@ public class ProxyServer : IDisposable
     {
         if (_rootCert == null)
             throw new InvalidOperationException("Root certificate not available");
-        
+
         return _rootCert.ExportCertificatePem();
     }
 
@@ -53,8 +53,19 @@ public class ProxyServer : IDisposable
     {
         if (_rootCert == null)
             throw new InvalidOperationException("Root certificate not available");
-        
+
         return _rootCert.Export(X509ContentType.Cert);
+    }
+
+    /// <summary>
+    /// Gets the root CA certificate in PFX format (for internal IPC use only).
+    /// </summary>
+    public byte[] GetRootCertificatePfx()
+    {
+        if (_rootCert == null)
+            throw new InvalidOperationException("Root certificate not available");
+
+        return _rootCert.Export(X509ContentType.Pfx);
     }
 
     /// <summary>
@@ -345,7 +356,7 @@ public class ProxyServer : IDisposable
         var isLocalhost = host.Equals("localhost", StringComparison.OrdinalIgnoreCase)
                        || host.Equals("127.0.0.1", StringComparison.OrdinalIgnoreCase)
                        || host.Equals("::1", StringComparison.OrdinalIgnoreCase);
-        
+
         return isLocalhost && port == ListeningPort;
     }
 

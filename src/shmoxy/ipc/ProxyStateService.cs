@@ -30,7 +30,7 @@ public class ProxyStateService
     {
         if (_inspectionHook == null)
             return false;
-        
+
         _inspectionHook.Enabled = true;
         return true;
     }
@@ -39,11 +39,12 @@ public class ProxyStateService
     {
         if (_inspectionHook == null)
             return false;
-        
+
         _inspectionHook.Enabled = false;
         return true;
     }
 
     public string GetRootCertificatePem() => _proxy.GetRootCertificatePem();
     public byte[] GetRootCertificateDer() => _proxy.GetRootCertificateDer();
+    public byte[] GetRootCertificatePfx() => _proxy.GetRootCertificatePfx();
 }

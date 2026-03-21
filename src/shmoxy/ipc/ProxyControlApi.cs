@@ -3,7 +3,6 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.Hosting;
-using shmoxy.models.configuration;
 using shmoxy.shared.ipc;
 
 namespace shmoxy.ipc;
@@ -50,7 +49,7 @@ public static class ProxyControlApi
         endpoints.MapGet("/ipc/hooks", () =>
         {
             var hooks = new List<HookDescriptor>();
-            
+
             // Add inspection hook if available
             if (stateService.InspectionHook != null)
             {
@@ -104,11 +103,24 @@ public static class ProxyControlApi
             try
             {
                 var der = stateService.GetRootCertificateDer();
-                return Results.File(der, "application/x-x509-ca-cert");
+                return Results.File(der, "application/x-x509-ca-cert", "shmoxy-root-ca.der");
             }
             catch (Exception ex)
             {
-                return Results.Problem(ex.Message);
+                return Results.Problem(ex.Message, statusCode: 500);
+            }
+        });
+
+        endpoints.MapGet("/ipc/certs/root.pfx", () =>
+        {
+            try
+            {
+                var pfx = stateService.GetRootCertificatePfx();
+                return Results.File(pfx, "application/x-pkcs12", "shmoxy-root-ca.pfx");
+            }
+            catch (Exception ex)
+            {
+                return Results.Problem(ex.Message, statusCode: 500);
             }
         });
 
@@ -122,17 +134,17 @@ public static class ProxyControlApi
             }
 
             response.Headers.ContentType = "text/event-stream";
-            
+
             var reader = stateService.InspectionHook.GetReader();
             var cts = new CancellationTokenSource();
-            
+
             try
             {
                 while (!cts.Token.IsCancellationRequested)
                 {
                     var hasData = await reader.WaitToReadAsync(cts.Token);
                     if (!hasData) break;
-                    
+
                     while (reader.TryRead(out var evt))
                     {
                         var json = JsonSerializer.Serialize(evt);
@@ -150,20 +162,20 @@ public static class ProxyControlApi
         endpoints.MapPost("/ipc/inspect/enable", () =>
         {
             var success = stateService.EnableInspection();
-            return Results.Json(new EnableInspectionResponse 
-            { 
-                Success = success, 
-                Message = success ? "Inspection enabled" : "Inspection not available" 
+            return Results.Json(new EnableInspectionResponse
+            {
+                Success = success,
+                Message = success ? "Inspection enabled" : "Inspection not available"
             });
         });
 
         endpoints.MapPost("/ipc/inspect/disable", () =>
         {
             var success = stateService.DisableInspection();
-            return Results.Json(new DisableInspectionResponse 
-            { 
-                Success = success, 
-                Message = success ? "Inspection disabled" : "Inspection not available" 
+            return Results.Json(new DisableInspectionResponse
+            {
+                Success = success,
+                Message = success ? "Inspection disabled" : "Inspection not available"
             });
         });
 

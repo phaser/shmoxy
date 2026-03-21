@@ -1,7 +1,7 @@
 # Performance Test Results - ProxyPerformanceTests (Expanded Site List)
 
-**Date:** 2026-03-19 14:04:00  
-**Branch:** feature/make-proxy-multi-threaded  
+**Date:** 2026-03-19 14:04:00
+**Branch:** feature/make-proxy-multi-threaded
 **Test Class:** `shmoxy.e2e.ProxyPerformanceTests`
 
 ## Test Summary
@@ -41,7 +41,7 @@
 | european-union.europa.eu/index_en | 513ms |
 | developers.google.com/ | 1662ms |
 
-**Artifacts Location:** 
+**Artifacts Location:**
 ```
 src/tests/shmoxy.e2e/bin/Debug/net10.0/playwright_run_a1604c7c/
 ```
@@ -105,7 +105,7 @@ src/tests/shmoxy.e2e/bin/Debug/net10.0/playwright_run_0c5018b6/
 
 1. **Consistent Overhead Pattern:** The proxy introduces approximately 130% overhead across 6 diverse sites, consistent with the previous 3-site test (122%).
 
-2. **Resource-Heavy Sites Most Affected:** 
+2. **Resource-Heavy Sites Most Affected:**
    - developers.google.com loads many Google services (fonts.googleapis.com, fonts.gstatic.com, www.gstatic.com, apis.google.com, google-analytics.com, googletagmanager.com)
    - arstechnica.com loads 6+ parallel connections to cdn.arstechnica.net plus ad networks
 

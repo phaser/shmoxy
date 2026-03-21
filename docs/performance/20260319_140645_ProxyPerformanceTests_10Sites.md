@@ -1,7 +1,7 @@
 # Performance Test Results - ProxyPerformanceTests (10 Sites)
 
-**Date:** 2026-03-19 14:06:45  
-**Branch:** feature/make-proxy-multi-threaded  
+**Date:** 2026-03-19 14:06:45
+**Branch:** feature/make-proxy-multi-threaded
 **Test Class:** `shmoxy.e2e.ProxyPerformanceTests`
 
 ## Test Summary
@@ -48,7 +48,7 @@
 | mariusroosendaal.com | 893ms |
 | www.radoslavholan.cz/ | 754ms |
 
-**Artifacts Location:** 
+**Artifacts Location:**
 ```
 src/tests/shmoxy.e2e/bin/Debug/net10.0/playwright_run_3189678d/
 ```
