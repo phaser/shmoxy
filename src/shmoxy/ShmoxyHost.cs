@@ -93,26 +93,29 @@ public static class ShmoxyHost
     }
 
     /// <summary>
-    /// Creates a minimal IWebHost for testing IPC endpoints in isolation.
+    /// Creates a minimal IHost for testing IPC endpoints in isolation.
     /// </summary>
-    public static IWebHost CreateIpcHost(ProxyStateService stateService, ProxyConfig config, string socketPath)
+    public static IHost CreateIpcHost(ProxyStateService stateService, ProxyConfig config, string socketPath)
     {
-        return new WebHostBuilder()
-            .UseKestrel(kestrelOptions =>
+        return Host.CreateDefaultBuilder()
+            .ConfigureWebHostDefaults(webBuilder =>
             {
-                kestrelOptions.ListenUnixSocket(socketPath);
-            })
-            .ConfigureServices(services =>
-            {
-                services.AddRouting();
-                services.AddSingleton(stateService);
-            })
-            .Configure(app =>
-            {
-                app.UseRouting();
-                app.UseEndpoints(endpoints =>
+                webBuilder.UseKestrel(kestrelOptions =>
                 {
-                    endpoints.MapProxyControlApi(stateService, config);
+                    kestrelOptions.ListenUnixSocket(socketPath);
+                })
+                .ConfigureServices(services =>
+                {
+                    services.AddRouting();
+                    services.AddSingleton(stateService);
+                })
+                .Configure(app =>
+                {
+                    app.UseRouting();
+                    app.UseEndpoints(endpoints =>
+                    {
+                        endpoints.MapProxyControlApi(stateService, config);
+                    });
                 });
             })
             .Build();
