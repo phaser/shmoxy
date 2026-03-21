@@ -1,13 +1,8 @@
 using System.CommandLine;
 using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
-using shmoxy.ipc;
 using shmoxy.models.configuration;
-using shmoxy.server;
-using shmoxy.server.hooks;
 
 namespace shmoxy;
 
@@ -52,7 +47,7 @@ class Program
                 Environment.Exit(1);
             }
 
-            var builder = Host.CreateDefaultBuilder(args);
+            var builder = ShmoxyHost.CreateHostBuilder(args);
             
             builder.ConfigureAppConfiguration((context, config) =>
             {
@@ -66,51 +61,17 @@ class Program
                 }!);
             });
 
-            builder.ConfigureLogging((context, logging) =>
+            builder.ConfigureLogging(logging =>
             {
                 logging.AddConsole();
                 logging.SetMinimumLevel(logLevel switch
                 {
-                    ProxyConfig.LogLevelEnum.Debug => LogLevel.Debug,
-                    ProxyConfig.LogLevelEnum.Info => LogLevel.Information,
-                    ProxyConfig.LogLevelEnum.Warn => LogLevel.Warning,
-                    ProxyConfig.LogLevelEnum.Error => LogLevel.Error,
-                    _ => LogLevel.Information
+                    ProxyConfig.LogLevelEnum.Debug => Microsoft.Extensions.Logging.LogLevel.Debug,
+                    ProxyConfig.LogLevelEnum.Info => Microsoft.Extensions.Logging.LogLevel.Information,
+                    ProxyConfig.LogLevelEnum.Warn => Microsoft.Extensions.Logging.LogLevel.Warning,
+                    ProxyConfig.LogLevelEnum.Error => Microsoft.Extensions.Logging.LogLevel.Error,
+                    _ => Microsoft.Extensions.Logging.LogLevel.Information
                 });
-            });
-
-            builder.ConfigureServices((context, services) =>
-            {
-                services.Configure<ProxyConfig>(context.Configuration.GetSection("ProxyConfig"));
-                services.Configure<IpcOptions>(context.Configuration.GetSection("IpcOptions"));
-
-                services.AddSingleton<InspectionHook>();
-                services.AddSingleton<InterceptHookChain>(sp =>
-                {
-                    var inspectionHook = sp.GetRequiredService<InspectionHook>();
-                    return new InterceptHookChain().Add(inspectionHook);
-                });
-
-                services.AddSingleton<ProxyServer>(sp =>
-                {
-                    var config = sp.GetRequiredService<IOptions<ProxyConfig>>().Value;
-                    var hookChain = sp.GetRequiredService<InterceptHookChain>();
-                    return new ProxyServer(config, hookChain);
-                });
-
-                services.AddSingleton<ProxyStateService>(sp =>
-                {
-                    var proxy = sp.GetRequiredService<ProxyServer>();
-                    var inspectionHook = sp.GetRequiredService<InspectionHook>();
-                    return new ProxyStateService(proxy, inspectionHook);
-                });
-
-                services.AddHostedService<ProxyHostedService>();
-
-                if (!string.IsNullOrEmpty(ipcSocket))
-                {
-                    services.AddHostedService<IpcHostedService>();
-                }
             });
 
             var host = builder.Build();

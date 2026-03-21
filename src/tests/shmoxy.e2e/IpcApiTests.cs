@@ -1,10 +1,7 @@
 using System.Net.Http;
 using System.Net.Sockets;
 using System.Text.Json;
-using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
 using shmoxy.models.configuration;
 using shmoxy.server;
 using shmoxy.server.hooks;
@@ -19,7 +16,7 @@ public class IpcApiTests : IAsyncLifetime
     private ProxyServer? _server;
     private InspectionHook? _inspectionHook;
     private CancellationTokenSource? _cts;
-    private IHost? _ipcHost;
+    private IWebHost? _ipcHost;
     private string _socketPath = null!;
     private HttpClient? _ipcClient;
 
@@ -46,28 +43,7 @@ public class IpcApiTests : IAsyncLifetime
         
         var stateService = new ProxyStateService(_server, _inspectionHook);
         
-        _ipcHost = Host.CreateDefaultBuilder()
-            .ConfigureWebHostDefaults(webBuilder =>
-            {
-                webBuilder.UseKestrel(kestrelOptions =>
-                {
-                    kestrelOptions.ListenUnixSocket(_socketPath);
-                });
-                webBuilder.ConfigureServices(services =>
-                {
-                    services.AddRouting();
-                    services.AddSingleton(stateService);
-                });
-                webBuilder.Configure(app =>
-                {
-                    app.UseRouting();
-                    app.UseEndpoints(endpoints =>
-                    {
-                        endpoints.MapProxyControlApi(stateService, config);
-                    });
-                });
-            })
-            .Build();
+        _ipcHost = ShmoxyHost.CreateIpcHost(stateService, config, _socketPath);
 
         await _ipcHost.StartAsync(_cts.Token);
         
@@ -93,7 +69,7 @@ public class IpcApiTests : IAsyncLifetime
         
         if (_ipcHost != null)
         {
-            await _ipcHost.StopAsync(CancellationToken.None);
+            await _ipcHost.StopAsync(TimeSpan.Zero);
             _ipcHost.Dispose();
         }
         

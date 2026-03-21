@@ -89,6 +89,13 @@ Test files must mirror the source directory structure exactly. For every source 
 * **No monolithic test files:** Do not combine tests for multiple classes into a single test file.
 * **Naming convention:** For a source file `Foo.cs`, the test file must be named `FooTests.cs`.
 
+### Integration Test Host Reuse
+Integration tests must reuse the same host initialization logic as `Program.cs` to ensure consistency between production and test environments.
+
+* **Extract host configuration:** Put service registration and configuration logic in a shared class (e.g., `ShmoxyHost`) that both `Program.cs` and tests can call.
+* **Override via DI:** For tests that need mocks or替代 services, use the shared class and override specific services in the DI container rather than duplicating host setup.
+* **Minimal test-specific code:** Test initialization should only create test-specific resources (e.g., temp directories, sockets) and call the shared host builder.
+
 ## Test Verification
 
 After any code change, run all tests to verify correctness:
