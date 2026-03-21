@@ -23,4 +23,12 @@ id = "mixed-line-ending"
 [[repos.hooks]]
 id = "detect-private-key"
 
+[[local]]
+id = "dotnet-format"
+name = "dotnet format"
+entry = "dotnet format"
+language = "system"
+files = "\\.cs$"
+pass_filenames = false
+
 
