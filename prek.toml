@@ -23,4 +23,14 @@ id = "mixed-line-ending"
 [[repos.hooks]]
 id = "detect-private-key"
 
+[[repos]]
+repo = "local"
 
+[[repos.hooks]]
+id = "dotnet-format"
+name = "dotnet format"
+entry = "dotnet"
+args = ["format", "src/shmoxy.slnx"]
+language = "system"
+files = "\\.cs$"
+pass_filenames = false

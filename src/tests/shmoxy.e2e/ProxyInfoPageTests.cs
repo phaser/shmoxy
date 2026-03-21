@@ -44,7 +44,7 @@ public class ProxyInfoPageTests : IAsyncLifetime
 
             var listeningInfo = page.GetByText($"http://localhost:{_fixture.Port}");
             await Expect(listeningInfo).ToBeVisibleAsync();
-            
+
             await _fixture.SaveTracingAsync(context, nameof(InfoPage_ShowsProxyStatus), success: true);
         }
         catch
@@ -73,7 +73,7 @@ public class ProxyInfoPageTests : IAsyncLifetime
 
             var httpProxyLabel = page.GetByText("HTTP Proxy:");
             await Expect(httpProxyLabel).ToBeVisibleAsync();
-            
+
             await _fixture.SaveTracingAsync(context, nameof(InfoPage_ContainsUsageInstructions), success: true);
         }
         catch
@@ -99,10 +99,10 @@ public class ProxyInfoPageTests : IAsyncLifetime
 
             Assert.NotNull(response);
             Assert.Equal(200, response.Status);
-            
+
             var contentType = response.Headers["content-type"];
             Assert.Contains("text/html", contentType);
-            
+
             await _fixture.SaveTracingAsync(context, nameof(InfoPage_ReturnsHtmlContentType), success: true);
         }
         catch
@@ -128,10 +128,10 @@ public class ProxyInfoPageTests : IAsyncLifetime
 
             var pemLink = page.GetByRole(AriaRole.Link, new() { Name = "Download PEM" });
             await Expect(pemLink).ToBeVisibleAsync();
-            
+
             var derLink = page.GetByRole(AriaRole.Link, new() { Name = "Download DER" });
             await Expect(derLink).ToBeVisibleAsync();
-            
+
             await _fixture.SaveTracingAsync(context, nameof(InfoPage_HasCertificateDownloadLinks), success: true);
         }
         catch
@@ -153,7 +153,7 @@ public class ProxyInfoPageTests : IAsyncLifetime
         Assert.NotNull(response);
         Assert.Equal(200, (int)response.StatusCode);
         Assert.Contains("pem", response.Content.Headers.ContentType?.MediaType?.ToLowerInvariant());
-        
+
         var content = await response.Content.ReadAsStringAsync();
         Assert.Contains("-----BEGIN CERTIFICATE-----", content);
         Assert.Contains("-----END CERTIFICATE-----", content);

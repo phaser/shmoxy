@@ -5,7 +5,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using shmoxy.models.configuration;
+using shmoxy.shared.ipc;
 
 namespace shmoxy.ipc;
 
@@ -33,7 +33,7 @@ public class IpcHostedService : IHostedService, IDisposable
     public Task StartAsync(CancellationToken cancellationToken)
     {
         var apiKeyService = new ApiKeyService();
-        
+
         if (_options.AdminPort.HasValue && _options.AdminPort > 0)
         {
             apiKeyService.ApiKey = GenerateApiKey();

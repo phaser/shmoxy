@@ -67,34 +67,34 @@ echo "Using Chrome: $PUPPETEER_EXECUTABLE_PATH"
 convert_mermaid_diagrams() {
     local input_file="$1"
     local output_file="$2"
-    
+
     local diagram_count=0
     local in_mermaid_block=false
     local mermaid_content=""
-    
+
     while IFS= read -r line || [[ -n "$line" ]]; do
         if [[ "$line" =~ ^\`\`\`mermaid ]]; then
             in_mermaid_block=true
             mermaid_content=""
             continue
         fi
-        
+
         if [[ "$line" =~ ^\`\`\` ]] && [ "$in_mermaid_block" = true ]; then
             in_mermaid_block=false
             diagram_count=$((diagram_count + 1))
-            
+
             # Save mermaid content to temp file
             local mmd_file="$TEMP_DIR/diagram_$diagram_count.mmd"
             local svg_file="$OUTPUT_DIR/diagram_$diagram_count.svg"
             local png_file="$OUTPUT_DIR/diagram_$diagram_count.png"
             echo "$mermaid_content" > "$mmd_file"
-            
+
             # Convert to PNG directly using mmdc (better text rendering than rsvg-convert)
             echo "  Converting Mermaid diagram $diagram_count..." >&2
             if mmdc -i "$mmd_file" -o "$png_file" -w 1200 -b white 2>/dev/null; then
                 # Also create SVG for HTML output
                 mmdc -i "$mmd_file" -o "$svg_file" -w 1200 -b white 2>/dev/null
-                
+
                 # Output image reference with absolute path for pandoc
                 echo ""
                 echo "![Diagram $diagram_count]($png_file)"
@@ -105,14 +105,14 @@ convert_mermaid_diagrams() {
             fi
             continue
         fi
-        
+
         if [ "$in_mermaid_block" = true ]; then
             mermaid_content+="$line"$'\n'
         else
             echo "$line"
         fi
     done < "$input_file" > "$output_file"
-    
+
     echo "Converted $diagram_count Mermaid diagram(s)" >&2
 }
 
@@ -120,11 +120,11 @@ convert_mermaid_diagrams() {
 if [ "$OUTPUT_FORMAT" = "html" ] || [ "$OUTPUT_FORMAT" = "both" ]; then
     OUTPUT_HTML="$INPUT_DIR/$BASE_NAME.html"
     echo "Generating HTML: $OUTPUT_HTML"
-    
+
     # Convert mermaid diagrams first
     CONVERTED_MD="$TEMP_DIR/converted.md"
     convert_mermaid_diagrams "$INPUT_FILE" "$CONVERTED_MD"
-    
+
     pandoc "$CONVERTED_MD" \
         --standalone \
         --toc \
@@ -132,7 +132,7 @@ if [ "$OUTPUT_FORMAT" = "html" ] || [ "$OUTPUT_FORMAT" = "both" ]; then
         --css="$DOCS_DIR/styles/markdown.css" \
         --from=gfm \
         -o "$OUTPUT_HTML"
-    
+
     echo "✓ HTML generated: $OUTPUT_HTML"
 fi
 
@@ -140,11 +140,11 @@ fi
 if [ "$OUTPUT_FORMAT" = "pdf" ] || [ "$OUTPUT_FORMAT" = "both" ]; then
     OUTPUT_PDF="$INPUT_DIR/$BASE_NAME.pdf"
     echo "Generating PDF: $OUTPUT_PDF"
-    
+
     # Convert mermaid diagrams first
     CONVERTED_MD="$TEMP_DIR/converted.md"
     convert_mermaid_diagrams "$INPUT_FILE" "$CONVERTED_MD"
-    
+
     # Convert to PDF using xelatex
     pandoc "$CONVERTED_MD" \
         --standalone \
@@ -152,7 +152,7 @@ if [ "$OUTPUT_FORMAT" = "pdf" ] || [ "$OUTPUT_FORMAT" = "both" ]; then
         --toc-depth=3 \
         --pdf-engine=xelatex \
         -o "$OUTPUT_PDF"
-    
+
     echo "✓ PDF generated: $OUTPUT_PDF"
 fi
 

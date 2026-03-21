@@ -133,7 +133,7 @@ public class TlsHandler : IDisposable
         request.CertificateExtensions.Add(new X509EnhancedKeyUsageExtension(
             new OidCollection { new Oid("1.3.6.1.5.5.7.3.1") }, // TLS Web Server Authentication
             false));
-        
+
         // Add Subject Alternative Name (SAN) extension - required by modern browsers
         var sanBuilder = new SubjectAlternativeNameBuilder();
         sanBuilder.AddDnsName(hostName);
@@ -141,7 +141,7 @@ public class TlsHandler : IDisposable
 
         // Sign with root CA instead of self-signing
         var cert = request.Create(_rootCert, now, now.AddYears(1), serialNumberBytes);
-        
+
         // Attach the private key to the generated certificate for TLS termination
         var certWithKey = cert.CopyWithPrivateKey(privateKey);
         return certWithKey;

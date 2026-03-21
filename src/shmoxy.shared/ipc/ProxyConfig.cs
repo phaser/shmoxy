@@ -1,4 +1,4 @@
-namespace shmoxy.models.configuration;
+namespace shmoxy.shared.ipc;
 
 /// <summary>
 /// Configuration for the proxy server.

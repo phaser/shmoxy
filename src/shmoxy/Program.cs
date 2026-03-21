@@ -2,7 +2,7 @@ using System.CommandLine;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
-using shmoxy.models.configuration;
+using shmoxy.shared.ipc;
 
 namespace shmoxy;
 
@@ -53,7 +53,7 @@ class Program
             }
 
             var builder = ShmoxyHost.CreateHostBuilder(args);
-            
+
             builder.ConfigureAppConfiguration((context, config) =>
             {
                 config.AddInMemoryCollection(new Dictionary<string, string?>

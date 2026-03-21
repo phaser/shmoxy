@@ -6,9 +6,9 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using shmoxy.ipc;
-using shmoxy.models.configuration;
 using shmoxy.server;
 using shmoxy.server.hooks;
+using shmoxy.shared.ipc;
 
 namespace shmoxy;
 
@@ -24,10 +24,10 @@ public static class ShmoxyHost
     public static IHostBuilder CreateHostBuilder(string[] args)
     {
         var builder = Host.CreateDefaultBuilder(args);
-        
+
         builder.ConfigureAppConfiguration(ConfigureAppConfiguration);
         builder.ConfigureServices(ConfigureServices);
-        
+
         return builder;
     }
 
@@ -85,7 +85,7 @@ public static class ShmoxyHost
 
         var ipcSocket = context.Configuration["IpcOptions:SocketPath"];
         var adminPort = context.Configuration["IpcOptions:AdminPort"];
-        
+
         if (!string.IsNullOrEmpty(ipcSocket) || (!string.IsNullOrEmpty(adminPort) && int.Parse(adminPort) > 0))
         {
             services.AddHostedService<IpcHostedService>();
@@ -93,26 +93,29 @@ public static class ShmoxyHost
     }
 
     /// <summary>
-    /// Creates a minimal IWebHost for testing IPC endpoints in isolation.
+    /// Creates a minimal IHost for testing IPC endpoints in isolation.
     /// </summary>
-    public static IWebHost CreateIpcHost(ProxyStateService stateService, ProxyConfig config, string socketPath)
+    public static IHost CreateIpcHost(ProxyStateService stateService, ProxyConfig config, string socketPath)
     {
-        return new WebHostBuilder()
-            .UseKestrel(kestrelOptions =>
+        return Host.CreateDefaultBuilder()
+            .ConfigureWebHostDefaults(webBuilder =>
             {
-                kestrelOptions.ListenUnixSocket(socketPath);
-            })
-            .ConfigureServices(services =>
-            {
-                services.AddRouting();
-                services.AddSingleton(stateService);
-            })
-            .Configure(app =>
-            {
-                app.UseRouting();
-                app.UseEndpoints(endpoints =>
+                webBuilder.UseKestrel(kestrelOptions =>
                 {
-                    endpoints.MapProxyControlApi(stateService, config);
+                    kestrelOptions.ListenUnixSocket(socketPath);
+                })
+                .ConfigureServices(services =>
+                {
+                    services.AddRouting();
+                    services.AddSingleton(stateService);
+                })
+                .Configure(app =>
+                {
+                    app.UseRouting();
+                    app.UseEndpoints(endpoints =>
+                    {
+                        endpoints.MapProxyControlApi(stateService, config);
+                    });
                 });
             })
             .Build();

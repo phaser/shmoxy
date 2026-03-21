@@ -2,6 +2,9 @@
   <Folder Name="/Tests/">
     <Project Path="tests/shmoxy.e2e/shmoxy.e2e.csproj" />
     <Project Path="tests/shmoxy.tests/shmoxy.tests.csproj" />
+    <Project Path="tests/shmoxy.api.tests/shmoxy.api.tests.csproj" />
   </Folder>
   <Project Path="shmoxy/shmoxy.csproj" />
+  <Project Path="shmoxy.api/shmoxy.api.csproj" />
+  <Project Path="shmoxy.shared/shmoxy.shared.csproj" />
 </Solution>

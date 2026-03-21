@@ -8,5 +8,8 @@ public class ApiConfig
     public int Port { get; set; } = 5000;
     public int ProxyPort { get; set; } = 8080;
     public string? ProxyIpcSocketPath { get; set; }
+    public string? ProxyBinaryPath { get; set; } = "shmoxy";
     public bool AutoStartProxy { get; set; } = false;
+    public string? ConnectionString { get; set; }
+    public int HealthCheckIntervalSeconds { get; set; } = 30;
 }

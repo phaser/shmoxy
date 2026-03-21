@@ -68,7 +68,7 @@ public class ProxyPerformanceTests : IAsyncLifetime
         try
         {
             var sw = Stopwatch.StartNew();
-            
+
             foreach (var url in TestSites)
             {
                 _output.WriteLine($"Loading (no proxy): {url}");
@@ -77,12 +77,12 @@ public class ProxyPerformanceTests : IAsyncLifetime
                 pageSw.Stop();
                 _output.WriteLine($"  -> {pageSw.ElapsedMilliseconds}ms");
             }
-            
+
             sw.Stop();
             var totalTime = sw.ElapsedMilliseconds;
 
             _output.WriteLine($"BASELINE (no proxy): {totalTime}ms total for {TestSites.Length} sites");
-            
+
             // Save baseline to file for future comparison
             var baselinePath = Path.Combine(_fixture.ArtifactsDir, "baseline_no_proxy.txt");
             await File.WriteAllTextAsync(baselinePath, $"{totalTime}");
@@ -116,7 +116,7 @@ public class ProxyPerformanceTests : IAsyncLifetime
         try
         {
             var sw = Stopwatch.StartNew();
-            
+
             foreach (var url in TestSites)
             {
                 _output.WriteLine($"Loading (with proxy): {url}");
@@ -125,7 +125,7 @@ public class ProxyPerformanceTests : IAsyncLifetime
                 pageSw.Stop();
                 _output.WriteLine($"  -> {pageSw.ElapsedMilliseconds}ms");
             }
-            
+
             sw.Stop();
             var totalTime = sw.ElapsedMilliseconds;
 

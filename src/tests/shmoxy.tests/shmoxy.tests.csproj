@@ -20,6 +20,7 @@
 
   <ItemGroup>
     <ProjectReference Include="../../shmoxy/shmoxy.csproj" />
+    <ProjectReference Include="../../shmoxy.shared/shmoxy.shared.csproj" />
   </ItemGroup>
 
 </Project>
