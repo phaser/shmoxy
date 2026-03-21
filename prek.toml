@@ -29,7 +29,8 @@ repo = "local"
 [[repos.hooks]]
 id = "dotnet-format"
 name = "dotnet format"
-entry = "dotnet format"
+entry = "dotnet"
+args = ["format", "src/shmoxy.api/shmoxy.api.csproj", "src/shmoxy/shmoxy.csproj", "src/tests/shmoxy.api.tests/shmoxy.api.tests.csproj"]
 language = "system"
 files = "\\.cs$"
 pass_filenames = false
