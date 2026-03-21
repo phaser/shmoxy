@@ -1,11 +1,8 @@
 using System.Net;
-using System.Net.Http;
-using System.Threading;
-using Xunit;
 using shmoxy.models.configuration;
 using shmoxy.server;
 
-namespace shmoxy.tests;
+namespace shmoxy.tests.server;
 
 public class ProxyServerTests : IClassFixture<ProxyTestFixture>, IDisposable
 {

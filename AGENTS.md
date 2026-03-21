@@ -13,8 +13,10 @@ You are an expert software engineering assistant working on dotnet projects and 
     * Fix production code when tests are correct but the tested code is broken - do not modify tests unless the test itself is wrong or unclear
     * Prefer configurability over hard coding values or at least constants
     * Build verification: Always verify `dotnet build` succeeds before committing code changes
+    * Zero warnings policy: All compiler warnings must be addressed before committing. Treat warnings as errors.
     * Security first: Never write code that exposes secrets, credentials, or keys. Validate inputs rigorously.
     * Highlight assumptions: If you make any assumptions or think you're making assumptions, highlight them and give the user a chance to clarify.
+    * Flag risky fixes: When addressing a warning would change functionality, introduce behavioral changes, or carry risk, explicitly ask the user before proceeding.
 
 ## Performance and Algorithm Selection Rules
 
@@ -70,12 +72,29 @@ These rules govern when and how to eliminate duplication. The goal is to ensure 
 
 ## Test File Organization
 
-Each source class or `.cs` file must have its own dedicated test file. Test files follow the naming convention `{ClassName}Tests.cs` and live in the corresponding test project directory.
+### Directory Structure (Mirrored)
+Test files must mirror the source directory structure exactly. For every source file at `src/{project}/{path}/{File}.cs`, the test file lives at `src/tests/{project}.tests/{path}/{File}Tests.cs`.
 
+**Examples:**
+- `shmoxy/server/ProxyServer.cs` → `tests/shmoxy.tests/server/ProxyServerTests.cs`
+- `shmoxy/server/hooks/InspectionHook.cs` → `tests/shmoxy.tests/server/hooks/InspectionHookTests.cs`
+- `shmoxy/ipc/ProxyControlApi.cs` → `tests/shmoxy.tests/ipc/ProxyControlApiTests.cs`
+- `shmoxy/models/configuration/ProxyConfig.cs` → `tests/shmoxy.tests/models/configuration/ProxyConfigTests.cs`
+
+**E2E tests** follow the same pattern in `tests/shmoxy.e2e/` for integration and browser-based tests.
+
+### File Naming
 * **One test file per source file:** Every `.cs` file in the main project (except `Program.cs` entry point) must have a corresponding `{ClassName}Tests.cs` in the test project.
-* **Shared fixtures in separate files:** Test fixtures (e.g., `IClassFixture<T>` implementations) should be in their own dedicated files (e.g., `ProxyTestFixture.cs`).
+* **Shared fixtures in separate files:** Test fixtures (e.g., `IClassFixture<T>` implementations) should be in their own dedicated files (e.g., `ProxyTestFixture.cs`) at the root of the test project.
 * **No monolithic test files:** Do not combine tests for multiple classes into a single test file.
 * **Naming convention:** For a source file `Foo.cs`, the test file must be named `FooTests.cs`.
+
+### Integration Test Host Reuse
+Integration tests must reuse the same host initialization logic as `Program.cs` to ensure consistency between production and test environments.
+
+* **Extract host configuration:** Put service registration and configuration logic in a shared class (e.g., `ShmoxyHost`) that both `Program.cs` and tests can call.
+* **Override via DI:** For tests that need mocks or替代 services, use the shared class and override specific services in the DI container rather than duplicating host setup.
+* **Minimal test-specific code:** Test initialization should only create test-specific resources (e.g., temp directories, sockets) and call the shared host builder.
 
 ## Test Verification
 
