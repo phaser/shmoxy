@@ -216,4 +216,29 @@ public class IpcApiTests : IAsyncLifetime
         Assert.False(enableResult.GetProperty("success").GetBoolean());
         Assert.Contains("Unknown hook", enableResult.GetProperty("message").GetString());
     }
+
+    [Fact]
+    public async Task Certs_RootPem_Endpoint_ReturnsCertificate()
+    {
+        var response = await _ipcClient!.GetAsync("/ipc/certs/root.pem");
+        
+        Assert.Equal(200, (int)response.StatusCode);
+        Assert.Contains("pem", response.Content.Headers.ContentType?.MediaType?.ToLowerInvariant());
+        
+        var pem = await response.Content.ReadAsStringAsync();
+        Assert.Contains("-----BEGIN CERTIFICATE-----", pem);
+        Assert.Contains("-----END CERTIFICATE-----", pem);
+    }
+
+    [Fact]
+    public async Task Certs_RootDer_Endpoint_ReturnsCertificate()
+    {
+        var response = await _ipcClient!.GetAsync("/ipc/certs/root.der");
+        
+        Assert.Equal(200, (int)response.StatusCode);
+        Assert.Contains("x-x509", response.Content.Headers.ContentType?.MediaType?.ToLowerInvariant());
+        
+        var der = await response.Content.ReadAsByteArrayAsync();
+        Assert.True(der.Length > 0);
+    }
 }

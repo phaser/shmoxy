@@ -253,6 +253,10 @@ public class InspectionHook : IInterceptHook
   - [ ] Integration tests for hosted services
 - [x] Verify dotnet build succeeds
 - [x] Verify dotnet test passes
+- [x] Implement certificate endpoints
+  - [x] `/ipc/certs/root.pem` - Root CA in PEM format
+  - [x] `/ipc/certs/root.der` - Root CA in DER format
+  - [x] Integration tests for certificate endpoints
 
 ## Notes
 

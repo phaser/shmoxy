@@ -90,7 +90,7 @@ public static class ProxyControlApi
         {
             try
             {
-                var pem = stateService.Port.ToString(); // Placeholder - will get from ProxyServer
+                var pem = stateService.GetRootCertificatePem();
                 return Results.Text(pem, "application/x-pem-file");
             }
             catch (Exception ex)
@@ -103,8 +103,8 @@ public static class ProxyControlApi
         {
             try
             {
-                // Placeholder - will get from ProxyServer
-                return Results.File(Array.Empty<byte>(), "application/x-x509-ca-cert");
+                var der = stateService.GetRootCertificateDer();
+                return Results.File(der, "application/x-x509-ca-cert");
             }
             catch (Exception ex)
             {

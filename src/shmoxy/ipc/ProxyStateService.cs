@@ -43,4 +43,7 @@ public class ProxyStateService
         _inspectionHook.Enabled = false;
         return true;
     }
+
+    public string GetRootCertificatePem() => _proxy.GetRootCertificatePem();
+    public byte[] GetRootCertificateDer() => _proxy.GetRootCertificateDer();
 }
