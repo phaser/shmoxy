@@ -1,7 +1,4 @@
-using Xunit;
-using shmoxy.server;
-
-namespace shmoxy.tests;
+namespace shmoxy.tests.server;
 
 /// <summary>
 /// Tests for ProxyHttpClient.

@@ -1,28 +1,19 @@
-using System;
 using System.CommandLine;
-using System.CommandLine.Invocation;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using shmoxy.models.configuration;
-using shmoxy.server;
 
 namespace shmoxy;
 
-/// <summary>
-/// CLI entry point for the proxy server.
-/// </summary>
 class Program
 {
     static async Task<int> Main(string[] args)
     {
-        // Define command-line options
         var portOption = new Option<int>(
             aliases: new[] { "--port", "-p" },
             description: "Listening port for the proxy server (default: 8080)",
-            parseArgument: result =>
-            {
-                if (!int.TryParse(result.Tokens.FirstOrDefault()?.Value, out var port))
-                    port = 8080;
-                return port;
-            });
+            getDefaultValue: () => 8080);
 
         var certPathOption = new Option<string?>(
             aliases: new[] { "--cert" },
@@ -35,53 +26,63 @@ class Program
         var logLevelOption = new Option<ProxyConfig.LogLevelEnum>(
             aliases: new[] { "--log-level", "-l" },
             description: "Logging verbosity level (Debug, Info, Warn, Error)",
-            parseArgument: result =>
-            {
-                if (!Enum.TryParse<ProxyConfig.LogLevelEnum>(result.Tokens.FirstOrDefault()?.Value, true, out var level))
-                    level = ProxyConfig.LogLevelEnum.Info;
-                return level;
-            });
+            getDefaultValue: () => ProxyConfig.LogLevelEnum.Info);
+
+        var ipcSocketOption = new Option<string?>(
+            aliases: new[] { "--ipc-socket" },
+            description: "Unix Domain Socket path for IPC control API (optional)");
+
+        var adminPortOption = new Option<int?>(
+            aliases: new[] { "--admin-port" },
+            description: "TCP port for HTTP admin API (optional, requires X-API-Key authentication)");
 
         RootCommand rootCommand = new RootCommand("Shmoxy HTTP/HTTPS Intercepting Proxy");
         rootCommand.AddOption(portOption);
         rootCommand.AddOption(certPathOption);
         rootCommand.AddOption(keyPathOption);
         rootCommand.AddOption(logLevelOption);
+        rootCommand.AddOption(ipcSocketOption);
+        rootCommand.AddOption(adminPortOption);
 
-        rootCommand.SetHandler(async (port, certPath, keyPath, logLevel) =>
+        rootCommand.SetHandler(async (port, certPath, keyPath, logLevel, ipcSocket, adminPort) =>
         {
-            var config = new ProxyConfig
-            {
-                Port = port,
-                CertPath = certPath,
-                KeyPath = keyPath,
-                LogLevel = logLevel
-            };
-
-            // Validate cert/key pair if provided
             if ((certPath != null && keyPath == null) || (certPath == null && keyPath != null))
             {
                 Console.Error.WriteLine("Error: Both --cert and --key must be specified together");
                 Environment.Exit(1);
             }
 
-            try
+            var builder = ShmoxyHost.CreateHostBuilder(args);
+            
+            builder.ConfigureAppConfiguration((context, config) =>
             {
-                var server = new ProxyServer(config);
+                config.AddInMemoryCollection(new Dictionary<string, string?>
+                {
+                    { "ProxyConfig:Port", port.ToString() },
+                    { "ProxyConfig:CertPath", certPath },
+                    { "ProxyConfig:KeyPath", keyPath },
+                    { "ProxyConfig:LogLevel", logLevel.ToString() },
+                    { "IpcOptions:SocketPath", ipcSocket },
+                    { "IpcOptions:AdminPort", adminPort?.ToString() },
+                }!);
+            });
 
-                // Graceful shutdown handling
-                using var cts = new CancellationTokenSource();
-                Console.CancelKeyPress += (_, __) => cts.Cancel();
-
-                await server.StartAsync(cts.Token);
-                await Task.Delay(-1, cts.Token); // Wait for cancellation
-            }
-            catch (Exception ex)
+            builder.ConfigureLogging(logging =>
             {
-                Console.Error.WriteLine($"Fatal error: {ex.Message}");
-                Environment.Exit(1);
-            }
-        }, portOption, certPathOption, keyPathOption, logLevelOption);
+                logging.AddConsole();
+                logging.SetMinimumLevel(logLevel switch
+                {
+                    ProxyConfig.LogLevelEnum.Debug => Microsoft.Extensions.Logging.LogLevel.Debug,
+                    ProxyConfig.LogLevelEnum.Info => Microsoft.Extensions.Logging.LogLevel.Information,
+                    ProxyConfig.LogLevelEnum.Warn => Microsoft.Extensions.Logging.LogLevel.Warning,
+                    ProxyConfig.LogLevelEnum.Error => Microsoft.Extensions.Logging.LogLevel.Error,
+                    _ => Microsoft.Extensions.Logging.LogLevel.Information
+                });
+            });
+
+            var host = builder.Build();
+            await host.RunAsync();
+        }, portOption, certPathOption, keyPathOption, logLevelOption, ipcSocketOption, adminPortOption);
 
         return await rootCommand.InvokeAsync(args);
     }

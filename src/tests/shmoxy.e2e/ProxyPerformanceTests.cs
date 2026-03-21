@@ -2,7 +2,6 @@ using System.Diagnostics;
 using Microsoft.Playwright;
 using Xunit;
 using Xunit.Abstractions;
-using shmoxy.server;
 
 namespace shmoxy.e2e;
 

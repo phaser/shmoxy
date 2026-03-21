@@ -148,8 +148,9 @@ public class ProxyInfoPageTests : IAsyncLifetime
     public async Task RootCaPem_Endpoint_ReturnsCertificate()
     {
         using var client = new System.Net.Http.HttpClient();
-        var response = await client.GetAsync($"{_fixture.BaseUrl}/root-ca.pem");
+        var response = await client.GetAsync($"{_fixture!.BaseUrl}/root-ca.pem");
 
+        Assert.NotNull(response);
         Assert.Equal(200, (int)response.StatusCode);
         Assert.Contains("pem", response.Content.Headers.ContentType?.MediaType?.ToLowerInvariant());
         

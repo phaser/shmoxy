@@ -2,7 +2,6 @@ using System.Security.Cryptography.X509Certificates;
 using Microsoft.Playwright;
 using static Microsoft.Playwright.Assertions;
 using Xunit;
-using shmoxy.server;
 
 namespace shmoxy.e2e;
 
