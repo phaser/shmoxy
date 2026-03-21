@@ -1,8 +1,8 @@
 # Performance Test Results - Multi-Threaded Proxy (10 Sites)
 
-**Date:** 2026-03-19 14:51:31  
-**Branch:** feature/make-proxy-multi-threaded  
-**Test Class:** `shmoxy.e2e.ProxyPerformanceTests`  
+**Date:** 2026-03-19 14:51:31
+**Branch:** feature/make-proxy-multi-threaded
+**Test Class:** `shmoxy.e2e.ProxyPerformanceTests`
 **Change:** Replaced single-threaded fire-and-forget with `Task.Run()` for thread pool execution
 
 ## Test Summary

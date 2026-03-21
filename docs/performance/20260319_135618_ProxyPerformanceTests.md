@@ -1,7 +1,7 @@
 # Performance Test Results - ProxyPerformanceTests
 
-**Date:** 2026-03-19 13:56:18  
-**Branch:** feature_make-proxy-muti-threaded  
+**Date:** 2026-03-19 13:56:18
+**Branch:** feature_make-proxy-muti-threaded
 **Test Class:** `shmoxy.e2e.ProxyPerformanceTests`
 
 ## Test Summary
@@ -33,7 +33,7 @@
 - www.reddit.com: 333ms
 - arstechnica.com: 1338ms
 
-**Artifacts Location:** 
+**Artifacts Location:**
 ```
 src/tests/shmoxy.e2e/bin/Debug/net10.0/playwright_run_a2b8a7b9/
 ```

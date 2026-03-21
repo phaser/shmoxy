@@ -175,19 +175,19 @@ hr {
         font-size: 11pt;
         max-width: none;
     }
-    
+
     pre {
         page-break-inside: avoid;
     }
-    
+
     img {
         page-break-inside: avoid;
     }
-    
+
     h1, h2, h3 {
         page-break-after: avoid;
     }
-    
+
     a {
         color: #000;
         text-decoration: none;

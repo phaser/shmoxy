@@ -30,5 +30,3 @@ entry = "dotnet format"
 language = "system"
 files = "\\.cs$"
 pass_filenames = false
-
-

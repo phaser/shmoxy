@@ -18,13 +18,13 @@ public sealed class ProxyTestFixture : IAsyncLifetime
     public async Task InitializeAsync()
     {
         var config = new ProxyConfig { Port = 0, LogLevel = ProxyConfig.LogLevelEnum.Debug };
-        
+
         _server = new ProxyServer(config);
         _cts = new CancellationTokenSource();
-        
+
         // Start server in background
         _ = _server.StartAsync(_cts.Token);
-        
+
         for (int i = 0; i < 20 && !_server.IsListening; i++)
             await Task.Delay(50);
 
@@ -33,13 +33,13 @@ public sealed class ProxyTestFixture : IAsyncLifetime
 
         Port = _server.ListeningPort;
         Console.WriteLine($"Proxy started on port {Port}");
-        
+
         // Create artifacts directory with random identifier
         var randomId = Guid.NewGuid().ToString("N")[..8];
         ArtifactsDir = Path.Combine(Directory.GetCurrentDirectory(), "playwright_run_" + randomId);
         Directory.CreateDirectory(ArtifactsDir);
         Console.WriteLine($"Artifacts will be saved to: {ArtifactsDir}");
-        
+
         _playwright = await Playwright.CreateAsync();
         Browser = await _playwright.Chromium.LaunchAsync(new()
         {
@@ -54,13 +54,13 @@ public sealed class ProxyTestFixture : IAsyncLifetime
     {
         await Browser.CloseAsync();
         _playwright?.Dispose();
-        
+
         if (_cts != null)
         {
             await _cts.CancelAsync();
             _cts.Dispose();
         }
-        
+
         _server?.Dispose();
     }
 
@@ -73,20 +73,20 @@ public sealed class ProxyTestFixture : IAsyncLifetime
         var sanitizedTestName = SanitizeFileName(testName);
         var testArtifactsDir = Path.Combine(ArtifactsDir, sanitizedTestName);
         Directory.CreateDirectory(testArtifactsDir);
-        
+
         var contextOptions = new BrowserNewContextOptions
         {
             IgnoreHTTPSErrors = false
         };
-        
+
         // Only set proxy if explicitly requested
         if (useProxy)
         {
             contextOptions.Proxy = new() { Server = $"http://127.0.0.1:{Port}" };
         }
-        
+
         var context = await Browser.NewContextAsync(contextOptions);
-        
+
         // Start tracing
         await context.Tracing.StartAsync(new()
         {
@@ -94,7 +94,7 @@ public sealed class ProxyTestFixture : IAsyncLifetime
             Snapshots = true,
             Sources = true
         });
-        
+
         return context;
     }
 
@@ -107,10 +107,10 @@ public sealed class ProxyTestFixture : IAsyncLifetime
         var sanitizedTestName = SanitizeFileName(testName);
         var testArtifactsDir = Path.Combine(ArtifactsDir, sanitizedTestName);
         Directory.CreateDirectory(testArtifactsDir);
-        
+
         var tracePath = Path.Combine(testArtifactsDir, $"trace{(success ? "" : "_failed")}.zip");
         await context.Tracing.StopAsync(new() { Path = tracePath });
-        
+
         // Take screenshot
         var screenshotPath = Path.Combine(testArtifactsDir, $"screenshot{(success ? "" : "_failed")}.png");
         try
@@ -125,7 +125,7 @@ public sealed class ProxyTestFixture : IAsyncLifetime
         {
             Console.WriteLine($"Could not take screenshot: {ex.Message}");
         }
-        
+
         Console.WriteLine($"Artifacts saved to: {testArtifactsDir}");
     }
 

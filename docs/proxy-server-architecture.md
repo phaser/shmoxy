@@ -11,20 +11,20 @@ graph TB
     Client[HTTP/HTTPS Client]
     Proxy[Proxy Server]
     Target[Target Server]
-    
+
     subgraph "Shmoxy Proxy"
         ProxyServer[ProxyServer<br/>Main Entry Point]
         TlsHandler[TlsHandler<br/>Certificate Management]
         InterceptHook[IInterceptHook<br/>Request/Response Interception]
         ProxyHttpClient[ProxyHttpClient<br/>HTTP Tunneling]
-        
+
         subgraph "Models"
             ProxyConfig[ProxyConfig<br/>Configuration]
             InterceptedRequest[InterceptedRequest<br/>DTO]
             InterceptedResponse[InterceptedResponse<br/>DTO]
         end
     end
-    
+
     Client -->|HTTP/HTTPS Request| ProxyServer
     ProxyServer -->|Intercept| InterceptHook
     ProxyServer -->|TLS Certificate| TlsHandler
@@ -109,7 +109,7 @@ sequenceDiagram
     Client->>PS: HTTP GET http://example.com/page
     PS->>PS: Parse request line & headers
     PS->>IH: OnRequestAsync(interceptedRequest)
-    
+
     alt Hook cancels request
         IH-->>PS: null or Cancel=true
         PS-->>Client: (no response or custom)
@@ -147,20 +147,20 @@ sequenceDiagram
     Client->>PS: CONNECT example.com:443
     PS->>TLS: GetCertificate("example.com")
     TLS-->>PS: Dynamic certificate
-    
+
     PS-->>Client: HTTP 200 Connection Established
-    
+
     Note over Client,PS: TLS Handshake (Client to Proxy)
     Client->>PS: ClientHello (SNI: example.com)
     PS-->>Client: ServerHello + Dynamic Cert
     Client->>PS: Finished (encrypted)
-    
+
     Note over PS,Target: TLS Handshake (Proxy to Target)
     PS->>PHC: Connect to example.com:443
     PHC->>Target: ClientHello
     Target-->>PHC: ServerHello + Target Cert
     PHC-->>PS: Finished (encrypted)
-    
+
     Note over Client,Target: Bidirectional TLS Tunnel
     Client->>PS: Encrypted HTTP request
     PS->>PHC: Re-encrypt & forward
@@ -189,18 +189,18 @@ graph LR
         C[Client]
         CTLS[("TLS Session 1<br/>(Proxy Cert)")]
     end
-    
+
     subgraph "Proxy"
         DECRYPT[/"Decrypt"<br/>with Proxy Cert\]
         INSPECT[Inspect/Modify<br/>Plain HTTP]
         ENCRYPT[/"Encrypt"<br/>with Target Cert\]
     end
-    
+
     subgraph "Target Side"
         TTLS[("TLS Session 2<br/>(Target Cert)")]
         T[Target Server]
     end
-    
+
     C <-->|Encrypted| CTLS
     CTLS --> DECRYPT
     DECRYPT --> INSPECT
@@ -246,7 +246,7 @@ graph LR
     Debug --> Info
     Info --> Warn
     Warn --> Error
-    
+
     style Debug fill:#e3f2fd
     style Info fill:#e8f5e9
     style Warn fill:#fff3e0
@@ -309,7 +309,7 @@ public class MyCustomHook : IInterceptHook
         request.Headers["X-Custom-Header"] = "value";
         return Task.FromResult<InterceptedRequest?>(request);
     }
-    
+
     public Task<InterceptedResponse?> OnResponseAsync(InterceptedResponse response)
     {
         // Modify response or cancel
