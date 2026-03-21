@@ -3,6 +3,7 @@ using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
+using shmoxy.api.models.configuration;
 using shmoxy.shared.ipc;
 
 namespace shmoxy.api.ipc;

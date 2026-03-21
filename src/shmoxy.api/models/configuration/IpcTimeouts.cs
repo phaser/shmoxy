@@ -1,4 +1,4 @@
-namespace shmoxy.api;
+namespace shmoxy.api.models.configuration;
 
 /// <summary>
 /// Configurable timeout levels for IPC operations.

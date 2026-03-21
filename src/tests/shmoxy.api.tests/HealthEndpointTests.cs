@@ -1,6 +1,9 @@
 using System.Net;
 using System.Text.Json;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.Extensions.DependencyInjection;
+using shmoxy.api.data;
+using Microsoft.EntityFrameworkCore;
 
 namespace shmoxy.api.tests;
 
@@ -10,7 +13,15 @@ public class HealthEndpointTests : IClassFixture<WebApplicationFactory<Program>>
 
     public HealthEndpointTests(WebApplicationFactory<Program> factory)
     {
-        _client = factory.CreateClient();
+        _client = factory.WithWebHostBuilder(builder =>
+        {
+            builder.ConfigureServices(services =>
+            {
+                // Use SQLite in-memory for tests
+                services.AddDbContext<ProxiesDbContext>(options =>
+                    options.UseSqlite("Data Source=:memory:"));
+            });
+        }).CreateClient();
     }
 
     [Fact]

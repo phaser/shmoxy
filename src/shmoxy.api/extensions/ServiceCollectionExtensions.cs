@@ -1,7 +1,12 @@
 using System.Net;
 using System.Net.Sockets;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+using shmoxy.api.data;
 using shmoxy.api.ipc;
+using shmoxy.api.models.configuration;
+using shmoxy.api.server;
 
 namespace shmoxy.api;
 
@@ -55,6 +60,20 @@ public static class ServiceCollectionExtensions
             client.DefaultRequestHeaders.Add("X-API-Key", apiKey);
         });
 
+        return services;
+    }
+
+    public static IServiceCollection AddRemoteProxyRegistry(this IServiceCollection services)
+    {
+        services.AddScoped<IRemoteProxyRegistry, RemoteProxyRegistry>();
+        services.AddHostedService<RemoteProxyHealthMonitor>();
+        return services;
+    }
+
+    public static IServiceCollection AddSqliteDbContext(this IServiceCollection services, string connectionString)
+    {
+        services.AddDbContext<ProxiesDbContext>(options =>
+            options.UseSqlite(connectionString));
         return services;
     }
 }
