@@ -23,7 +23,10 @@ id = "mixed-line-ending"
 [[repos.hooks]]
 id = "detect-private-key"
 
-[[hooks]]
+[[repos]]
+repo = "local"
+
+[[repos.hooks]]
 id = "dotnet-format"
 name = "dotnet format"
 entry = "dotnet format"
