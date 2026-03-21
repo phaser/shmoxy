@@ -32,14 +32,19 @@ class Program
             aliases: new[] { "--ipc-socket" },
             description: "Unix Domain Socket path for IPC control API (optional)");
 
+        var adminPortOption = new Option<int?>(
+            aliases: new[] { "--admin-port" },
+            description: "TCP port for HTTP admin API (optional, requires X-API-Key authentication)");
+
         RootCommand rootCommand = new RootCommand("Shmoxy HTTP/HTTPS Intercepting Proxy");
         rootCommand.AddOption(portOption);
         rootCommand.AddOption(certPathOption);
         rootCommand.AddOption(keyPathOption);
         rootCommand.AddOption(logLevelOption);
         rootCommand.AddOption(ipcSocketOption);
+        rootCommand.AddOption(adminPortOption);
 
-        rootCommand.SetHandler(async (port, certPath, keyPath, logLevel, ipcSocket) =>
+        rootCommand.SetHandler(async (port, certPath, keyPath, logLevel, ipcSocket, adminPort) =>
         {
             if ((certPath != null && keyPath == null) || (certPath == null && keyPath != null))
             {
@@ -58,6 +63,7 @@ class Program
                     { "ProxyConfig:KeyPath", keyPath },
                     { "ProxyConfig:LogLevel", logLevel.ToString() },
                     { "IpcOptions:SocketPath", ipcSocket },
+                    { "IpcOptions:AdminPort", adminPort?.ToString() },
                 }!);
             });
 
@@ -76,7 +82,7 @@ class Program
 
             var host = builder.Build();
             await host.RunAsync();
-        }, portOption, certPathOption, keyPathOption, logLevelOption, ipcSocketOption);
+        }, portOption, certPathOption, keyPathOption, logLevelOption, ipcSocketOption, adminPortOption);
 
         return await rootCommand.InvokeAsync(args);
     }

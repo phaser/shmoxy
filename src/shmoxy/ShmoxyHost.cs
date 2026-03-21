@@ -84,7 +84,9 @@ public static class ShmoxyHost
         services.AddHostedService<ProxyHostedService>();
 
         var ipcSocket = context.Configuration["IpcOptions:SocketPath"];
-        if (!string.IsNullOrEmpty(ipcSocket))
+        var adminPort = context.Configuration["IpcOptions:AdminPort"];
+        
+        if (!string.IsNullOrEmpty(ipcSocket) || (!string.IsNullOrEmpty(adminPort) && int.Parse(adminPort) > 0))
         {
             services.AddHostedService<IpcHostedService>();
         }
