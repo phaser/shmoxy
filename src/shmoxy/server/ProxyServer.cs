@@ -1,10 +1,10 @@
 using System.Net.Sockets;
 using System.Security.Cryptography.X509Certificates;
 using System.Text;
-using shmoxy.models.configuration;
 using shmoxy.models.dto;
 using shmoxy.server.hooks;
 using shmoxy.server.interfaces;
+using shmoxy.shared.ipc;
 
 namespace shmoxy.server;
 

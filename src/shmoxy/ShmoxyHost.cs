@@ -6,9 +6,9 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using shmoxy.ipc;
-using shmoxy.models.configuration;
 using shmoxy.server;
 using shmoxy.server.hooks;
+using shmoxy.shared.ipc;
 
 namespace shmoxy;
 

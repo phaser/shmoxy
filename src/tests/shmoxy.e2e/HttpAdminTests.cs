@@ -4,10 +4,10 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.DependencyInjection;
-using shmoxy.models.configuration;
 using shmoxy.server;
 using shmoxy.server.hooks;
 using shmoxy.ipc;
+using shmoxy.shared.ipc;
 using Xunit;
 
 namespace shmoxy.e2e;

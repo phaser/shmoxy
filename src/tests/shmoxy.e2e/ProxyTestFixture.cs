@@ -1,6 +1,6 @@
 using Microsoft.Playwright;
-using shmoxy.models.configuration;
 using shmoxy.server;
+using shmoxy.shared.ipc;
 using Xunit;
 
 namespace shmoxy.e2e;

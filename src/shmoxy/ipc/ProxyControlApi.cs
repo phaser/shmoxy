@@ -3,7 +3,6 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.Hosting;
-using shmoxy.models.configuration;
 using shmoxy.shared.ipc;
 
 namespace shmoxy.ipc;

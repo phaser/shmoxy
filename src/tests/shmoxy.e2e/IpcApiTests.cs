@@ -2,10 +2,10 @@ using System.Net.Http;
 using System.Net.Sockets;
 using System.Text.Json;
 using Microsoft.Extensions.Hosting;
-using shmoxy.models.configuration;
 using shmoxy.server;
 using shmoxy.server.hooks;
 using shmoxy.ipc;
+using shmoxy.shared.ipc;
 using Xunit;
 
 namespace shmoxy.e2e;

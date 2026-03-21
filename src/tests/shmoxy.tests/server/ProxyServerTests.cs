@@ -1,6 +1,6 @@
 using System.Net;
-using shmoxy.models.configuration;
 using shmoxy.server;
+using shmoxy.shared.ipc;
 
 namespace shmoxy.tests.server;
 
