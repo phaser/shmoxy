@@ -222,6 +222,8 @@ public class InspectionHook : IInterceptHook
 
 ## Status
 
+### Phase 1: IPC Control API (Complete)
+
 - [x] Architecture design
 - [x] Create shmoxy.shared project with IPC contracts
   - [x] `IpcCommands.cs` - DTOs for IPC messages
@@ -231,35 +233,80 @@ public class InspectionHook : IInterceptHook
 - [x] Add IPC control API to shmoxy proxy process
   - [x] `ProxyControlApi.cs` - Minimal API endpoints
   - [x] `ProxyStateService.cs` - Singleton exposing proxy state
-  - [x] All IPC endpoints implemented and tested
+  - [x] All IPC endpoints implemented and tested:
+    - `/ipc/status` - health check
+    - `/ipc/shutdown` - graceful shutdown
+    - `/ipc/config` GET/PUT - runtime config
+    - `/ipc/hooks` - list hooks
+    - `/ipc/hooks/{id}/enable|disable` - toggle hooks
+    - `/ipc/inspect/stream` - SSE event stream
+    - `/ipc/inspect/enable|disable` - toggle inspection
+    - `/ipc/certs/root.pem|der` - root CA in PEM/DER format
 - [x] Implement InspectionHook with on/off toggle
   - [x] Channel-based event streaming
   - [x] SSE endpoint at `/ipc/inspect/stream`
   - [x] Enable/disable via `/ipc/inspect/enable|disable`
-- [ ] Refactor shmoxy to use Generic Host pattern
-  - [ ] `ProxyHostedService` - wraps ProxyServer lifecycle
-  - [ ] `IpcHostedService` - wraps IPC API lifecycle (conditional)
-  - [ ] Update Program.cs to use `Host.CreateDefaultBuilder()`
-  - [ ] Configuration binding via `IOptions<ProxyConfig>`
-- [ ] Create shmoxy.api project
-  - [ ] `ProxyProcessManager` - spawn/monitor proxy child process
-  - [ ] `ProxyIpcClient` - HttpClient over UDS
-  - [ ] User-facing REST endpoints
-- [ ] Implement certificate endpoints
-  - [ ] `/ipc/certs/root.pem` - Root CA in PEM format
-  - [ ] `/ipc/certs/root.der` - Root CA in DER format
-- [ ] Add tests
-  - [ ] IPC API unit tests
-  - [ ] Integration tests for hosted services
-- [x] Verify dotnet build succeeds
-- [x] Verify dotnet test passes
+- [x] Refactor shmoxy to use Generic Host pattern
+  - [x] `ProxyHostedService` - wraps ProxyServer lifecycle
+  - [x] `IpcHostedService` - wraps IPC API lifecycle (conditional)
+  - [x] `ShmoxyHost` - shared host configuration for tests
+  - [x] Update Program.cs to use `Host.CreateDefaultBuilder()`
+  - [x] Configuration binding via `IOptions<ProxyConfig>`
 - [x] Implement certificate endpoints
   - [x] `/ipc/certs/root.pem` - Root CA in PEM format
   - [x] `/ipc/certs/root.der` - Root CA in DER format
-  - [x] Integration tests for certificate endpoints
+- [x] Add tests
+  - [x] 8 IPC API integration tests in `IpcApiTests.cs`
+  - [x] 2 certificate endpoint tests
+  - [x] All tests use shared `ShmoxyHost` for consistency
+- [x] Verify dotnet build succeeds (zero warnings)
+- [x] Verify dotnet test passes (31 tests: 10 unit + 21 e2e)
+- [x] Verify Nix build succeeds
+
+### Phase 2: shmoxy.api Backend (Not Started)
+
+- [ ] Create shmoxy.api project
+  - [ ] `ProxyProcessManager` - spawn/monitor local proxy child processes
+  - [ ] `ProxyIpcClient` - HttpClient over UDS for local proxies
+  - [ ] `RemoteProxyRegistry` - track and manage remote proxies
+  - [ ] User-facing REST endpoints (`/api/proxy/*`, `/api/certs/*`, etc.)
+- [ ] Support multiple proxy modes
+  - [ ] Local proxies (spawned and managed by API)
+  - [ ] Remote proxies (registered via config or API)
+  - [ ] Direct HTTP mode (proxy exposes admin endpoints over HTTP)
+- [ ] Security for remote management
+  - [ ] API key authentication
+  - [ ] HTTPS for remote communication
+- [ ] Tests
+  - [ ] Unit tests for ProxyProcessManager
+  - [ ] Unit tests for ProxyIpcClient
+  - [ ] Integration tests for REST endpoints
+  - [ ] E2E tests with real proxy child processes
 
 ## Notes
+
+### Phase 1 (Complete)
 
 - The proxy can still be run standalone (without the API) for simple use cases -- the IPC socket is optional.
 - Multiple proxy instances can be managed by a single API process by spawning multiple child processes with different socket paths.
 - The inspection feature uses `System.Threading.Channels` for backpressure-safe event streaming.
+- Integration tests reuse the same host initialization logic as `Program.cs` via `ShmoxyHost` class.
+- All compiler warnings are treated as errors (zero warnings policy).
+
+### Phase 2 (Planned)
+
+**Proxy Modes:**
+- **Local**: API spawns proxy as child process, communicates via Unix socket
+- **Remote**: Proxy runs on separate server, registers with API via HTTP
+- **Direct HTTP**: Proxy exposes admin endpoints over HTTP (no IPC)
+
+**Architecture Decisions:**
+- Single API can manage multiple proxies (local + remote)
+- Remote proxies authenticate via API keys
+- Health checks via polling with exponential backoff
+- Read-only operations on remote proxies (no shutdown/restart)
+
+**Security Considerations:**
+- Local IPC: Unix socket permissions (owner-only access)
+- Remote HTTP: API key authentication, HTTPS required
+- Certificates: Root CA download requires authentication
