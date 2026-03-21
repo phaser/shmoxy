@@ -222,7 +222,7 @@ public class InspectionHook : IInterceptHook
 
 ## Status
 
-### Phase 1: IPC Control API (Complete)
+### Phase 1: IPC Control API (✅ COMPLETE - Ready to Merge)
 
 - [x] Architecture design
 - [x] Create shmoxy.shared project with IPC contracts
@@ -263,29 +263,37 @@ public class InspectionHook : IInterceptHook
 - [x] Verify dotnet test passes (31 tests: 10 unit + 21 e2e)
 - [x] Verify Nix build succeeds
 
-### Phase 2: shmoxy.api Backend (Not Started)
+### Phase 2: shmoxy.api Backend (Moved to Separate PR)
 
-- [ ] Create shmoxy.api project
-  - [ ] `ProxyProcessManager` - spawn/monitor local proxy child processes
-  - [ ] `ProxyIpcClient` - HttpClient over UDS for local proxies
-  - [ ] `RemoteProxyRegistry` - track and manage remote proxies
-  - [ ] User-facing REST endpoints (`/api/proxy/*`, `/api/certs/*`, etc.)
-- [ ] Support multiple proxy modes
-  - [ ] Local proxies (spawned and managed by API)
-  - [ ] Remote proxies (registered via config or API)
-  - [ ] Direct HTTP mode (proxy exposes admin endpoints over HTTP)
-- [ ] Security for remote management
-  - [ ] API key authentication
-  - [ ] HTTPS for remote communication
-- [ ] Tests
-  - [ ] Unit tests for ProxyProcessManager
-  - [ ] Unit tests for ProxyIpcClient
-  - [ ] Integration tests for REST endpoints
-  - [ ] E2E tests with real proxy child processes
+The shmoxy.api backend project has been moved to a separate PR to keep scope manageable:
+
+**See:** `docs/prs/2026-03-21-xxxx-shmoxy-api-backend.md`
+
+- [ ] Create shmoxy.api project (ASP.NET Core Web API)
+- [ ] ProxyProcessManager - spawn/monitor local proxy child processes
+- [ ] ProxyIpcClient - HttpClient for UDS and HTTP with API key auth
+- [ ] RemoteProxyRegistry - track and manage remote proxies
+- [ ] User-facing REST endpoints (`/api/proxy/*`, `/api/certs/*`, etc.)
+- [ ] Support multiple proxy modes (Local, Remote, Direct HTTP)
+- [ ] Tests (unit, integration, E2E)
 
 ## Notes
 
-### Phase 1 (Complete)
+### Phase 1 Summary (✅ Complete)
+
+**Delivered:**
+- IPC control API with 10 endpoints (status, config, hooks, inspection, certs, shutdown)
+- Unix socket and HTTP admin port support
+- API key authentication for HTTP (auto-generated, logged on startup)
+- Generic Host refactoring with `ProxyHostedService` and `IpcHostedService`
+- Shared `ShmoxyHost` class for test consistency
+- 38 passing tests (10 unit + 28 e2e)
+- Zero compiler warnings
+- Nix build verified
+
+**Ready for:** Merge to main
+
+### Phase 2 (Future PR)
 
 - The proxy can still be run standalone (without the API) for simple use cases -- the IPC socket is optional.
 - Multiple proxy instances can be managed by a single API process by spawning multiple child processes with different socket paths.
