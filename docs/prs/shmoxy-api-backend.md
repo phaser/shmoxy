@@ -205,6 +205,120 @@ Create the `shmoxy.api` backend project that manages proxy instances (local and 
 
 ---
 
+#### Phase 5.2: InspectionController ✅ COMPLETED
+
+**Endpoint:** `GET /api/proxies/{proxyId}/inspect/stream`
+
+**Implementation:**
+- ✅ SSE streaming endpoint for real-time traffic inspection
+- ✅ Works with local ("local") and remote proxies (GUID)
+- ✅ Reuses existing IProxyIpcClient.GetInspectionStreamAsync()
+- ✅ Content-type: text/event-stream
+- ✅ No filtering (stream all request/response pairs)
+- ✅ Graceful disconnect handling
+
+**Files:**
+- ✅ `src/shmoxy.api/Controllers/InspectionController.cs` - SSE streaming controller
+- ✅ `src/tests/shmoxy.api.tests/Integration/InspectionIntegrationTests.cs` - 4 integration tests
+
+**Tests (4 scenarios):**
+- ✅ Stream endpoint returns SSE content-type
+- ✅ Proxy not running - stream fails gracefully
+- ✅ Remote proxy not found - handled gracefully
+- ✅ Stream disconnects cleanly on client cancellation
+
+---
+
+#### Phase 5.3: ConfigController ✅ COMPLETED
+
+**Endpoint:** `GET /api/proxies/{proxyId}/inspect/stream`
+
+**Implementation:**
+- SSE streaming endpoint for real-time traffic inspection
+- Works with local ("local") and remote proxies (GUID)
+- Reuses existing IProxyIpcClient.GetInspectionStreamAsync()
+- Content-type: text/event-stream
+- No filtering (stream all request/response pairs)
+- Auto-enable inspection when client connects
+
+**Files:**
+- [ ] `src/shmoxy.api/Controllers/InspectionController.cs` - SSE streaming controller
+- [ ] `src/tests/shmoxy.api.tests/Integration/InspectionIntegrationTests.cs` - Integration tests
+
+**Tests (4 scenarios):**
+- [ ] Stream endpoint returns SSE content-type
+- [ ] Proxy not running returns 400
+- [ ] Remote proxy not found returns 404
+- [ ] Stream disconnects cleanly on client cancellation
+
+---
+
+#### Phase 5.3: ConfigController ✅ COMPLETED
+
+**Endpoints:**
+- ✅ `GET /api/proxies/{proxyId}/config` - Get current config
+- ✅ `PUT /api/proxies/{proxyId}/config` - Update config (immediate, no restart)
+
+**Implementation:**
+- ✅ Use shmoxy.shared.ipc.ProxyConfig directly (no DTO duplication)
+- ✅ Config updates are immediate via IPC (no restart required)
+- ✅ Config validation (port range, log level, concurrent connections)
+- ✅ Works with both local and remote proxies
+
+**Files:**
+- ✅ `src/shmoxy.api/Controllers/ConfigController.cs` - Config management controller
+- ✅ `src/tests/shmoxy.api.tests/Integration/ConfigIntegrationTests.cs` - 4 integration tests
+
+**Tests (4 scenarios):**
+- ✅ Get config from local proxy
+- ✅ Update config with invalid port returns 400
+- ✅ Update config with invalid log level returns 400
+- ✅ Update config validation passes for valid config
+
+---
+
+#### Testing Strategy ✅ COMPLETED
+
+**Integration tests:** 8 total (4 per controller)
+**Test location:** `src/tests/shmoxy.api.tests/Integration/`
+**Approach:** API-level validation with mocked services
+
+---
+
+#### Remaining Phase 5 Controllers
+- [x] ConfigController (configuration management) ✅
+- [x] InspectionController (SSE streaming) ✅
+
+**Endpoints:**
+- `GET /api/proxies/{proxyId}/config` - Get current config
+- `PUT /api/proxies/{proxyId}/config` - Update config (immediate, no restart)
+
+**Implementation:**
+- Use shmoxy.shared.ipc.ProxyConfig directly (no DTO duplication)
+- Config updates are immediate via IPC (no restart required)
+- For restart: user stops/starts via ProxiesController
+- Works with both local and remote proxies
+
+**Files:**
+- [ ] `src/shmoxy.api/Controllers/ConfigController.cs` - Config management controller
+- [ ] `src/tests/shmoxy.api.tests/Integration/ConfigIntegrationTests.cs` - Integration tests
+
+**Tests (4 scenarios):**
+- [ ] Get config from local proxy
+- [ ] Update config applies immediately
+- [ ] Invalid config returns 400
+- [ ] Remote proxy config uses API key auth
+
+---
+
+#### Testing Strategy
+
+**Integration tests:** At least 1 per feature (8 total for both controllers)
+**Test location:** `src/tests/shmoxy.api.tests/Integration/`
+**Approach:** API-level validation with mocked IPC calls
+
+---
+
 #### Remaining Phase 5 Controllers
 - [ ] ConfigController (configuration management)
 - [ ] InspectionController (SSE streaming)
