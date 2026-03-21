@@ -56,7 +56,7 @@ public class ProxyIpcClientTests
     {
         var requestConfig = new ProxyConfig { Port = 9090, LogLevel = ProxyConfig.LogLevelEnum.Debug };
         var responseJson = """{"port":9090,"certPath":null,"keyPath":null,"logLevel":0,"maxConcurrentConnections":8,"certStoragePath":"/tmp"}""";
-        
+
         var capturedRequests = new List<HttpRequestMessage>();
         var handler = new FakeHttpMessageHandler(request =>
         {

@@ -33,7 +33,7 @@ public class IpcHostedService : IHostedService, IDisposable
     public Task StartAsync(CancellationToken cancellationToken)
     {
         var apiKeyService = new ApiKeyService();
-        
+
         if (_options.AdminPort.HasValue && _options.AdminPort > 0)
         {
             apiKeyService.ApiKey = GenerateApiKey();

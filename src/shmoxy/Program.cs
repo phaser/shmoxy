@@ -53,7 +53,7 @@ class Program
             }
 
             var builder = ShmoxyHost.CreateHostBuilder(args);
-            
+
             builder.ConfigureAppConfiguration((context, config) =>
             {
                 config.AddInMemoryCollection(new Dictionary<string, string?>

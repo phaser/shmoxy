@@ -49,7 +49,7 @@ public static class ProxyControlApi
         endpoints.MapGet("/ipc/hooks", () =>
         {
             var hooks = new List<HookDescriptor>();
-            
+
             // Add inspection hook if available
             if (stateService.InspectionHook != null)
             {
@@ -134,17 +134,17 @@ public static class ProxyControlApi
             }
 
             response.Headers.ContentType = "text/event-stream";
-            
+
             var reader = stateService.InspectionHook.GetReader();
             var cts = new CancellationTokenSource();
-            
+
             try
             {
                 while (!cts.Token.IsCancellationRequested)
                 {
                     var hasData = await reader.WaitToReadAsync(cts.Token);
                     if (!hasData) break;
-                    
+
                     while (reader.TryRead(out var evt))
                     {
                         var json = JsonSerializer.Serialize(evt);
@@ -162,20 +162,20 @@ public static class ProxyControlApi
         endpoints.MapPost("/ipc/inspect/enable", () =>
         {
             var success = stateService.EnableInspection();
-            return Results.Json(new EnableInspectionResponse 
-            { 
-                Success = success, 
-                Message = success ? "Inspection enabled" : "Inspection not available" 
+            return Results.Json(new EnableInspectionResponse
+            {
+                Success = success,
+                Message = success ? "Inspection enabled" : "Inspection not available"
             });
         });
 
         endpoints.MapPost("/ipc/inspect/disable", () =>
         {
             var success = stateService.DisableInspection();
-            return Results.Json(new DisableInspectionResponse 
-            { 
-                Success = success, 
-                Message = success ? "Inspection disabled" : "Inspection not available" 
+            return Results.Json(new DisableInspectionResponse
+            {
+                Success = success,
+                Message = success ? "Inspection disabled" : "Inspection not available"
             });
         });
 

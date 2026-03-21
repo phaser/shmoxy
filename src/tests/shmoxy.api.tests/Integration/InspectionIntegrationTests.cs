@@ -90,10 +90,10 @@ public class InspectionIntegrationTests : IClassFixture<WebApplicationFactory<Pr
 
         // Act - Start reading stream, then cancel
         var requestTask = client.GetAsync("/api/proxies/local/inspect/stream", cts.Token);
-        
+
         // Wait a brief moment for connection to establish
         await Task.Delay(100);
-        
+
         // Cancel the request
         cts.Cancel();
 

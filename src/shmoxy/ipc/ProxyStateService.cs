@@ -30,7 +30,7 @@ public class ProxyStateService
     {
         if (_inspectionHook == null)
             return false;
-        
+
         _inspectionHook.Enabled = true;
         return true;
     }
@@ -39,7 +39,7 @@ public class ProxyStateService
     {
         if (_inspectionHook == null)
             return false;
-        
+
         _inspectionHook.Enabled = false;
         return true;
     }

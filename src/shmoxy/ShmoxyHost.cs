@@ -24,10 +24,10 @@ public static class ShmoxyHost
     public static IHostBuilder CreateHostBuilder(string[] args)
     {
         var builder = Host.CreateDefaultBuilder(args);
-        
+
         builder.ConfigureAppConfiguration(ConfigureAppConfiguration);
         builder.ConfigureServices(ConfigureServices);
-        
+
         return builder;
     }
 
@@ -85,7 +85,7 @@ public static class ShmoxyHost
 
         var ipcSocket = context.Configuration["IpcOptions:SocketPath"];
         var adminPort = context.Configuration["IpcOptions:AdminPort"];
-        
+
         if (!string.IsNullOrEmpty(ipcSocket) || (!string.IsNullOrEmpty(adminPort) && int.Parse(adminPort) > 0))
         {
             services.AddHostedService<IpcHostedService>();

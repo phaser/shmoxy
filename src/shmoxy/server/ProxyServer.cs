@@ -42,7 +42,7 @@ public class ProxyServer : IDisposable
     {
         if (_rootCert == null)
             throw new InvalidOperationException("Root certificate not available");
-        
+
         return _rootCert.ExportCertificatePem();
     }
 
@@ -53,7 +53,7 @@ public class ProxyServer : IDisposable
     {
         if (_rootCert == null)
             throw new InvalidOperationException("Root certificate not available");
-        
+
         return _rootCert.Export(X509ContentType.Cert);
     }
 
@@ -64,7 +64,7 @@ public class ProxyServer : IDisposable
     {
         if (_rootCert == null)
             throw new InvalidOperationException("Root certificate not available");
-        
+
         return _rootCert.Export(X509ContentType.Pfx);
     }
 
@@ -356,7 +356,7 @@ public class ProxyServer : IDisposable
         var isLocalhost = host.Equals("localhost", StringComparison.OrdinalIgnoreCase)
                        || host.Equals("127.0.0.1", StringComparison.OrdinalIgnoreCase)
                        || host.Equals("::1", StringComparison.OrdinalIgnoreCase);
-        
+
         return isLocalhost && port == ListeningPort;
     }
 

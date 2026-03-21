@@ -31,7 +31,7 @@ public class ApiKeyAuthenticationMiddleware
         if (RequiresAuthentication(context))
         {
             var apiKey = context.Request.Headers["X-API-Key"].FirstOrDefault();
-            
+
             if (string.IsNullOrEmpty(apiKey) || apiKey != _apiKeyService.ApiKey)
             {
                 context.Response.StatusCode = 401;
@@ -51,7 +51,7 @@ public class ApiKeyAuthenticationMiddleware
 
         var localEndPoint = connectionFeature.LocalIpAddress;
         var remoteEndPoint = connectionFeature.RemoteIpAddress;
-        
+
         if (localEndPoint == null && remoteEndPoint == null)
         {
             return false;

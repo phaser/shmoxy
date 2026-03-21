@@ -36,12 +36,12 @@ public class HealthEndpointTests : IClassFixture<WebApplicationFactory<Program>>
     {
         var response = await _client.GetAsync("/api/health");
         var content = await response.Content.ReadAsStringAsync();
-        
+
         var json = JsonSerializer.Deserialize<JsonElement>(content);
-        
+
         Assert.True(json.TryGetProperty("status", out var status));
         Assert.Equal("Healthy", status.GetString());
-        
+
         Assert.True(json.TryGetProperty("timestamp", out var timestamp));
         Assert.NotEmpty(timestamp.GetString()!);
     }
