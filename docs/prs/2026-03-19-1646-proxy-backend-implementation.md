@@ -267,7 +267,7 @@ public class InspectionHook : IInterceptHook
 
 The shmoxy.api backend project has been moved to a separate PR to keep scope manageable:
 
-**See:** `docs/prs/2026-03-21-xxxx-shmoxy-api-backend.md`
+**See:** `docs/prs/2026-03-21-1035-shmoxy-api-backend.md`
 
 - [ ] Create shmoxy.api project (ASP.NET Core Web API)
 - [ ] ProxyProcessManager - spawn/monitor local proxy child processes
