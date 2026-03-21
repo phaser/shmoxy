@@ -2,7 +2,7 @@ using System.Net.Http;
 using System.Text.Json;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
-using Microsoft.AspNetCore.Hosting.Server.Features;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.DependencyInjection;
 using shmoxy.models.configuration;
 using shmoxy.server;
@@ -18,7 +18,7 @@ public class HttpAdminTests : IAsyncLifetime
     private ProxyServer? _server;
     private InspectionHook? _inspectionHook;
     private CancellationTokenSource? _cts;
-    private IWebHost? _adminHost;
+    private IHost? _adminHost;
     private HttpClient? _adminClient;
     private string? _apiKey;
 
@@ -48,24 +48,27 @@ public class HttpAdminTests : IAsyncLifetime
         
         var testPort = 9091;
         
-        _adminHost = new WebHostBuilder()
-            .UseKestrel(kestrelOptions =>
+        _adminHost = Host.CreateDefaultBuilder()
+            .ConfigureWebHostDefaults(webBuilder =>
             {
-                kestrelOptions.ListenAnyIP(testPort);
-            })
-            .ConfigureServices(services =>
-            {
-                services.AddRouting();
-                services.AddSingleton(stateService);
-                services.AddSingleton(apiKeyService);
-            })
-            .Configure(app =>
-            {
-                app.UseRouting();
-                app.UseMiddleware<ApiKeyAuthenticationMiddleware>();
-                app.UseEndpoints(endpoints =>
+                webBuilder.UseKestrel(kestrelOptions =>
                 {
-                    endpoints.MapProxyControlApi(stateService, config);
+                    kestrelOptions.ListenAnyIP(testPort);
+                })
+                .ConfigureServices(services =>
+                {
+                    services.AddRouting();
+                    services.AddSingleton(stateService);
+                    services.AddSingleton(apiKeyService);
+                })
+                .Configure(app =>
+                {
+                    app.UseRouting();
+                    app.UseMiddleware<ApiKeyAuthenticationMiddleware>();
+                    app.UseEndpoints(endpoints =>
+                    {
+                        endpoints.MapProxyControlApi(stateService, config);
+                    });
                 });
             })
             .Build();
@@ -83,7 +86,7 @@ public class HttpAdminTests : IAsyncLifetime
         
         if (_adminHost != null)
         {
-            await _adminHost.StopAsync(TimeSpan.Zero);
+            await _adminHost.StopAsync(_cts!.Token);
             _adminHost.Dispose();
         }
         

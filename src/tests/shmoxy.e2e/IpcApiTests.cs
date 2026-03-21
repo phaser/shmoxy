@@ -1,7 +1,7 @@
 using System.Net.Http;
 using System.Net.Sockets;
 using System.Text.Json;
-using Microsoft.AspNetCore.Hosting;
+using Microsoft.Extensions.Hosting;
 using shmoxy.models.configuration;
 using shmoxy.server;
 using shmoxy.server.hooks;
@@ -16,7 +16,7 @@ public class IpcApiTests : IAsyncLifetime
     private ProxyServer? _server;
     private InspectionHook? _inspectionHook;
     private CancellationTokenSource? _cts;
-    private IWebHost? _ipcHost;
+    private IHost? _ipcHost;
     private string _socketPath = null!;
     private HttpClient? _ipcClient;
 
@@ -69,7 +69,7 @@ public class IpcApiTests : IAsyncLifetime
         
         if (_ipcHost != null)
         {
-            await _ipcHost.StopAsync(TimeSpan.Zero);
+            await _ipcHost.StopAsync(_cts!.Token);
             _ipcHost.Dispose();
         }
         
