@@ -46,4 +46,5 @@ public class ProxyStateService
 
     public string GetRootCertificatePem() => _proxy.GetRootCertificatePem();
     public byte[] GetRootCertificateDer() => _proxy.GetRootCertificateDer();
+    public byte[] GetRootCertificatePfx() => _proxy.GetRootCertificatePfx();
 }

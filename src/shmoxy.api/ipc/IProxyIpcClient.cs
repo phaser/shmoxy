@@ -19,5 +19,6 @@ public interface IProxyIpcClient
     IAsyncEnumerable<InspectionEvent> GetInspectionStreamAsync(CancellationToken ct = default);
     Task<string> GetRootCertPemAsync(CancellationToken ct = default);
     Task<byte[]> GetRootCertDerAsync(CancellationToken ct = default);
+    Task<byte[]> GetRootCertPfxAsync(CancellationToken ct = default);
     Task<bool> IsHealthyAsync(CancellationToken ct = default);
 }

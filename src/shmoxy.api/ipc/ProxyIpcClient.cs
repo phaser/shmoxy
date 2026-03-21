@@ -183,6 +183,16 @@ public class ProxyIpcClient : IProxyIpcClient, IDisposable
         }, ct);
     }
 
+    public async Task<byte[]> GetRootCertPfxAsync(CancellationToken ct = default)
+    {
+        return await RetryAsync(async () =>
+        {
+            using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            cts.CancelAfter(IpcTimeouts.VeryLong);
+            return await _httpClient.GetByteArrayAsync("/ipc/certs/root.pfx", cts.Token);
+        }, ct);
+    }
+
     public async Task<bool> IsHealthyAsync(CancellationToken ct = default)
     {
         try

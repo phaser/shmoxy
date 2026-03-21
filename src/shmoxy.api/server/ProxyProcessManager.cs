@@ -221,6 +221,46 @@ public class ProxyProcessManager : IProxyProcessManager, IDisposable
         return Task.FromResult(_currentState.State == ProxyProcessState.Running);
     }
 
+    public async Task<string> GetRootCertPemAsync(CancellationToken ct = default)
+    {
+        if (_currentState.State != ProxyProcessState.Running)
+        {
+            throw new InvalidOperationException("Proxy must be running to get certificate");
+        }
+
+        var handler = new HttpClientHandler();
+        var httpClient = new HttpClient(handler)
+        {
+            BaseAddress = new Uri("http://localhost"),
+            Timeout = TimeSpan.FromSeconds(5)
+        };
+
+        var loggerFactory = LoggerFactory.Create(builder => builder.AddConsole());
+        var tempLogger = loggerFactory.CreateLogger<ProxyIpcClient>();
+        var client = new ProxyIpcClient(httpClient, tempLogger);
+        return await client.GetRootCertPemAsync(ct);
+    }
+
+    public async Task<byte[]> GetRootCertDerAsync(CancellationToken ct = default)
+    {
+        if (_currentState.State != ProxyProcessState.Running)
+        {
+            throw new InvalidOperationException("Proxy must be running to get certificate");
+        }
+
+        var handler = new HttpClientHandler();
+        var httpClient = new HttpClient(handler)
+        {
+            BaseAddress = new Uri("http://localhost"),
+            Timeout = TimeSpan.FromSeconds(5)
+        };
+
+        var loggerFactory = LoggerFactory.Create(builder => builder.AddConsole());
+        var tempLogger = loggerFactory.CreateLogger<ProxyIpcClient>();
+        var client = new ProxyIpcClient(httpClient, tempLogger);
+        return await client.GetRootCertDerAsync(ct);
+    }
+
     private void UpdateState(ProxyInstanceState newState)
     {
         var oldState = _currentState;

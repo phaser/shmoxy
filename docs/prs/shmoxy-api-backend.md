@@ -143,9 +143,70 @@ Create the `shmoxy.api` backend project that manages proxy instances (local and 
 - Connectivity validation on registration prevents invalid entries
 
 ### Phase 5: REST API Controllers
-- [ ] ProxiesController (lifecycle management)
-- [ ] ConfigController (configuration)
-- [ ] CertsController (certificate downloads)
+
+#### Phase 5.1: CertsController ✅ COMPLETED
+
+**Endpoint:** `GET /api/proxies/{proxyId}/certs/root?type=[pem|der]`
+
+**Implementation:**
+- ✅ ProxyServer: Added `GetRootCertificatePfx()` method
+- ✅ ProxyControlApi: Added `/ipc/certs/root.pfx` endpoint
+- ✅ IProxyIpcClient: Added `GetRootCertPfxAsync()` method
+- ✅ ProxyIpcClient: Implemented PFX method
+- ✅ ProxyProcessManager: Added cert download methods for local proxy access
+- ✅ CertsController: Single endpoint for local/remote proxy certificate downloads
+- ✅ Tests: 7 unit tests covering local and remote scenarios
+
+**Design Decisions:**
+- No PFX download (root CA should not distribute private key)
+- No caching headers (users naturally cache after 1-2 downloads)
+- Unified route pattern (local = "local", remote = GUID)
+- Default to PEM format (most common use case)
+- Content-Disposition header for download hint
+
+**Files:**
+- ✅ `src/shmoxy/server/ProxyServer.cs` - Added PFX export method
+- ✅ `src/shmoxy/ipc/ProxyControlApi.cs` - Added PFX endpoint
+- ✅ `src/shmoxy.api/ipc/IProxyIpcClient.cs` - Added PFX method
+- ✅ `src/shmoxy.api/ipc/ProxyIpcClient.cs` - Implemented PFX method
+- ✅ `src/shmoxy.api/server/IProxyProcessManager.cs` - Added cert methods
+- ✅ `src/shmoxy.api/server/ProxyProcessManager.cs` - Implemented cert methods
+- ✅ `src/shmoxy.api/Controllers/CertsController.cs` - REST controller
+- ✅ `src/tests/shmoxy.api.tests/Controllers/CertsControllerTests.cs` - Unit tests
+
+**Test Results:** 55 tests passing
+
+**Endpoint:** `GET /api/proxies/{proxyId}/certs/root?type=[pem|der]`
+
+**Implementation Plan:**
+1. Proxy Server: Add `GetRootCertificatePfx()` method
+2. ProxyControlApi: Add `/ipc/certs/root.pfx` endpoint
+3. IProxyIpcClient: Add `GetRootCertPfxAsync()` method
+4. ProxyProcessManager: Add cert download methods for local proxy access
+5. CertsController: Single endpoint for local/remote proxy certificate downloads
+6. Tests: 8 unit tests covering local and remote scenarios
+
+**Design Decisions:**
+- No PFX download (root CA should not distribute private key)
+- No caching headers (users naturally cache after 1-2 downloads)
+- Unified route pattern (local = "local", remote = GUID)
+- Default to PEM format (most common use case)
+- Content-Disposition header for download hint
+
+**Files:**
+- [ ] `src/shmoxy/server/ProxyServer.cs` - Add PFX export method
+- [ ] `src/shmoxy/ipc/ProxyControlApi.cs` - Add PFX endpoint
+- [ ] `src/shmoxy.api/ipc/IProxyIpcClient.cs` - Add PFX method
+- [ ] `src/shmoxy.api/ipc/ProxyIpcClient.cs` - Implement PFX method
+- [ ] `src/shmoxy.api/server/IProxyProcessManager.cs` - Add cert methods
+- [ ] `src/shmoxy.api/server/ProxyProcessManager.cs` - Implement cert methods
+- [ ] `src/shmoxy.api/Controllers/CertsController.cs` - REST controller
+- [ ] `src/tests/shmoxy.api.tests/Controllers/CertsControllerTests.cs` - Unit tests
+
+---
+
+#### Remaining Phase 5 Controllers
+- [ ] ConfigController (configuration management)
 - [ ] InspectionController (SSE streaming)
 
 ### Phase 6: Tests

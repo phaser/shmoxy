@@ -8,5 +8,7 @@ public interface IProxyProcessManager
     Task StopAsync(CancellationToken ct = default);
     Task<ProxyInstanceState?> GetStateAsync();
     Task<bool> IsRunningAsync();
+    Task<string> GetRootCertPemAsync(CancellationToken ct = default);
+    Task<byte[]> GetRootCertDerAsync(CancellationToken ct = default);
     event EventHandler<ProxyInstanceState>? OnStateChanged;
 }

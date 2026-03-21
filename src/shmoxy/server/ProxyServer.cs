@@ -58,6 +58,17 @@ public class ProxyServer : IDisposable
     }
 
     /// <summary>
+    /// Gets the root CA certificate in PFX format (for internal IPC use only).
+    /// </summary>
+    public byte[] GetRootCertificatePfx()
+    {
+        if (_rootCert == null)
+            throw new InvalidOperationException("Root certificate not available");
+        
+        return _rootCert.Export(X509ContentType.Pfx);
+    }
+
+    /// <summary>
     /// Creates a new proxy server with default configuration.
     /// </summary>
     public ProxyServer() : this(new ProxyConfig()) { }

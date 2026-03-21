@@ -103,11 +103,24 @@ public static class ProxyControlApi
             try
             {
                 var der = stateService.GetRootCertificateDer();
-                return Results.File(der, "application/x-x509-ca-cert");
+                return Results.File(der, "application/x-x509-ca-cert", "shmoxy-root-ca.der");
             }
             catch (Exception ex)
             {
-                return Results.Problem(ex.Message);
+                return Results.Problem(ex.Message, statusCode: 500);
+            }
+        });
+
+        endpoints.MapGet("/ipc/certs/root.pfx", () =>
+        {
+            try
+            {
+                var pfx = stateService.GetRootCertificatePfx();
+                return Results.File(pfx, "application/x-pkcs12", "shmoxy-root-ca.pfx");
+            }
+            catch (Exception ex)
+            {
+                return Results.Problem(ex.Message, statusCode: 500);
             }
         });
 
