@@ -1,0 +1,89 @@
+@inherits LayoutComponentBase
+@inject IJSRuntime JS
+
+<FluentLayout>
+    <FluentHeader>
+        <span>Shmoxy</span>
+        <FluentSpacer />
+        <FluentButton Appearance="Appearance.Stealth" OnClick="@ToggleTheme"
+                      Title="@(isDarkMode ? "Switch to light mode" : "Switch to dark mode")">
+            @themeIcon
+        </FluentButton>
+    </FluentHeader>
+
+    <FluentBodyContent>
+        <FluentStack Orientation="Orientation.Horizontal" Style="height: 100%;">
+            <nav class="sidebar">
+                <FluentNavMenu Width="220">
+                    <FluentNavLink Href="/" Match="NavLinkMatch.All"
+                                   Icon="@(new Icons.Regular.Size20.Home())">
+                        Home
+                    </FluentNavLink>
+                    <FluentNavLink Href="/proxy-config"
+                                   Icon="@(new Icons.Regular.Size20.Settings())">
+                        Proxy Config
+                    </FluentNavLink>
+                    <FluentNavLink Href="/inspection"
+                                   Icon="@(new Icons.Regular.Size20.Search())">
+                        Inspection
+                    </FluentNavLink>
+                </FluentNavMenu>
+            </nav>
+
+            <FluentStack Orientation="Orientation.Vertical" Style="flex: 1; overflow-y: auto; padding: 1rem;">
+                @Body
+            </FluentStack>
+        </FluentStack>
+    </FluentBodyContent>
+</FluentLayout>
+
+<FluentToastProvider />
+<FluentDialogProvider />
+<FluentTooltipProvider />
+
+@code {
+    private string themeIcon = "☀️";
+    private bool isDarkMode = true;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            try
+            {
+                var preferredTheme = await JS.InvokeAsync<string?>("getLocalStorage", "preferred-theme");
+                if (!string.IsNullOrEmpty(preferredTheme))
+                {
+                    isDarkMode = preferredTheme == "dark";
+                }
+                else
+                {
+                    isDarkMode = await JS.InvokeAsync<bool>("matchMediaQuery", "(prefers-color-scheme: dark)");
+                }
+
+                themeIcon = isDarkMode ? "☀️" : "🌙";
+                await ApplyThemeAsync();
+                StateHasChanged();
+            }
+            catch
+            {
+                isDarkMode = true;
+                themeIcon = "☀️";
+            }
+        }
+    }
+
+    private async Task ToggleTheme()
+    {
+        isDarkMode = !isDarkMode;
+        themeIcon = isDarkMode ? "☀️" : "🌙";
+        await JS.InvokeVoidAsync("setLocalStorage", "preferred-theme", isDarkMode ? "dark" : "light");
+        await ApplyThemeAsync();
+    }
+
+    private async Task ApplyThemeAsync()
+    {
+        var theme = isDarkMode ? "dark" : "light";
+        await JS.InvokeVoidAsync("applyTheme", theme);
+    }
+}

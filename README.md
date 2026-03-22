@@ -59,6 +59,39 @@ nix build .#shmoxy
 
 The executable will be at `result/bin/shmoxy`.
 
+## Blazor Frontend
+
+The project includes a Blazor Server-based web UI for managing proxies and inspecting requests. It's served from the `shmoxy-api` project.
+
+### Running with Frontend
+
+```bash
+# From src directory (includes API + Frontend)
+cd src/shmoxy.api
+
+# Run with Blazor frontend enabled
+dotnet run
+```
+
+The web UI will be available at `https://localhost:5001`. The default theme is dark mode, but you can toggle to light mode using the sun/moon button in the top-right corner.
+
+### Frontend Features
+
+- **Dashboard** - Overview of proxy status and quick access to features
+- **Proxy Configuration** - Configure host, port, HTTPS interception settings
+- **Request Inspection** - View intercepted requests/responses with headers and bodies
+- **Theme Toggle** - Switch between dark and light modes (persists in localStorage)
+
+### Frontend Development
+
+```bash
+# Build the frontend project specifically
+dotnet build src/shmoxy.frontend/shmoxy.frontend.csproj
+
+# Run just for development (from shmoxy.api which hosts it)
+dotnet run --project src/shmoxy.api
+```
+
 ## Proxy Usage
 
 Configure your HTTP client to use the proxy:

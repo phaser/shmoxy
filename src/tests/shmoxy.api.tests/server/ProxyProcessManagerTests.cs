@@ -167,13 +167,13 @@ public class ProxyProcessManagerTests
     }
 
     [Fact]
-    public void Dispose_DoesNotThrow()
+    public async Task Dispose_DoesNotThrow()
     {
         var manager = new ProxyProcessManager(_mockLogger.Object, _mockIpcClient.Object, _mockConfig.Object);
 
         manager.Dispose();
 
-        var state = manager.GetStateAsync().Result;
+        var state = await manager.GetStateAsync();
         Assert.NotNull(state);
         Assert.Equal(ProxyProcessState.Stopped, state.State);
     }

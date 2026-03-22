@@ -1,0 +1,218 @@
+@page "/proxy-config"
+@inject ApiClient ApiClient
+
+<h1>Proxy Configuration</h1>
+
+<p class="description">Configure the proxy server that intercepts and inspects traffic.</p>
+
+<div class="config-container">
+    <FluentCard>
+        <div class="card-header">
+            <FluentIcon Value="@(new Icons.Regular.Size20.Settings())" />
+            <h2>Proxy Settings</h2>
+        </div>
+
+        <div class="form-content">
+            <FluentTextField Label="Host" Placeholder="localhost" @bind-Value="config.Host" Required="true" />
+
+            <FluentNumberField Label="Port" Min="1" Max="65535" TValue="int" @bind-Value="config.Port" />
+
+            <FluentSwitch Label="Enable HTTPS interception" @bind-Value="config.EnableHttps" />
+
+            <FluentTextField Label="Certificate Path (optional)" Placeholder="/path/to/cert.pem" @bind-Value="config.CertificatePath" />
+        </div>
+
+        <div class="card-footer">
+            <FluentButton Appearance="Appearance.Accent" OnClick="@SaveConfig">
+                Save Configuration
+            </FluentButton>
+
+            @if (saveMessage is not null)
+            {
+                <span class="message @(saveMessageType == MessageType.Success ? "success" : "error")">
+                    @saveMessage
+                </span>
+            }
+        </div>
+    </FluentCard>
+
+    <FluentCard>
+        <div class="card-header">
+            <FluentIcon Value="@(new Icons.Regular.Size20.Status())" />
+            <h2>Proxy Status</h2>
+        </div>
+
+        <div class="status-content">
+            @if (proxyStatus is not null)
+            {
+                <table class="status-table">
+                    <tr>
+                        <td>Status:</td>
+                        <td>
+                            <span class="status-badge @(proxyStatus.IsRunning ? "running" : "stopped")">
+                                @(proxyStatus.IsRunning ? "Running" : "Stopped")
+                            </span>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td>Address:</td>
+                        <td>@(proxyStatus.Address ?? "N/A")</td>
+                    </tr>
+                    <tr>
+                        <td>Requests:</td>
+                        <td>@proxyStatus.RequestCount</td>
+                    </tr>
+                </table>
+
+                @if (!string.IsNullOrEmpty(proxyStatus.ErrorMessage))
+                {
+                    <span class="error-text">@proxyStatus.ErrorMessage</span>
+                }
+            }
+            else
+            {
+                <p class="loading">Loading status...</p>
+            }
+        </div>
+    </FluentCard>
+</div>
+
+@code {
+    private FrontendProxyConfig config = new();
+    private FrontendProxyStatus? proxyStatus;
+    private string? saveMessage;
+    private MessageType saveMessageType = MessageType.Info;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadConfig();
+        await LoadStatus();
+    }
+
+    private async Task LoadConfig()
+    {
+        try
+        {
+            config = await ApiClient.GetProxyConfigAsync();
+        }
+        catch (Exception ex)
+        {
+            saveMessage = $"Failed to load configuration: {ex.Message}";
+            saveMessageType = MessageType.Error;
+        }
+    }
+
+    private async Task LoadStatus()
+    {
+        try
+        {
+            proxyStatus = await ApiClient.GetProxyStatusAsync();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Failed to load status: {ex.Message}");
+        }
+    }
+
+    private async Task SaveConfig()
+    {
+        try
+        {
+            await ApiClient.SaveProxyConfigAsync(config);
+            saveMessage = "Configuration saved successfully!";
+            saveMessageType = MessageType.Success;
+            await LoadStatus();
+        }
+        catch (Exception ex)
+        {
+            saveMessage = $"Failed to save configuration: {ex.Message}";
+            saveMessageType = MessageType.Error;
+        }
+    }
+
+    private enum MessageType
+    {
+        Success,
+        Error,
+        Info
+    }
+}
+
+<style>
+.config-container {
+    display: grid;
+    gap: 1rem;
+    max-width: 800px;
+}
+
+.card-header {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 1rem;
+}
+
+.form-content {
+    display: grid;
+    gap: 1rem;
+    padding: 0 1rem;
+}
+
+.card-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding-top: 1rem;
+    border-top: 1px solid var(--neutral-stroke-divider);
+}
+
+.status-content {
+    padding: 1rem;
+}
+
+.status-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.status-table td {
+    padding: 0.5rem;
+}
+
+.status-badge {
+    display: inline-block;
+    padding: 0.25rem 0.75rem;
+    border-radius: 4px;
+    font-size: 0.875rem;
+    font-weight: 600;
+}
+
+.status-badge.running {
+    color: var(--accent-foreground-rest);
+}
+
+.status-badge.stopped {
+    color: var(--neutral-foreground-rest);
+}
+
+.error-text {
+    color: var(--error);
+}
+
+.message {
+    padding: 0.5rem;
+    border-radius: 4px;
+}
+
+.message.success {
+    color: var(--accent-foreground-rest);
+}
+
+.message.error {
+    color: var(--error);
+}
+
+.loading {
+    color: var(--neutral-foreground-hover);
+}
+</style>

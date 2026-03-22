@@ -1,0 +1,121 @@
+@page "/inspection"
+@inject ApiClient ApiClient
+
+<h1>Request Inspection</h1>
+
+<p class="description">View and analyze intercepted requests and responses.</p>
+
+<div class="inspection-container">
+    <div class="filters">
+        <FluentTextField Placeholder="Search requests..." @bind-Value="searchQuery"
+                         @bind-Value:after="ApplyFilters" />
+
+        <FluentSelect TOption="string" @bind-Value="methodFilter"
+                      @bind-Value:after="ApplyFilters" Label="Method">
+            <FluentOption TOption="string" Value="@("")">All Methods</FluentOption>
+            <FluentOption TOption="string" Value="GET">GET</FluentOption>
+            <FluentOption TOption="string" Value="POST">POST</FluentOption>
+            <FluentOption TOption="string" Value="PUT">PUT</FluentOption>
+            <FluentOption TOption="string" Value="DELETE">DELETE</FluentOption>
+            <FluentOption TOption="string" Value="PATCH">PATCH</FluentOption>
+        </FluentSelect>
+
+        <FluentButton Appearance="Appearance.Accent" OnClick="@LoadRequests">
+            Refresh
+        </FluentButton>
+    </div>
+
+    @if (loading)
+    {
+        <div class="loading-indicator">
+            <FluentProgressRing />
+            <span>Loading requests...</span>
+        </div>
+    }
+    else if (filteredRequests.Count > 0)
+    {
+        <FluentDataGrid Items="@filteredRequests.AsQueryable()" GridTemplateColumns="0.5fr 2fr 0.5fr 0.5fr">
+            <PropertyColumn Property="@(r => r.Method)" Title="Method" />
+            <PropertyColumn Property="@(r => r.Url)" Title="URL" />
+            <PropertyColumn Property="@(r => r.StatusCode)" Title="Status" />
+            <PropertyColumn Property="@(r => r.Timestamp.ToString("HH:mm:ss"))" Title="Time" />
+        </FluentDataGrid>
+    }
+    else
+    {
+        <p class="no-results">No requests found.</p>
+    }
+</div>
+
+@code {
+    private List<InspectionRequestInfo> requests = new();
+    private List<InspectionRequestInfo> filteredRequests = new();
+    private string searchQuery = "";
+    private string methodFilter = "";
+    private bool loading;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadRequests();
+    }
+
+    private async Task LoadRequests()
+    {
+        loading = true;
+        StateHasChanged();
+
+        try
+        {
+            requests = await ApiClient.GetRequestHistoryAsync();
+            ApplyFilters();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Failed to load requests: {ex.Message}");
+        }
+        finally
+        {
+            loading = false;
+        }
+    }
+
+    private void ApplyFilters()
+    {
+        filteredRequests = requests
+            .Where(req =>
+                string.IsNullOrEmpty(searchQuery) ||
+                req.Url.Contains(searchQuery, StringComparison.OrdinalIgnoreCase) ||
+                req.Method.Contains(searchQuery, StringComparison.OrdinalIgnoreCase))
+            .Where(req =>
+                string.IsNullOrEmpty(methodFilter) || req.Method == methodFilter)
+            .OrderByDescending(r => r.Timestamp)
+            .ToList();
+    }
+}
+
+<style>
+.inspection-container {
+    max-width: 1200px;
+}
+
+.filters {
+    display: flex;
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+    align-items: flex-end;
+    flex-wrap: wrap;
+}
+
+.loading-indicator, .no-results {
+    text-align: center;
+    padding: 2rem;
+    color: var(--neutral-foreground-hover);
+}
+
+.loading-indicator {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.5rem;
+}
+</style>

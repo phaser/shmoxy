@@ -60,7 +60,7 @@ public class CertsControllerTests
         var result = await _controller.GetRootCertificate("local", "pfx");
 
         var badRequest = Assert.IsType<BadRequestObjectResult>(result);
-        Assert.Contains("Invalid type", badRequest.Value.ToString());
+        Assert.Contains("Invalid type", badRequest.Value?.ToString() ?? "");
     }
 
     [Fact]
@@ -72,7 +72,7 @@ public class CertsControllerTests
         var result = await _controller.GetRootCertificate("local", "pem");
 
         var badRequest = Assert.IsType<BadRequestObjectResult>(result);
-        Assert.Contains("must be running", badRequest.Value.ToString());
+        Assert.Contains("must be running", badRequest.Value?.ToString() ?? "");
     }
 
     [Fact]
@@ -103,6 +103,6 @@ public class CertsControllerTests
         var result = await _controller.GetRootCertificate("nonexistent", "pem");
 
         var notFound = Assert.IsType<NotFoundObjectResult>(result);
-        Assert.Contains("not found", notFound.Value.ToString());
+        Assert.Contains("not found", notFound.Value?.ToString() ?? "");
     }
 }
