@@ -1,0 +1,66 @@
+@page "/"
+
+<h1>Shmoxy Dashboard</h1>
+
+<div class="dashboard-cards">
+    <FluentCard>
+        <div class="card-content">
+            <FluentIcon Value="@(new Icons.Regular.Size24.Server())" />
+            <h2>Proxy Server</h2>
+            <p class="description">Manage your proxy configurations and monitor active proxies.</p>
+            <FluentAnchor Href="/proxy-config" Appearance="Appearance.Accent">
+                Configure Proxies
+            </FluentAnchor>
+        </div>
+    </FluentCard>
+
+    <FluentCard>
+        <div class="card-content">
+            <FluentIcon Value="@(new Icons.Regular.Size24.DocumentSearch())" />
+            <h2>Request Inspection</h2>
+            <p class="description">View and analyze intercepted requests and responses.</p>
+            <FluentAnchor Href="/inspection" Appearance="Appearance.Accent">
+                Open Inspector
+            </FluentAnchor>
+        </div>
+    </FluentCard>
+
+    <FluentCard>
+        <div class="card-content">
+            <FluentIcon Value="@(new Icons.Regular.Size24.DocumentBulletList())" />
+            <h2>Documentation</h2>
+            <p class="description">Learn how to use Shmoxy for testing and debugging.</p>
+            <FluentButton Appearance="Appearance.Neutral" OnClick="@OpenDocs">
+                Read Docs
+            </FluentButton>
+        </div>
+    </FluentCard>
+</div>
+
+@code {
+    private void OpenDocs()
+    {
+        // TODO: Navigate to documentation page or external docs
+    }
+}
+
+<style>
+.dashboard-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 1rem;
+    margin-top: 2rem;
+}
+
+.card-content {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    gap: 1rem;
+}
+
+.description {
+    color: var(--neutral-foreground-hover);
+}
+</style>

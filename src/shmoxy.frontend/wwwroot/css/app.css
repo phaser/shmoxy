@@ -1,0 +1,143 @@
+:root {
+    --page-background: var(--layer-luminosity-subtle);
+    --sidebar-width: 250px;
+}
+
+* {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, 'Roboto', sans-serif;
+    background-color: var(--layer-1);
+    color: var(--neutral-foreground-rest);
+}
+
+.page {
+    display: flex;
+    min-height: 100vh;
+}
+
+.sidebar {
+    width: var(--sidebar-width);
+    background-color: var(--layer-luminosity-subtle);
+    border-right: 1px solid var(--neutral-stroke-divider);
+    padding: 1rem;
+}
+
+.content {
+    flex: 1;
+    overflow-y: auto;
+}
+
+.top-row {
+    height: 3.5rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background-color: var(--layer-luminosity-subtle);
+    border-bottom: 1px solid var(--neutral-stroke-divider);
+}
+
+.top-row a {
+    color: var(--accent-foreground-rest);
+    text-decoration: none;
+}
+
+.top-row a:hover {
+    text-decoration: underline;
+}
+
+.theme-toggle-btn {
+    font-size: 1.5rem;
+    padding: 0.5rem;
+}
+
+.navigation {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+.nav-item {
+    margin-bottom: 0.25rem;
+}
+
+.nav-scrollable {
+    height: calc(100vh - 3.5rem);
+    overflow-y: auto;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: var(--neutral-fill-layer);
+}
+
+::-webkit-scrollbar-thumb {
+    background: var(--neutral-stroke-hover);
+    border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: var(--neutral-stroke-active);
+}
+
+/* Table styling */
+table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+th, td {
+    padding: 0.5rem;
+    text-align: left;
+    border-bottom: 1px solid var(--neutral-stroke-divider);
+}
+
+th {
+    font-weight: bold;
+    background-color: var(--layer-luminosity-subtle);
+}
+
+tr:hover {
+    background-color: var(--neutral-fill-hover);
+}
+
+/* Form styling */
+input, select, textarea {
+    font-family: inherit;
+    font-size: 1rem;
+}
+
+/* Code blocks */
+code {
+    font-family: 'Consolas', 'Monaco', monospace;
+    background-color: var(--neutral-fill-subtle);
+    padding: 0.25rem 0.5rem;
+    border-radius: 4px;
+}
+
+pre {
+    font-family: inherit;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .sidebar {
+        width: 100%;
+        border-right: none;
+        border-bottom: 1px solid var(--neutral-stroke-divider);
+    }
+
+    .page {
+        flex-direction: column-reverse;
+    }
+}

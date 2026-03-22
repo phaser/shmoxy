@@ -87,7 +87,7 @@ public class ProxiesControllerTests
 
         var actionResult = Assert.IsType<ActionResult<ProxyInstanceState>>(result);
         var badRequestResult = Assert.IsType<BadRequestObjectResult>(actionResult.Result);
-        Assert.Contains("Message", badRequestResult.Value.ToString());
+        Assert.Contains("Message", badRequestResult.Value?.ToString() ?? "");
     }
 
     [Fact]
@@ -112,7 +112,7 @@ public class ProxiesControllerTests
         var result = await _controller.StopProxy(CancellationToken.None);
 
         var okResult = Assert.IsType<OkObjectResult>(result);
-        Assert.Contains("Message", okResult.Value.ToString());
+        Assert.Contains("Message", okResult.Value?.ToString() ?? "");
     }
 
     [Fact]

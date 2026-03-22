@@ -11,7 +11,6 @@ namespace shmoxy.api.tests.server;
 public class RemoteProxyRegistryTests : IDisposable
 {
     private readonly ProxiesDbContext _dbContext;
-    private readonly Mock<IProxyIpcClient> _mockIpcClient;
     private readonly Mock<ILogger<RemoteProxyRegistry>> _mockLogger;
     private readonly RemoteProxyRegistry _registry;
 

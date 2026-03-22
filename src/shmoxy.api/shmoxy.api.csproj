@@ -4,10 +4,15 @@
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <!-- Required so the SDK includes _framework/blazor.web.js in static assets,
+         since this project hosts Blazor Server components from the RCL
+         (normally auto-detected from .razor files, but ours are in the RCL) -->
+    <RequiresAspNetWebAssets>true</RequiresAspNetWebAssets>
   </PropertyGroup>
 
   <ItemGroup>
     <ProjectReference Include="../shmoxy.shared/shmoxy.shared.csproj" />
+    <ProjectReference Include="../shmoxy.frontend/shmoxy.frontend.csproj" />
   </ItemGroup>
 
   <ItemGroup>
