@@ -114,7 +114,100 @@
 - `src/shmoxy.api/shmoxy.api.csproj` - add reference to shmoxy.frontend
 - `src/shmoxy.api/Program.cs` - call AddBlazorFrontend() and MapBlazorFrontend()
 
+## Running the Application
+
+```bash
+cd src/shmoxy.api
+dotnet run
+```
+
+The API starts on `https://localhost:5001` (or `http://localhost:5000`) by default. The Blazor frontend is served from the same host — navigate to the root URL in your browser to access the UI.
+
+### Pages
+
+- `/` — Dashboard with links to proxy config and inspection
+- `/proxy-config` — Configure proxy host, port, HTTPS interception
+- `/inspection` — View intercepted requests with method/status filtering
+
+### Theme
+
+Dark mode is the default. Click the sun/moon toggle in the header to switch. The preference is persisted in browser localStorage.
+
+## Implementation Status (as of 2026-03-22)
+
+### Phase 1: Project Structure - COMPLETE
+- [x] Created `src/shmoxy.frontend/shmoxy.frontend.csproj` as Razor Class Library (Microsoft.NET.Sdk.Razor)
+- [x] Updated `src/shmoxy.slnx` with project references
+- [x] Created `tests/shmoxy.frontend.tests/shmoxy.frontend.tests.csproj`
+
+### Phase 2: Blazor Server Configuration - COMPLETE
+- [x] Created `extensions/FluentUiBlazorConfiguration.cs` with `AddBlazorFrontend()` / `MapBlazorFrontend()` extension methods
+- [x] Uses .NET 8+ APIs: `AddRazorComponents().AddInteractiveServerComponents()` / `MapRazorComponents<App>()`
+- [x] Updated `shmoxy.api/Program.cs` to call extension methods
+
+### Phase 3: UI Implementation - COMPLETE
+- [x] Created `App.razor` root component (full HTML document host with `RenderMode.InteractiveServer`)
+- [x] Created `Routes.razor` with Router and fallback
+- [x] Created `layout/MainLayout.razor` with FluentUI nav menu, header, and theme toggle
+- [x] Created `pages/Home.razor` — Dashboard with FluentCard links
+- [x] Created `pages/ProxyConfig.razor` — Config form with FluentTextField, FluentNumberField, FluentSwitch
+- [x] Created `pages/Inspection.razor` — Request grid with FluentDataGrid, FluentSelect filters
+- [x] Theme persistence via localStorage with JS interop (`wwwroot/js/app.js`)
+
+### Phase 4: Integration - COMPLETE
+- [x] Created `services/ThemeService.cs` for theme management
+- [x] Created `services/ApiClient.cs` for API communication
+- [x] Model types split into separate files under `models/`
+- [x] Configured DI container with scoped ApiClient
+
+### Phase 5: Testing Infrastructure - COMPLETE
+- [x] Created `FrontendTestFixture.cs` with WebApplicationFactory + Playwright
+- [x] Created `ThemeSwitchingTests.cs` with theme toggle, navigation, and dashboard card tests
+
+### Phase 6: Bug Fixes and Cleanup - COMPLETE
+- [x] Fixed project SDK: changed from `Microsoft.NET.Sdk.Web` to `Microsoft.NET.Sdk.Razor`
+- [x] Fixed .NET 8+ Blazor Server APIs (replaced `AddServerSideBlazor`/`MapBlazorHub` with `MapRazorComponents`)
+- [x] Fixed all FluentUI v4 component usage (Icon, Card, Button, DataGrid, Select, etc.)
+- [x] Fixed `@bind-Value` syntax (was `Bind-Value`)
+- [x] Removed invalid `IJSRuntime.Dispose()` from ThemeService
+- [x] Changed `FrontendProxyConfig` from record to class (mutable props for two-way binding)
+- [x] Removed unused NavMenu component
+- [x] Removed unnecessary `wwwroot/index.html` (App.razor is the host)
+- [x] Fixed pre-existing warnings in `shmoxy.api.tests` (null dereferences, unused field, blocking `.Result`)
+- [x] Renamed all frontend directories to lowercase
+- [x] Added `<RequiresAspNetWebAssets>true</RequiresAspNetWebAssets>` to shmoxy.api.csproj (required because the host has no .razor files — without this, `_framework/blazor.web.js` is missing from static assets and Blazor interactivity doesn't work)
+- [x] Added `app.MapStaticAssets()` for .NET 10 static asset serving (required to serve `_framework/blazor.web.js`)
+- [x] Test fixture sets `ASPNETCORE_APPLICATIONNAME=shmoxy.api` so static web assets manifest is found from test bin directory
+- [x] Added `launchSettings.json` for Development environment in IDE
+
+### Files Created
+- `src/shmoxy.frontend/App.razor` — Root component
+- `src/shmoxy.frontend/Routes.razor` — Router
+- `src/shmoxy.frontend/_Imports.razor` — Global usings
+- `src/shmoxy.frontend/extensions/FluentUiBlazorConfiguration.cs`
+- `src/shmoxy.frontend/layout/MainLayout.razor`
+- `src/shmoxy.frontend/pages/Home.razor`
+- `src/shmoxy.frontend/pages/ProxyConfig.razor`
+- `src/shmoxy.frontend/pages/Inspection.razor`
+- `src/shmoxy.frontend/services/ApiClient.cs`
+- `src/shmoxy.frontend/services/ThemeService.cs`
+- `src/shmoxy.frontend/models/FrontendProxyConfig.cs`
+- `src/shmoxy.frontend/models/FrontendProxyStatus.cs`
+- `src/shmoxy.frontend/models/ProxyInfo.cs`
+- `src/shmoxy.frontend/models/InspectionRequestInfo.cs`
+- `src/shmoxy.frontend/wwwroot/css/app.css`
+- `src/shmoxy.frontend/wwwroot/js/app.js`
+- `tests/shmoxy.frontend.tests/FrontendTestFixture.cs`
+- `tests/shmoxy.frontend.tests/ThemeSwitchingTests.cs`
+
+### Files Modified
+- `src/shmoxy.slnx` — Added shmoxy.frontend and test project references
+- `src/shmoxy.api/Program.cs` — Calls `AddBlazorFrontend()` / `MapBlazorFrontend()`
+- `src/shmoxy.api/shmoxy.api.csproj` — Added project reference to shmoxy.frontend
+- `tests/shmoxy.api.tests/` — Fixed pre-existing compiler warnings
+
 ## Verification
-- `dotnet build` succeeds with no warnings
-- `dotnet test` passes all tests including new theme switching test
-- FluentUI components render correctly in both themes
+- [x] `dotnet build` succeeds with zero warnings and zero errors
+- [x] `dotnet test` — all 105 tests pass (10 shmoxy.tests + 63 shmoxy.api.tests + 4 shmoxy.frontend.tests + 28 shmoxy.e2e)
+- [x] Manual: start API, navigate to UI, verify pages render with FluentUI styling
+- [x] Manual: theme toggle works (verified via Playwright test clicking button and checking localStorage)
