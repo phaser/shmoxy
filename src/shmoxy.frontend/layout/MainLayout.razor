@@ -1,89 +1,69 @@
 @inherits LayoutComponentBase
-@inject IJSRuntime JS
+@inject ThemeState ThemeState
+@implements IDisposable
 
-<FluentLayout>
-    <FluentHeader>
-        <span>Shmoxy</span>
-        <FluentSpacer />
-        <FluentButton Appearance="Appearance.Stealth" OnClick="@ToggleTheme"
-                      Title="@(isDarkMode ? "Switch to light mode" : "Switch to dark mode")">
-            @themeIcon
-        </FluentButton>
-    </FluentHeader>
+<FluentDesignTheme @ref="_theme" @bind-Mode="_mode" StorageName="preferred-theme" />
 
-    <FluentBodyContent>
-        <FluentStack Orientation="Orientation.Horizontal" Style="height: 100%;">
-            <nav class="sidebar">
-                <FluentNavMenu Width="220">
-                    <FluentNavLink Href="/" Match="NavLinkMatch.All"
-                                   Icon="@(new Icons.Regular.Size20.Home())">
-                        Home
-                    </FluentNavLink>
-                    <FluentNavLink Href="/proxy-config"
-                                   Icon="@(new Icons.Regular.Size20.Settings())">
-                        Proxy Config
-                    </FluentNavLink>
-                    <FluentNavLink Href="/inspection"
-                                   Icon="@(new Icons.Regular.Size20.Search())">
-                        Inspection
-                    </FluentNavLink>
-                </FluentNavMenu>
-            </nav>
+<div class="layout">
+    <header class="header">
+        <div class="header-left">
+            <FluentIcon Value="@(new Icons.Regular.Size24.Globe())" Color="Color.Custom" CustomColor="#7B3FF2" />
+            <span class="header-title">Shmoxy</span>
+        </div>
+        <div class="header-right">
+            <FluentAnchor Href="/settings" Appearance="Appearance.Stealth" Title="Settings">
+                <FluentIcon Value="@(new Icons.Regular.Size20.Settings())" />
+            </FluentAnchor>
+        </div>
+    </header>
 
-            <FluentStack Orientation="Orientation.Vertical" Style="flex: 1; overflow-y: auto; padding: 1rem;">
-                @Body
-            </FluentStack>
-        </FluentStack>
-    </FluentBodyContent>
-</FluentLayout>
+    <div class="body">
+        <nav class="icon-sidebar">
+            <NavLink href="/" Match="NavLinkMatch.All" class="nav-item" title="Home">
+                <FluentIcon Value="@(new Icons.Regular.Size20.Home())" />
+                <span>Home</span>
+            </NavLink>
+            <NavLink href="/proxy-config" Match="NavLinkMatch.Prefix" class="nav-item" title="Proxy Config">
+                <FluentIcon Value="@(new Icons.Regular.Size20.Server())" />
+                <span>Proxy</span>
+            </NavLink>
+            <NavLink href="/inspection" Match="NavLinkMatch.Prefix" class="nav-item" title="Inspection">
+                <FluentIcon Value="@(new Icons.Regular.Size20.DocumentSearch())" />
+                <span>Inspection</span>
+            </NavLink>
+            <NavLink href="/settings" Match="NavLinkMatch.Prefix" class="nav-item" title="Settings">
+                <FluentIcon Value="@(new Icons.Regular.Size20.Settings())" />
+                <span>Settings</span>
+            </NavLink>
+        </nav>
+
+        <main class="content">
+            @Body
+        </main>
+    </div>
+</div>
 
 <FluentToastProvider />
 <FluentDialogProvider />
 <FluentTooltipProvider />
 
 @code {
-    private string themeIcon = "☀️";
-    private bool isDarkMode = true;
+    private FluentDesignTheme? _theme;
+    private DesignThemeModes _mode = DesignThemeModes.Dark;
 
-    protected override async Task OnAfterRenderAsync(bool firstRender)
+    protected override void OnInitialized()
     {
-        if (firstRender)
-        {
-            try
-            {
-                var preferredTheme = await JS.InvokeAsync<string?>("getLocalStorage", "preferred-theme");
-                if (!string.IsNullOrEmpty(preferredTheme))
-                {
-                    isDarkMode = preferredTheme == "dark";
-                }
-                else
-                {
-                    isDarkMode = await JS.InvokeAsync<bool>("matchMediaQuery", "(prefers-color-scheme: dark)");
-                }
-
-                themeIcon = isDarkMode ? "☀️" : "🌙";
-                await ApplyThemeAsync();
-                StateHasChanged();
-            }
-            catch
-            {
-                isDarkMode = true;
-                themeIcon = "☀️";
-            }
-        }
+        ThemeState.OnChange += OnThemeStateChanged;
     }
 
-    private async Task ToggleTheme()
+    private void OnThemeStateChanged()
     {
-        isDarkMode = !isDarkMode;
-        themeIcon = isDarkMode ? "☀️" : "🌙";
-        await JS.InvokeVoidAsync("setLocalStorage", "preferred-theme", isDarkMode ? "dark" : "light");
-        await ApplyThemeAsync();
+        _mode = ThemeState.Mode;
+        InvokeAsync(StateHasChanged);
     }
 
-    private async Task ApplyThemeAsync()
+    public void Dispose()
     {
-        var theme = isDarkMode ? "dark" : "light";
-        await JS.InvokeVoidAsync("applyTheme", theme);
+        ThemeState.OnChange -= OnThemeStateChanged;
     }
 }

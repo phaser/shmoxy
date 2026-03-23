@@ -14,6 +14,7 @@ public static class FluentUiBlazorConfiguration
 
         services.AddFluentUIComponents();
         services.AddScoped<ApiClient>();
+        services.AddScoped<ThemeState>();
 
         return services;
     }

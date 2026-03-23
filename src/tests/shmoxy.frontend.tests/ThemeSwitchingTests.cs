@@ -31,7 +31,7 @@ public class ThemeSwitchingTests
     public async Task ThemeToggle_ChangesTheme()
     {
         var page = await _fixture.CreatePageAsync();
-        await page.GotoAsync($"{_fixture.BaseUrl}/", new PageGotoOptions
+        await page.GotoAsync($"{_fixture.BaseUrl}/settings", new PageGotoOptions
         {
             WaitUntil = WaitUntilState.NetworkIdle,
             Timeout = 30000
@@ -40,35 +40,33 @@ public class ThemeSwitchingTests
         // Wait for Blazor SignalR circuit to connect and enable interactivity
         await page.WaitForTimeoutAsync(5000);
 
-        // Find theme toggle button by title attribute
-        var toggleButton = page.GetByTitle("Switch to light mode");
-        var count = await toggleButton.CountAsync();
-        if (count == 0)
-        {
-            toggleButton = page.GetByTitle("Switch to dark mode");
-        }
-        await toggleButton.WaitForAsync(new LocatorWaitForOptions { Timeout = 10000 });
+        // Capture initial luminance to verify it changes after toggle
+        var initialLuminance = await page.EvaluateAsync<string>(
+            "() => getComputedStyle(document.documentElement).getPropertyValue('--base-layer-luminance').trim()");
 
-        // Click and retry — the circuit may need a moment after becoming connected
-        string? storedTheme = null;
-        for (var attempt = 0; attempt < 5; attempt++)
-        {
-            await toggleButton.ClickAsync();
-            await page.WaitForTimeoutAsync(1000);
+        // Find the theme switch and click it to toggle
+        var themeSwitch = page.Locator("fluent-switch");
+        await themeSwitch.WaitForAsync(new LocatorWaitForOptions { Timeout = 10000 });
 
-            storedTheme = await page.EvaluateAsync<string?>(
-                "() => { const v = localStorage.getItem('preferred-theme'); return v ? JSON.parse(v) : null; }");
-            if (storedTheme is not null)
-                break;
-        }
+        await themeSwitch.ClickAsync();
+        await page.WaitForTimeoutAsync(1500);
 
-        Assert.NotNull(storedTheme);
-        Assert.True(storedTheme == "light" || storedTheme == "dark",
-            $"Expected 'light' or 'dark', got '{storedTheme}'");
+        // Verify the base-layer-luminance actually changed (this drives the visual theme)
+        var toggledLuminance = await page.EvaluateAsync<string>(
+            "() => getComputedStyle(document.documentElement).getPropertyValue('--base-layer-luminance').trim()");
+        Assert.NotEqual(initialLuminance, toggledLuminance);
+
+        // Toggle back and verify it reverts
+        await themeSwitch.ClickAsync();
+        await page.WaitForTimeoutAsync(1500);
+
+        var revertedLuminance = await page.EvaluateAsync<string>(
+            "() => getComputedStyle(document.documentElement).getPropertyValue('--base-layer-luminance').trim()");
+        Assert.Equal(initialLuminance, revertedLuminance);
     }
 
     [Fact]
-    public async Task NavigationMenu_HasExpectedLinks()
+    public async Task NavigationSidebar_HasExpectedLinks()
     {
         var page = await _fixture.CreatePageAsync();
         await page.GotoAsync($"{_fixture.BaseUrl}/", new PageGotoOptions
@@ -79,10 +77,10 @@ public class ThemeSwitchingTests
 
         await page.WaitForTimeoutAsync(2000);
 
-        // FluentNavLink renders as <a> inside <fluent-nav-link> or as nav links
-        var navLinks = page.Locator("nav a[href]");
+        // Icon sidebar uses NavLink which renders as <a> elements
+        var navLinks = page.Locator("nav.icon-sidebar a[href]");
         var count = await navLinks.CountAsync();
-        Assert.True(count >= 3, $"Expected at least 3 nav links, found {count}");
+        Assert.True(count >= 4, $"Expected at least 4 nav links, found {count}");
     }
 
     [Fact]

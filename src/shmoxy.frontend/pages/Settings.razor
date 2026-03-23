@@ -1,0 +1,55 @@
+@page "/settings"
+@inject ThemeState ThemeState
+
+<h1>Settings</h1>
+
+<div class="settings-container">
+    <FluentCard>
+        <div class="setting-section">
+            <h3>Appearance</h3>
+            <div class="setting-row">
+                <div class="setting-label">
+                    <FluentIcon Value="@(new Icons.Regular.Size20.DarkTheme())" />
+                    <span>Theme</span>
+                </div>
+                <FluentSwitch Label="@(IsDark ? "Dark" : "Light")"
+                             Value="@IsDark"
+                             ValueChanged="OnToggle" />
+            </div>
+        </div>
+    </FluentCard>
+</div>
+
+@code {
+    private bool IsDark => ThemeState.Mode == DesignThemeModes.Dark;
+
+    private void OnToggle(bool value)
+    {
+        ThemeState.SetMode(value ? DesignThemeModes.Dark : DesignThemeModes.Light);
+    }
+}
+
+<style>
+.settings-container {
+    max-width: 600px;
+}
+
+.setting-section h3 {
+    margin-top: 0;
+    margin-bottom: 1rem;
+    font-weight: 600;
+}
+
+.setting-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.75rem 0;
+}
+
+.setting-label {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+</style>
