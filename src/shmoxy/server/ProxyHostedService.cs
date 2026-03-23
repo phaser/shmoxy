@@ -22,6 +22,17 @@ public class ProxyHostedService : IHostedService
     {
         _shutdownCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         _proxyTask = _server.StartAsync(_shutdownCts.Token);
+
+        // Observe the fire-and-forget task so startup failures are logged
+        // instead of being silently swallowed.
+        _proxyTask.ContinueWith(t =>
+        {
+            if (t.IsFaulted)
+            {
+                _logger.LogError(t.Exception, "Proxy server failed to start");
+            }
+        }, TaskContinuationOptions.OnlyOnFaulted);
+
         return Task.CompletedTask;
     }
 

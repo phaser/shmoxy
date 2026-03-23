@@ -1,5 +1,7 @@
 @page "/inspection"
 @inject ApiClient ApiClient
+@inject IJSRuntime JS
+@implements IAsyncDisposable
 
 <h1>Request Inspection</h1>
 
@@ -19,77 +21,180 @@
             <FluentOption TOption="string" Value="DELETE">DELETE</FluentOption>
             <FluentOption TOption="string" Value="PATCH">PATCH</FluentOption>
         </FluentSelect>
-
-        <FluentButton Appearance="Appearance.Accent" OnClick="@LoadRequests">
-            Refresh
-        </FluentButton>
     </div>
 
-    @if (loading)
+    <div id="inspection-scroll-container" class="scroll-container">
+        <table class="inspection-table">
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>Method</th>
+                    <th>URL</th>
+                    <th>Duration</th>
+                </tr>
+            </thead>
+            <tbody>
+                @if (filteredRows.Count == 0)
+                {
+                    <tr>
+                        <td colspan="4" class="empty-state">Start the proxy to see requests</td>
+                    </tr>
+                }
+                else
+                {
+                    @foreach (var row in filteredRows)
+                    {
+                        <tr>
+                            <td>@row.Id</td>
+                            <td><span class="method-badge method-@row.Method.ToLowerInvariant()">@row.Method</span></td>
+                            <td class="url-cell">@row.Url</td>
+                            <td>@(row.Duration.HasValue ? $"{row.Duration.Value.TotalMilliseconds:F0} ms" : "-")</td>
+                        </tr>
+                    }
+                }
+            </tbody>
+        </table>
+    </div>
+
+    @if (!isAtBottom)
     {
-        <div class="loading-indicator">
-            <FluentProgressRing />
-            <span>Loading requests...</span>
+        <div class="resume-container">
+            <FluentButton Appearance="Appearance.Accent" OnClick="@ResumeAutoScroll">
+                Resume auto-scroll
+            </FluentButton>
         </div>
-    }
-    else if (filteredRequests.Count > 0)
-    {
-        <FluentDataGrid Items="@filteredRequests.AsQueryable()" GridTemplateColumns="0.5fr 2fr 0.5fr 0.5fr">
-            <PropertyColumn Property="@(r => r.Method)" Title="Method" />
-            <PropertyColumn Property="@(r => r.Url)" Title="URL" />
-            <PropertyColumn Property="@(r => r.StatusCode)" Title="Status" />
-            <PropertyColumn Property="@(r => r.Timestamp.ToString("HH:mm:ss"))" Title="Time" />
-        </FluentDataGrid>
-    }
-    else
-    {
-        <p class="no-results">No requests found.</p>
     }
 </div>
 
 @code {
-    private List<InspectionRequestInfo> requests = new();
-    private List<InspectionRequestInfo> filteredRequests = new();
+    private readonly List<InspectionRow> rows = new();
+    private List<InspectionRow> filteredRows = new();
     private string searchQuery = "";
     private string methodFilter = "";
-    private bool loading;
+    private bool isAtBottom = true;
+    private CancellationTokenSource cts = new();
+    private int nextId = 1;
+    private readonly Queue<(int RowIndex, DateTime Timestamp)> unpairedRequests = new();
+    private const int MaxRows = 1000;
+    private const string ContainerId = "inspection-scroll-container";
 
-    protected override async Task OnInitializedAsync()
+    protected override void OnInitialized()
     {
-        await LoadRequests();
+        _ = ConsumeStreamAsync();
     }
 
-    private async Task LoadRequests()
+    protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        loading = true;
-        StateHasChanged();
+        if (firstRender)
+        {
+            await JS.InvokeVoidAsync("inspectionAutoScroll.init", ContainerId);
+        }
+    }
 
+    private async Task ConsumeStreamAsync()
+    {
         try
         {
-            requests = await ApiClient.GetRequestHistoryAsync();
-            ApplyFilters();
+            await foreach (var evt in ApiClient.StreamInspectionEventsAsync("local", cts.Token))
+            {
+                if (string.Equals(evt.EventType, "request", StringComparison.OrdinalIgnoreCase))
+                {
+                    var row = new InspectionRow
+                    {
+                        Id = nextId++,
+                        Method = evt.Method,
+                        Url = evt.Url,
+                        Timestamp = evt.Timestamp
+                    };
+                    rows.Add(row);
+                    unpairedRequests.Enqueue((rows.Count - 1, evt.Timestamp));
+
+                    if (rows.Count > MaxRows)
+                    {
+                        rows.RemoveAt(0);
+                        // Adjust queued indices
+                        var adjusted = new Queue<(int, DateTime)>();
+                        while (unpairedRequests.Count > 0)
+                        {
+                            var (idx, ts) = unpairedRequests.Dequeue();
+                            if (idx > 0)
+                                adjusted.Enqueue((idx - 1, ts));
+                        }
+                        while (adjusted.Count > 0)
+                            unpairedRequests.Enqueue(adjusted.Dequeue());
+                    }
+                }
+                else if (string.Equals(evt.EventType, "response", StringComparison.OrdinalIgnoreCase))
+                {
+                    if (unpairedRequests.Count > 0)
+                    {
+                        var (rowIndex, requestTimestamp) = unpairedRequests.Dequeue();
+                        if (rowIndex < rows.Count)
+                        {
+                            rows[rowIndex].Duration = evt.Timestamp - requestTimestamp;
+                        }
+                    }
+                }
+
+                ApplyFilters();
+                await InvokeAsync(StateHasChanged);
+
+                isAtBottom = await JS.InvokeAsync<bool>("inspectionAutoScroll.isAtBottom", ContainerId);
+                if (isAtBottom)
+                {
+                    await JS.InvokeVoidAsync("inspectionAutoScroll.scrollToBottom", ContainerId);
+                }
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Expected on dispose
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Failed to load requests: {ex.Message}");
-        }
-        finally
-        {
-            loading = false;
+            Console.WriteLine($"SSE stream error: {ex.Message}");
         }
     }
 
     private void ApplyFilters()
     {
-        filteredRequests = requests
-            .Where(req =>
+        filteredRows = rows
+            .Where(r =>
                 string.IsNullOrEmpty(searchQuery) ||
-                req.Url.Contains(searchQuery, StringComparison.OrdinalIgnoreCase) ||
-                req.Method.Contains(searchQuery, StringComparison.OrdinalIgnoreCase))
-            .Where(req =>
-                string.IsNullOrEmpty(methodFilter) || req.Method == methodFilter)
-            .OrderByDescending(r => r.Timestamp)
+                r.Url.Contains(searchQuery, StringComparison.OrdinalIgnoreCase) ||
+                r.Method.Contains(searchQuery, StringComparison.OrdinalIgnoreCase))
+            .Where(r =>
+                string.IsNullOrEmpty(methodFilter) || r.Method == methodFilter)
             .ToList();
+    }
+
+    private async Task ResumeAutoScroll()
+    {
+        await JS.InvokeVoidAsync("inspectionAutoScroll.scrollToBottom", ContainerId);
+        isAtBottom = true;
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        await cts.CancelAsync();
+        cts.Dispose();
+        try
+        {
+            await JS.InvokeVoidAsync("inspectionAutoScroll.dispose", ContainerId);
+        }
+        catch (JSDisconnectedException)
+        {
+            // Circuit already disconnected
+        }
+    }
+
+    private class InspectionRow
+    {
+        public int Id { get; set; }
+        public string Method { get; set; } = string.Empty;
+        public string Url { get; set; } = string.Empty;
+        public TimeSpan? Duration { get; set; }
+        public DateTime Timestamp { get; set; }
     }
 }
 
@@ -106,16 +211,74 @@
     flex-wrap: wrap;
 }
 
-.loading-indicator, .no-results {
+.scroll-container {
+    height: 500px;
+    overflow-y: auto;
+    border: 1px solid var(--neutral-stroke-rest);
+    border-radius: calc(var(--control-corner-radius) * 1px);
+}
+
+.inspection-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: var(--type-ramp-minus-1-font-size);
+}
+
+.inspection-table thead {
+    position: sticky;
+    top: 0;
+    background: var(--neutral-layer-2);
+    z-index: 1;
+}
+
+.inspection-table th {
+    text-align: left;
+    padding: 8px 12px;
+    font-weight: 600;
+    border-bottom: 2px solid var(--neutral-stroke-rest);
+    color: var(--neutral-foreground-rest);
+}
+
+.inspection-table td {
+    padding: 6px 12px;
+    border-bottom: 1px solid var(--neutral-stroke-divider-rest);
+    color: var(--neutral-foreground-rest);
+}
+
+.inspection-table tbody tr:hover {
+    background: var(--neutral-layer-3);
+}
+
+.url-cell {
+    max-width: 500px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.method-badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: calc(var(--control-corner-radius) * 1px);
+    font-weight: 600;
+    font-size: 0.75rem;
+}
+
+.method-get { background: rgba(0, 128, 0, 0.15); color: #22863a; }
+.method-post { background: rgba(0, 100, 200, 0.15); color: #0366d6; }
+.method-put { background: rgba(200, 150, 0, 0.15); color: #b08800; }
+.method-delete { background: rgba(200, 0, 0, 0.15); color: #cb2431; }
+.method-patch { background: rgba(128, 0, 200, 0.15); color: #6f42c1; }
+
+.empty-state {
     text-align: center;
     padding: 2rem;
     color: var(--neutral-foreground-hover);
 }
 
-.loading-indicator {
+.resume-container {
     display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 0.5rem;
+    justify-content: center;
+    margin-top: 0.75rem;
 }
 </style>

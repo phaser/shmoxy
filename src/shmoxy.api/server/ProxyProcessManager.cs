@@ -1,5 +1,7 @@
 using System.Diagnostics;
 using System.IO.Pipes;
+using System.Net;
+using System.Net.Sockets;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using shmoxy.api.ipc;
@@ -11,18 +13,20 @@ namespace shmoxy.api.server;
 public class ProxyProcessManager : IProxyProcessManager, IDisposable
 {
     private readonly ILogger<ProxyProcessManager> _logger;
-    private readonly IProxyIpcClient _ipcClient;
     private readonly IOptions<ApiConfig> _config;
     private readonly string _socketPath;
+    private readonly IProxyIpcClient? _injectedIpcClient;
 
     private Process? _process;
     private ProxyInstanceState _currentState;
     private bool _disposed;
     private readonly CancellationTokenSource _healthCheckCts = new();
     private Task? _healthCheckTask;
+    private ProxyIpcClient? _socketIpcClient;
+    private HttpClient? _socketHttpClient;
 
     private const int HealthCheckIntervalMs = 100;
-    private const int HealthCheckTimeoutMs = 5000;
+    private const int HealthCheckTimeoutMs = 15000;
     private const int ShutdownTimeoutMs = 10000;
 
     public event EventHandler<ProxyInstanceState>? OnStateChanged;
@@ -33,9 +37,11 @@ public class ProxyProcessManager : IProxyProcessManager, IDisposable
         IOptions<ApiConfig> config)
     {
         _logger = logger;
-        _ipcClient = ipcClient;
         _config = config;
         _socketPath = config.Value.ProxyIpcSocketPath ?? Path.Combine(Path.GetTempPath(), $"shmoxy-{Guid.NewGuid()}.sock");
+        // Use the DI-injected client when a socket path is pre-configured (it's already wired to that socket).
+        // When the socket path is generated dynamically, we must create our own client at runtime.
+        _injectedIpcClient = config.Value.ProxyIpcSocketPath is not null ? ipcClient : null;
         _currentState = new ProxyInstanceState
         {
             State = ProxyProcessState.Stopped,
@@ -43,20 +49,46 @@ public class ProxyProcessManager : IProxyProcessManager, IDisposable
         };
     }
 
+    public IProxyIpcClient GetIpcClient() => GetOrCreateSocketIpcClient();
+
+    private IProxyIpcClient GetOrCreateSocketIpcClient()
+    {
+        if (_injectedIpcClient is not null)
+            return _injectedIpcClient;
+
+        if (_socketIpcClient is not null)
+            return _socketIpcClient;
+
+        var handler = new SocketsHttpHandler
+        {
+            ConnectCallback = async (context, token) =>
+            {
+                var socket = new Socket(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified);
+                var endPoint = new UnixDomainSocketEndPoint(_socketPath);
+                await socket.ConnectAsync(endPoint, token);
+                return new NetworkStream(socket, ownsSocket: true);
+            }
+        };
+
+        _socketHttpClient = new HttpClient(handler)
+        {
+            BaseAddress = new Uri("http://localhost"),
+            Timeout = Timeout.InfiniteTimeSpan
+        };
+        var loggerFactory = LoggerFactory.Create(builder => builder.AddConsole());
+        _socketIpcClient = new ProxyIpcClient(_socketHttpClient, loggerFactory.CreateLogger<ProxyIpcClient>());
+        return _socketIpcClient;
+    }
+
     public async Task<ProxyInstanceState> StartAsync(CancellationToken ct = default)
     {
-        if (_currentState.State == ProxyProcessState.Running || _currentState.State == ProxyProcessState.Starting)
+        if (_currentState.State is ProxyProcessState.Running or ProxyProcessState.Starting)
         {
             _logger.LogWarning("Proxy is already {State}", _currentState.State);
             return _currentState;
         }
 
-        var binaryPath = _config.Value.ProxyBinaryPath ?? "shmoxy";
-
-        if (!await ValidateBinaryPathAsync(binaryPath, ct))
-        {
-            throw new InvalidOperationException($"Proxy binary not found: {binaryPath}");
-        }
+        var (fileName, baseArguments) = await ResolveBinaryAsync(_config.Value.ProxyBinaryPath, ct);
 
         UpdateState(new ProxyInstanceState
         {
@@ -69,10 +101,13 @@ public class ProxyProcessManager : IProxyProcessManager, IDisposable
 
         try
         {
+            var proxyArgs = $"-p {_config.Value.ProxyPort} --ipc-socket {_socketPath}";
             var startInfo = new ProcessStartInfo
             {
-                FileName = binaryPath,
-                Arguments = $"-p {_config.Value.ProxyPort} --ipc-socket {_socketPath}",
+                FileName = fileName,
+                Arguments = string.IsNullOrEmpty(baseArguments)
+                    ? proxyArgs
+                    : $"{baseArguments} {proxyArgs}",
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
                 RedirectStandardInput = true,
@@ -173,7 +208,7 @@ public class ProxyProcessManager : IProxyProcessManager, IDisposable
                 using var shutdownCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
                 shutdownCts.CancelAfter(ShutdownTimeoutMs);
 
-                await _ipcClient.ShutdownAsync(shutdownCts.Token);
+                await GetOrCreateSocketIpcClient().ShutdownAsync(shutdownCts.Token);
 
                 if (_process.WaitForExit(ShutdownTimeoutMs))
                 {
@@ -228,17 +263,7 @@ public class ProxyProcessManager : IProxyProcessManager, IDisposable
             throw new InvalidOperationException("Proxy must be running to get certificate");
         }
 
-        var handler = new HttpClientHandler();
-        var httpClient = new HttpClient(handler)
-        {
-            BaseAddress = new Uri("http://localhost"),
-            Timeout = TimeSpan.FromSeconds(5)
-        };
-
-        var loggerFactory = LoggerFactory.Create(builder => builder.AddConsole());
-        var tempLogger = loggerFactory.CreateLogger<ProxyIpcClient>();
-        var client = new ProxyIpcClient(httpClient, tempLogger);
-        return await client.GetRootCertPemAsync(ct);
+        return await GetOrCreateSocketIpcClient().GetRootCertPemAsync(ct);
     }
 
     public async Task<byte[]> GetRootCertDerAsync(CancellationToken ct = default)
@@ -248,17 +273,7 @@ public class ProxyProcessManager : IProxyProcessManager, IDisposable
             throw new InvalidOperationException("Proxy must be running to get certificate");
         }
 
-        var handler = new HttpClientHandler();
-        var httpClient = new HttpClient(handler)
-        {
-            BaseAddress = new Uri("http://localhost"),
-            Timeout = TimeSpan.FromSeconds(5)
-        };
-
-        var loggerFactory = LoggerFactory.Create(builder => builder.AddConsole());
-        var tempLogger = loggerFactory.CreateLogger<ProxyIpcClient>();
-        var client = new ProxyIpcClient(httpClient, tempLogger);
-        return await client.GetRootCertDerAsync(ct);
+        return await GetOrCreateSocketIpcClient().GetRootCertDerAsync(ct);
     }
 
     private void UpdateState(ProxyInstanceState newState)
@@ -269,19 +284,55 @@ public class ProxyProcessManager : IProxyProcessManager, IDisposable
         _logger.LogDebug("Proxy state changed from {OldState} to {NewState}", oldState.State, newState.State);
     }
 
-    private async Task<bool> ValidateBinaryPathAsync(string binaryPath, CancellationToken ct)
+    /// <summary>
+    /// Resolves the proxy binary to a (FileName, BaseArguments) tuple.
+    /// Supports: native executables on PATH, absolute paths, and .dll files run via dotnet.
+    /// </summary>
+    private async Task<(string FileName, string BaseArguments)> ResolveBinaryAsync(string? configuredPath, CancellationToken ct)
     {
-        if (Path.IsPathRooted(binaryPath))
+        // 1. Explicit absolute path
+        if (configuredPath is not null && Path.IsPathRooted(configuredPath))
         {
-            return File.Exists(binaryPath);
+            if (configuredPath.EndsWith(".dll", StringComparison.OrdinalIgnoreCase))
+            {
+                if (!File.Exists(configuredPath))
+                    throw new InvalidOperationException($"Proxy DLL not found: {configuredPath}");
+                return ("dotnet", configuredPath);
+            }
+
+            if (!File.Exists(configuredPath))
+                throw new InvalidOperationException($"Proxy binary not found: {configuredPath}");
+            return (configuredPath, string.Empty);
         }
 
+        // 2. Try native executable on PATH (e.g., "shmoxy" after nix build)
+        var executableName = configuredPath ?? "shmoxy";
+        if (await TryRunAsync(executableName, "--version", ct))
+        {
+            return (executableName, string.Empty);
+        }
+
+        // 3. Look for shmoxy.dll next to the running API assembly
+        var appDir = AppContext.BaseDirectory;
+        var dllPath = Path.Combine(appDir, "shmoxy.dll");
+        if (File.Exists(dllPath))
+        {
+            _logger.LogInformation("Resolved proxy binary to DLL: {DllPath}", dllPath);
+            return ("dotnet", dllPath);
+        }
+
+        throw new InvalidOperationException(
+            $"Proxy binary not found. Searched for '{executableName}' on PATH and '{dllPath}'");
+    }
+
+    private static async Task<bool> TryRunAsync(string fileName, string arguments, CancellationToken ct)
+    {
         try
         {
             var startInfo = new ProcessStartInfo
             {
-                FileName = binaryPath,
-                Arguments = "--version",
+                FileName = fileName,
+                Arguments = arguments,
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
                 UseShellExecute = false
@@ -311,16 +362,32 @@ public class ProxyProcessManager : IProxyProcessManager, IDisposable
         {
             try
             {
-                if (await _ipcClient.IsHealthyAsync(cts.Token))
+                if (await GetOrCreateSocketIpcClient().IsHealthyAsync(cts.Token))
                 {
                     return true;
                 }
+
+                _logger.LogDebug("Health check returned not-listening after {Elapsed}ms", stopwatch.ElapsedMilliseconds);
             }
-            catch
+            catch (OperationCanceledException) when (cts.Token.IsCancellationRequested)
             {
+                _logger.LogWarning("Health check timed out after {Timeout}ms", HealthCheckTimeoutMs);
+                return false;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogDebug(ex, "Health check attempt failed after {Elapsed}ms", stopwatch.ElapsedMilliseconds);
             }
 
-            await Task.Delay(HealthCheckIntervalMs, cts.Token);
+            try
+            {
+                await Task.Delay(HealthCheckIntervalMs, cts.Token);
+            }
+            catch (OperationCanceledException) when (cts.Token.IsCancellationRequested)
+            {
+                _logger.LogWarning("Health check timed out after {Timeout}ms", HealthCheckTimeoutMs);
+                return false;
+            }
         }
 
         return false;
@@ -334,7 +401,7 @@ public class ProxyProcessManager : IProxyProcessManager, IDisposable
             {
                 try
                 {
-                    if (!await _ipcClient.IsHealthyAsync(_healthCheckCts.Token))
+                    if (!await GetOrCreateSocketIpcClient().IsHealthyAsync(_healthCheckCts.Token))
                     {
                         _logger.LogWarning("Proxy health check failed");
                         UpdateState(new ProxyInstanceState
@@ -417,6 +484,9 @@ public class ProxyProcessManager : IProxyProcessManager, IDisposable
 
         _healthCheckCts.Cancel();
         _healthCheckTask?.Wait(1000);
+
+        _socketIpcClient?.Dispose();
+        _socketHttpClient?.Dispose();
 
         if (_process != null && !_process.HasExited)
         {

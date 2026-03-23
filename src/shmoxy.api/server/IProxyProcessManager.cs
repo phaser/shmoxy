@@ -1,3 +1,4 @@
+using shmoxy.api.ipc;
 using shmoxy.api.models;
 
 namespace shmoxy.api.server;
@@ -10,5 +11,6 @@ public interface IProxyProcessManager
     Task<bool> IsRunningAsync();
     Task<string> GetRootCertPemAsync(CancellationToken ct = default);
     Task<byte[]> GetRootCertDerAsync(CancellationToken ct = default);
+    IProxyIpcClient GetIpcClient();
     event EventHandler<ProxyInstanceState>? OnStateChanged;
 }
