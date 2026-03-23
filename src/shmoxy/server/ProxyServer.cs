@@ -111,7 +111,7 @@ public class ProxyServer : IDisposable
         {
             _listener.Start();
             _isListening = true;
-            Log(ProxyConfig.LogLevelEnum.Info, "Proxy server started");
+            Log(ProxyConfig.LogLevelEnum.Info, $"Proxy server started on port {_config.Port}");
 
             while (!combinedCts.Token.IsCancellationRequested)
             {
@@ -129,6 +129,11 @@ public class ProxyServer : IDisposable
         catch (OperationCanceledException)
         {
             Log(ProxyConfig.LogLevelEnum.Debug, "Proxy server stopping");
+        }
+        catch (SocketException ex)
+        {
+            Log(ProxyConfig.LogLevelEnum.Error, $"Failed to bind to port {_config.Port}: {ex.Message} (SocketErrorCode: {ex.SocketErrorCode})");
+            throw;
         }
         finally
         {
@@ -191,7 +196,7 @@ public class ProxyServer : IDisposable
     }
 
     /// <summary>
-    /// Handles CONNECT requests for HTTPS tunnels.
+    /// Handles CONNECT requests for HTTPS tunnels with MITM interception.
     /// </summary>
     private async Task HandleConnectAsync(TcpClient client, byte[] buffer, int bytesRead)
     {
@@ -222,8 +227,8 @@ public class ProxyServer : IDisposable
 
             Log(ProxyConfig.LogLevelEnum.Info, $"TLS tunnel established to {host}:{port}");
 
-            // Proxy traffic in both directions with timeout
-            await ProxyTunnelAsync(sslStream, host, port);
+            // Read decrypted HTTP requests and intercept them
+            await HandleTunnelRequestsAsync(sslStream, host, port);
         }
     }
 
@@ -519,49 +524,161 @@ public class ProxyServer : IDisposable
     }
 
     /// <summary>
-    /// Proxies traffic between TLS tunnel and target server.
+    /// Reads decrypted HTTP requests from the MITM tunnel, runs them through
+    /// the intercept hook, forwards to the upstream server, and relays the response.
     /// </summary>
-    private async Task ProxyTunnelAsync(Stream clientStream, string host, int port)
+    private async Task HandleTunnelRequestsAsync(Stream clientStream, string host, int port)
     {
-        using var targetClient = new TcpClient();
-        await targetClient.ConnectAsync(host, port);
+        var buf = new byte[8192];
 
-        // Re-encrypt the connection to the upstream server (TLS termination and re-encryption)
-        Stream targetStream;
-        if (port == 443)
+        // Handle multiple requests on the same connection (HTTP keep-alive)
+        while (true)
         {
-            var sslTargetStream = new global::System.Net.Security.SslStream(
-                targetClient.GetStream(),
-                false,
-                (sender, cert, chain, errors) => true); // Accept upstream certs
-            await sslTargetStream.AuthenticateAsClientAsync(host);
-            targetStream = sslTargetStream;
+            int read;
+            try
+            {
+                read = await clientStream.ReadAsync(buf, 0, buf.Length);
+            }
+            catch (IOException)
+            {
+                break;
+            }
+            if (read == 0) break;
+
+            var requestText = Encoding.ASCII.GetString(buf, 0, read);
+            var lines = requestText.Split("\r\n");
+            if (lines.Length == 0) break;
+
+            var firstLineParts = lines[0].Split(' ');
+            if (firstLineParts.Length < 2) break;
+
+            var method = firstLineParts[0];
+            var path = firstLineParts[1];
+
+            // Parse headers
+            var headers = new Dictionary<string, string>();
+            for (int i = 1; i < lines.Length; i++)
+            {
+                if (string.IsNullOrWhiteSpace(lines[i])) break;
+                var colonIndex = lines[i].IndexOf(':');
+                if (colonIndex > 0)
+                {
+                    var key = lines[i][..colonIndex].Trim();
+                    var value = lines[i][(colonIndex + 1)..].Trim();
+                    headers[key] = value;
+                }
+            }
+
+            // Parse body
+            var headerEnd = requestText.IndexOf("\r\n\r\n");
+            byte[]? body = null;
+            if (headerEnd >= 0 && headerEnd + 4 < read)
+            {
+                body = new byte[read - (headerEnd + 4)];
+                Buffer.BlockCopy(buf, headerEnd + 4, body, 0, body.Length);
+            }
+
+            var scheme = port == 443 ? "https" : "http";
+
+            Log(ProxyConfig.LogLevelEnum.Info, $"MITM {method} {scheme}://{host}{path}");
+
+            // Intercept request
+            var interceptedRequest = new InterceptedRequest
+            {
+                Method = method,
+                Url = new Uri($"{scheme}://{host}{path}"),
+                Host = host,
+                Port = port,
+                Path = path,
+                Headers = headers,
+                Body = body
+            };
+
+            var result = await _interceptor.OnRequestAsync(interceptedRequest);
+            if (result == null || result.Cancel) break;
+
+            // Forward to upstream
+            using var targetClient = new TcpClient();
+            await targetClient.ConnectAsync(host, port);
+
+            Stream targetStream;
+            if (port == 443)
+            {
+                var sslTarget = new global::System.Net.Security.SslStream(
+                    targetClient.GetStream(),
+                    false,
+                    (_, _, _, _) => true);
+                await sslTarget.AuthenticateAsClientAsync(host);
+                targetStream = sslTarget;
+            }
+            else
+            {
+                targetStream = targetClient.GetStream();
+            }
+
+            using (targetStream)
+            {
+                // Build outgoing request
+                var outgoing = new StringBuilder();
+                outgoing.Append($"{result.Method} {result.Path} HTTP/1.1\r\n");
+                outgoing.Append($"Host: {host}\r\n");
+
+                foreach (var header in result.Headers
+                    .Where(h => !h.Key.Equals("Host", StringComparison.OrdinalIgnoreCase)
+                             && !h.Key.Equals("Proxy-Connection", StringComparison.OrdinalIgnoreCase)))
+                {
+                    outgoing.Append($"{header.Key}: {header.Value}\r\n");
+                }
+
+                outgoing.Append("Connection: close\r\n");
+
+                if (result.Body != null && result.Body.Length > 0)
+                    outgoing.Append($"Content-Length: {result.Body.Length}\r\n");
+
+                outgoing.Append("\r\n");
+
+                var requestBytes = Encoding.ASCII.GetBytes(outgoing.ToString());
+                await targetStream.WriteAsync(requestBytes, 0, requestBytes.Length);
+
+                if (result.Body != null && result.Body.Length > 0)
+                    await targetStream.WriteAsync(result.Body, 0, result.Body.Length);
+
+                await targetStream.FlushAsync();
+
+                // Read response and relay back
+                using var ms = new MemoryStream();
+                var responseBuf = new byte[8192];
+                int responseRead;
+                while ((responseRead = await targetStream.ReadAsync(responseBuf, 0, responseBuf.Length)) > 0)
+                {
+                    ms.Write(responseBuf, 0, responseRead);
+                }
+
+                var responseBytes = ms.ToArray();
+
+                // Parse status code for intercept hook
+                var responseText = Encoding.ASCII.GetString(responseBytes, 0, Math.Min(responseBytes.Length, 4096));
+                var statusLine = responseText.Split("\r\n").FirstOrDefault() ?? "";
+                var statusParts = statusLine.Split(' ');
+                var statusCode = statusParts.Length >= 2 && int.TryParse(statusParts[1], out var sc) ? sc : 0;
+
+                // Intercept response
+                var interceptedResponse = new InterceptedResponse
+                {
+                    StatusCode = statusCode,
+                    Headers = new Dictionary<string, string>(),
+                    Body = responseBytes
+                };
+                await _interceptor.OnResponseAsync(interceptedResponse);
+
+                // Write full response back to client
+                await clientStream.WriteAsync(responseBytes, 0, responseBytes.Length);
+                await clientStream.FlushAsync();
+            }
+
+            // Connection: close means we're done after one request
+            break;
         }
-        else
-        {
-            targetStream = targetClient.GetStream();
-        }
-
-        using (targetStream)
-        {
-            // Bidirectional copy
-            var clientToTargetTask = CopyStreamAsync(clientStream, targetStream);
-            var targetToClientTask = CopyStreamAsync(targetStream, clientStream);
-
-            await Task.WhenAll(clientToTargetTask, targetToClientTask);
-        }
-    }
-
-    /// <summary>
-    /// Copies data from one stream to another.
-    /// </summary>
-    private async Task CopyStreamAsync(Stream source, Stream destination)
-    {
-        var buffer = new byte[8192];
-        int bytesRead;
-
-        while ((bytesRead = await source.ReadAsync(buffer, 0, buffer.Length)) > 0)
-            await destination.WriteAsync(buffer.AsMemory(0, bytesRead));
     }
 
     /// <summary>
