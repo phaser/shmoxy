@@ -8,14 +8,6 @@
 
 Fix test failure: InterceptHookChain should stop on cancel
 
-## Status
-
-- [ ] Development in progress
-- [ ] Tests added/updated
-- [ ] Documentation updated
-- [ ] Ready for review
-- [ ] Merged
-
 ## Notes
 
 Add any relevant notes, decisions, or context here.

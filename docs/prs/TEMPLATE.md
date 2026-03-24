@@ -8,14 +8,6 @@
 
 [Description of the changes and purpose of this PR]
 
-## Status
-
-- [ ] Development in progress
-- [ ] Tests added/updated
-- [ ] Documentation updated
-- [ ] Ready for review
-- [ ] Merged
-
 ## Changes Made
 
 [List of specific files or areas changed]

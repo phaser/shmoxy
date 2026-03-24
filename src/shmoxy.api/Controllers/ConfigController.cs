@@ -1,6 +1,4 @@
 using System.Net.Http;
-using System.Text;
-using System.Text.Json;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
 using shmoxy.api.ipc;
@@ -17,7 +15,6 @@ public class ConfigController : ControllerBase
     private readonly IProxyProcessManager _processManager;
     private readonly IRemoteProxyRegistry _registry;
     private readonly ILogger<ConfigController> _logger;
-    private static readonly JsonSerializerOptions JsonOptions = new() { PropertyNameCaseInsensitive = true };
 
     public ConfigController(
         IProxyProcessManager processManager,
@@ -91,18 +88,7 @@ public class ConfigController : ControllerBase
             throw new InvalidOperationException("Local proxy must be running to get configuration");
         }
 
-        var handler = new HttpClientHandler();
-        var httpClient = new HttpClient(handler)
-        {
-            BaseAddress = new Uri("http://localhost"),
-            Timeout = TimeSpan.FromSeconds(5)
-        };
-
-        var loggerFactory = LoggerFactory.Create(builder => builder.AddConsole());
-        var tempLogger = loggerFactory.CreateLogger<ProxyIpcClient>();
-        var client = new ProxyIpcClient(httpClient, tempLogger);
-
-        return await client.GetConfigAsync(ct);
+        return await _processManager.GetIpcClient().GetConfigAsync(ct);
     }
 
     private async Task<ProxyConfig> GetRemoteConfigAsync(string proxyId, CancellationToken ct)
@@ -136,18 +122,7 @@ public class ConfigController : ControllerBase
             throw new InvalidOperationException("Local proxy must be running to update configuration");
         }
 
-        var handler = new HttpClientHandler();
-        var httpClient = new HttpClient(handler)
-        {
-            BaseAddress = new Uri("http://localhost"),
-            Timeout = TimeSpan.FromSeconds(5)
-        };
-
-        var loggerFactory = LoggerFactory.Create(builder => builder.AddConsole());
-        var tempLogger = loggerFactory.CreateLogger<ProxyIpcClient>();
-        var client = new ProxyIpcClient(httpClient, tempLogger);
-
-        return await client.UpdateConfigAsync(config, ct);
+        return await _processManager.GetIpcClient().UpdateConfigAsync(config, ct);
     }
 
     private async Task<ProxyConfig> UpdateRemoteConfigAsync(string proxyId, ProxyConfig config, CancellationToken ct)

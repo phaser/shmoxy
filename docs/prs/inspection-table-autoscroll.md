@@ -10,14 +10,6 @@ Redesign the Inspection page to show a fixed-height scrollable table of proxied 
 
 Also fixes multiple bugs discovered during integration testing that prevented the proxy from working end-to-end.
 
-## Status
-
-- [x] Development in progress
-- [x] Tests added/updated
-- [x] Documentation updated
-- [ ] Ready for review
-- [ ] Merged
-
 ## Changes Made
 
 ### Inspection.razor — Complete rewrite

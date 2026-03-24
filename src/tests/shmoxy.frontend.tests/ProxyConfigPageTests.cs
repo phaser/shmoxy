@@ -128,4 +128,49 @@ public class ProxyConfigPageTests
         await page.WaitForTimeoutAsync(15000);
         Assert.Equal("Stopped", await statusBadge.InnerTextAsync());
     }
+
+    [Fact]
+    public async Task ProxyConfigPage_StartProxy_NoErrorMessageAppears()
+    {
+        var page = await _fixture.CreatePageAsync();
+        await page.GotoAsync($"{_fixture.BaseUrl}/proxy-config", new PageGotoOptions
+        {
+            WaitUntil = WaitUntilState.NetworkIdle,
+            Timeout = 30000
+        });
+
+        await page.WaitForTimeoutAsync(5000);
+
+        // Verify initial state is Stopped
+        var statusBadge = page.Locator(".status-badge");
+        await statusBadge.WaitForAsync(new LocatorWaitForOptions { Timeout = 10000 });
+        Assert.Equal("Stopped", await statusBadge.InnerTextAsync());
+
+        // Click Start Proxy
+        var startButton = page.GetByText("Start Proxy");
+        await startButton.ClickAsync();
+
+        // Wait for the API call to complete
+        await page.WaitForTimeoutAsync(20000);
+
+        // No error message should appear after starting the proxy
+        var errorMessage = page.Locator(".proxy-controls .message.error");
+        var errorVisible = await errorMessage.IsVisibleAsync();
+        var errorText = errorVisible ? await errorMessage.InnerTextAsync() : "(no error)";
+        Assert.False(errorVisible,
+            $"Expected no error message after starting proxy, but got: {errorText}");
+
+        // The success message should still be visible (not replaced by an error)
+        var successMessage = page.Locator(".proxy-controls .message.success");
+        Assert.True(await successMessage.IsVisibleAsync(),
+            "Expected success message to remain visible after starting proxy");
+
+        // Clean up: stop the proxy
+        var stopButton = page.GetByText("Stop Proxy");
+        if (await stopButton.IsVisibleAsync())
+        {
+            await stopButton.ClickAsync();
+            await page.WaitForTimeoutAsync(15000);
+        }
+    }
 }
