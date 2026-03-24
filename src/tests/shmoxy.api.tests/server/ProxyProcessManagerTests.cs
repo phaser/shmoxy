@@ -194,4 +194,23 @@ public class ProxyProcessManagerTests
         Assert.NotNull(state);
         Assert.Equal(ProxyProcessState.Stopped, state.State);
     }
+
+    [Fact]
+    public async Task StopAsync_WhenShutdownFails_DoesNotThrow()
+    {
+        var manager = new ProxyProcessManager(_mockLogger.Object, _mockIpcClient.Object, _mockConfig.Object);
+        _mockIpcClient.Setup(c => c.IsHealthyAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+        _mockIpcClient.Setup(c => c.ShutdownAsync(It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new HttpRequestException("Connection refused"));
+
+        await manager.StartAsync();
+
+        var exception = await Record.ExceptionAsync(() => manager.StopAsync());
+        Assert.Null(exception);
+
+        var state = await manager.GetStateAsync();
+        Assert.NotNull(state);
+        Assert.Equal(ProxyProcessState.Stopped, state.State);
+    }
 }

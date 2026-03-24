@@ -200,32 +200,46 @@ public class ProxyProcessManager : IProxyProcessManager, IDisposable
 
         _healthCheckCts.Cancel();
 
-        if (_process != null && !_process.HasExited)
+        if (_process != null)
         {
-            try
+            if (_process.HasExited)
             {
-                _logger.LogInformation("Attempting graceful shutdown via IPC...");
-                using var shutdownCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-                shutdownCts.CancelAfter(ShutdownTimeoutMs);
-
-                await GetOrCreateSocketIpcClient().ShutdownAsync(shutdownCts.Token);
-
-                if (_process.WaitForExit(ShutdownTimeoutMs))
-                {
-                    _logger.LogInformation("Proxy process shut down gracefully");
-                }
-                else
-                {
-                    _logger.LogWarning("Graceful shutdown timed out, force killing...");
-                    _process.Kill(entireProcessTree: true);
-                    _process.WaitForExit();
-                }
+                _logger.LogInformation("Proxy process already exited with code {ExitCode}", _process.ExitCode);
             }
-            catch (Exception ex)
+            else
             {
-                _logger.LogWarning(ex, "Graceful shutdown failed, force killing...");
-                _process.Kill(entireProcessTree: true);
-                await _process.WaitForExitAsync(ct);
+                try
+                {
+                    _logger.LogInformation("Attempting graceful shutdown via IPC...");
+                    using var shutdownCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                    shutdownCts.CancelAfter(ShutdownTimeoutMs);
+
+                    await GetOrCreateSocketIpcClient().ShutdownAsync(shutdownCts.Token);
+
+                    if (_process.WaitForExit(ShutdownTimeoutMs))
+                    {
+                        _logger.LogInformation("Proxy process shut down gracefully");
+                    }
+                    else
+                    {
+                        _logger.LogWarning("Graceful shutdown timed out, force killing...");
+                        _process.Kill(entireProcessTree: true);
+                        _process.WaitForExit();
+                    }
+                }
+                catch (Exception) when (_process.HasExited)
+                {
+                    _logger.LogInformation("Proxy process exited during shutdown (code {ExitCode})", _process.ExitCode);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Graceful shutdown failed, force killing...");
+                    if (!_process.HasExited)
+                    {
+                        _process.Kill(entireProcessTree: true);
+                        await _process.WaitForExitAsync(ct);
+                    }
+                }
             }
         }
 
