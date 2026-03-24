@@ -177,4 +177,21 @@ public class ProxyProcessManagerTests
         Assert.NotNull(state);
         Assert.Equal(ProxyProcessState.Stopped, state.State);
     }
+
+    [Fact]
+    public async Task Dispose_AfterStart_CallsShutdown()
+    {
+        var manager = new ProxyProcessManager(_mockLogger.Object, _mockIpcClient.Object, _mockConfig.Object);
+        _mockIpcClient.Setup(c => c.IsHealthyAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+
+        await manager.StartAsync();
+        manager.Dispose();
+
+        _mockIpcClient.Verify(c => c.ShutdownAsync(It.IsAny<CancellationToken>()), Times.Once);
+
+        var state = await manager.GetStateAsync();
+        Assert.NotNull(state);
+        Assert.Equal(ProxyProcessState.Stopped, state.State);
+    }
 }

@@ -30,11 +30,7 @@ public partial class Program
         }
 
         builder.Services.AddSingleton<IProxyProcessManager, ProxyProcessManager>();
-
-        if (config.AutoStartProxy)
-        {
-            builder.Services.AddHostedService<ProxyHostedService>();
-        }
+        builder.Services.AddHostedService<ProxyHostedService>();
 
         // Only register DbContext if not already registered (allows test overrides)
         if (!builder.Services.Any(s => s.ServiceType == typeof(DbContextOptions<ProxiesDbContext>)))

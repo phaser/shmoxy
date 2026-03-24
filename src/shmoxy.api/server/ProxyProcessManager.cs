@@ -418,12 +418,23 @@ public class ProxyProcessManager : IProxyProcessManager, IDisposable
                         return;
                     }
                 }
+                catch (OperationCanceledException) when (_healthCheckCts.Token.IsCancellationRequested)
+                {
+                    return;
+                }
                 catch (Exception ex)
                 {
                     _logger.LogDebug(ex, "Health check error");
                 }
 
-                await Task.Delay(HealthCheckIntervalMs, _healthCheckCts.Token);
+                try
+                {
+                    await Task.Delay(HealthCheckIntervalMs, _healthCheckCts.Token);
+                }
+                catch (OperationCanceledException) when (_healthCheckCts.Token.IsCancellationRequested)
+                {
+                    return;
+                }
             }
         });
     }
@@ -481,6 +492,19 @@ public class ProxyProcessManager : IProxyProcessManager, IDisposable
     public void Dispose()
     {
         if (_disposed) return;
+
+        // Attempt graceful shutdown if proxy is still running
+        if (_currentState.State is ProxyProcessState.Running or ProxyProcessState.Starting)
+        {
+            try
+            {
+                StopAsync(CancellationToken.None).GetAwaiter().GetResult();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogDebug(ex, "Graceful shutdown during dispose failed, force killing");
+            }
+        }
 
         _healthCheckCts.Cancel();
         _healthCheckTask?.Wait(1000);
