@@ -1,4 +1,6 @@
 using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Hosting.Server;
+using Microsoft.AspNetCore.Hosting.Server.Features;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.FluentUI.AspNetCore.Components;
 using shmoxy.frontend.services;
@@ -13,7 +15,16 @@ public static class FluentUiBlazorConfiguration
             .AddInteractiveServerComponents();
 
         services.AddFluentUIComponents();
-        services.AddScoped<ApiClient>();
+        services.AddHttpClient<ApiClient>((sp, client) =>
+        {
+            var server = sp.GetRequiredService<IServer>();
+            var addressFeature = server.Features.Get<IServerAddressesFeature>();
+            var address = addressFeature?.Addresses.FirstOrDefault();
+            if (address is not null)
+            {
+                client.BaseAddress = new Uri(address);
+            }
+        });
         services.AddScoped<ThemeState>();
 
         return services;

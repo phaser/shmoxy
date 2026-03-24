@@ -25,6 +25,20 @@
   <ItemGroup>
     <ProjectReference Include="../../shmoxy.api/shmoxy.api.csproj" />
     <ProjectReference Include="../../shmoxy.frontend/shmoxy.frontend.csproj" />
+    <ProjectReference Include="../../shmoxy/shmoxy.csproj">
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+      <Private>false</Private>
+    </ProjectReference>
   </ItemGroup>
+
+  <!-- Copy the full proxy output so ProxyProcessManager can find and launch it in tests -->
+  <Target Name="CopyProxyBinary" AfterTargets="Build">
+    <ItemGroup>
+      <ProxyFiles Include="../../shmoxy/bin/$(Configuration)/$(TargetFramework)/**/*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(ProxyFiles)"
+          DestinationFiles="@(ProxyFiles->'$(OutputPath)%(RecursiveDir)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true" />
+  </Target>
 
 </Project>

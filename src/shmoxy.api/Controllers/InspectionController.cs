@@ -1,4 +1,3 @@
-using System.Net.Http;
 using System.Text.Json;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
@@ -71,16 +70,10 @@ public class InspectionController : ControllerBase
             throw new InvalidOperationException("Local proxy must be running to stream inspection events");
         }
 
-        var handler = new HttpClientHandler();
-        var httpClient = new HttpClient(handler)
-        {
-            BaseAddress = new Uri("http://localhost"),
-            Timeout = TimeSpan.FromSeconds(5)
-        };
+        var client = _processManager.GetIpcClient();
 
-        var loggerFactory = LoggerFactory.Create(builder => builder.AddConsole());
-        var tempLogger = loggerFactory.CreateLogger<ProxyIpcClient>();
-        var client = new ProxyIpcClient(httpClient, tempLogger);
+        // Ensure inspection is enabled before streaming
+        await client.EnableInspectionAsync(ct);
 
         await foreach (var evt in client.GetInspectionStreamAsync(ct))
         {

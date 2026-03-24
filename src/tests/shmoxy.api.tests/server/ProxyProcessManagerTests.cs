@@ -89,7 +89,7 @@ public class ProxyProcessManagerTests
         _mockIpcClient.Setup(c => c.IsHealthyAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(false);
 
-        await Assert.ThrowsAsync<TaskCanceledException>(() => manager.StartAsync());
+        await Assert.ThrowsAsync<TimeoutException>(() => manager.StartAsync());
 
         var state = await manager.GetStateAsync();
         Assert.NotNull(state);

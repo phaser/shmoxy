@@ -13,13 +13,20 @@
         </div>
 
         <div class="form-content">
-            <FluentTextField Label="Host" Placeholder="localhost" @bind-Value="config.Host" Required="true" />
-
             <FluentNumberField Label="Port" Min="1" Max="65535" TValue="int" @bind-Value="config.Port" />
 
-            <FluentSwitch Label="Enable HTTPS interception" @bind-Value="config.EnableHttps" />
+            <FluentSelect TOption="string" @bind-Value="config.LogLevel" Label="Log Level">
+                <FluentOption TOption="string" Value="Debug">Debug</FluentOption>
+                <FluentOption TOption="string" Value="Info">Info</FluentOption>
+                <FluentOption TOption="string" Value="Warn">Warn</FluentOption>
+                <FluentOption TOption="string" Value="Error">Error</FluentOption>
+            </FluentSelect>
 
-            <FluentTextField Label="Certificate Path (optional)" Placeholder="/path/to/cert.pem" @bind-Value="config.CertificatePath" />
+            <FluentNumberField Label="Max Concurrent Connections" Min="1" TValue="int" @bind-Value="config.MaxConcurrentConnections" />
+
+            <FluentTextField Label="Certificate Path (optional)" Placeholder="/path/to/cert.pem" @bind-Value="config.CertPath" />
+
+            <FluentTextField Label="Key Path (optional)" Placeholder="/path/to/key.pem" @bind-Value="config.KeyPath" />
         </div>
 
         <div class="card-footer">
@@ -58,11 +65,29 @@
                         <td>Address:</td>
                         <td>@(proxyStatus.Address ?? "N/A")</td>
                     </tr>
-                    <tr>
-                        <td>Requests:</td>
-                        <td>@proxyStatus.RequestCount</td>
-                    </tr>
                 </table>
+
+                <div class="proxy-controls">
+                    @if (proxyStatus.IsRunning)
+                    {
+                        <FluentButton Appearance="Appearance.Accent" OnClick="@StopProxy" Disabled="@proxyActionInProgress">
+                            Stop Proxy
+                        </FluentButton>
+                    }
+                    else
+                    {
+                        <FluentButton Appearance="Appearance.Accent" OnClick="@StartProxy" Disabled="@proxyActionInProgress">
+                            Start Proxy
+                        </FluentButton>
+                    }
+
+                    @if (proxyActionMessage is not null)
+                    {
+                        <span class="message @(proxyActionSuccess ? "success" : "error")">
+                            @proxyActionMessage
+                        </span>
+                    }
+                </div>
 
                 @if (!string.IsNullOrEmpty(proxyStatus.ErrorMessage))
                 {
@@ -82,11 +107,14 @@
     private FrontendProxyStatus? proxyStatus;
     private string? saveMessage;
     private MessageType saveMessageType = MessageType.Info;
+    private bool proxyActionInProgress;
+    private string? proxyActionMessage;
+    private bool proxyActionSuccess;
 
     protected override async Task OnInitializedAsync()
     {
-        await LoadConfig();
         await LoadStatus();
+        await LoadConfig();
     }
 
     private async Task LoadConfig()
@@ -111,11 +139,19 @@
         catch (Exception ex)
         {
             Console.WriteLine($"Failed to load status: {ex.Message}");
+            proxyStatus = FrontendProxyStatus.Stopped;
         }
     }
 
     private async Task SaveConfig()
     {
+        if (proxyStatus is not { IsRunning: true })
+        {
+            saveMessage = "Start the proxy before saving configuration.";
+            saveMessageType = MessageType.Error;
+            return;
+        }
+
         try
         {
             await ApiClient.SaveProxyConfigAsync(config);
@@ -127,6 +163,50 @@
         {
             saveMessage = $"Failed to save configuration: {ex.Message}";
             saveMessageType = MessageType.Error;
+        }
+    }
+
+    private async Task StartProxy()
+    {
+        proxyActionInProgress = true;
+        proxyActionMessage = null;
+        try
+        {
+            proxyStatus = await ApiClient.StartProxyAsync();
+            proxyActionMessage = "Proxy started successfully!";
+            proxyActionSuccess = true;
+            await LoadConfig();
+        }
+        catch (Exception ex)
+        {
+            proxyActionMessage = $"Failed to start proxy: {ex.Message}";
+            proxyActionSuccess = false;
+        }
+        finally
+        {
+            proxyActionInProgress = false;
+        }
+    }
+
+    private async Task StopProxy()
+    {
+        proxyActionInProgress = true;
+        proxyActionMessage = null;
+        try
+        {
+            await ApiClient.StopProxyAsync();
+            proxyStatus = FrontendProxyStatus.Stopped;
+            proxyActionMessage = "Proxy stopped.";
+            proxyActionSuccess = true;
+        }
+        catch (Exception ex)
+        {
+            proxyActionMessage = $"Failed to stop proxy: {ex.Message}";
+            proxyActionSuccess = false;
+        }
+        finally
+        {
+            proxyActionInProgress = false;
         }
     }
 
@@ -214,5 +294,14 @@
 
 .loading {
     color: var(--neutral-foreground-hover);
+}
+
+.proxy-controls {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    margin-top: 1rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--neutral-stroke-divider);
 }
 </style>

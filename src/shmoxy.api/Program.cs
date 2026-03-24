@@ -1,3 +1,4 @@
+using System.Text.Json.Serialization;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using shmoxy.api.models.configuration;
@@ -43,7 +44,11 @@ public partial class Program
             builder.Services.AddRemoteProxyRegistry();
         }
 
-        builder.Services.AddControllers();
+        builder.Services.AddControllers()
+            .AddJsonOptions(options =>
+            {
+                options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter());
+            });
 
         // Add Blazor frontend (from shmoxy.frontend)
         builder.Services.AddBlazorFrontend();

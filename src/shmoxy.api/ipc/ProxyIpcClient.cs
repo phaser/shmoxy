@@ -140,15 +140,12 @@ public class ProxyIpcClient : IProxyIpcClient, IDisposable
 
     public async IAsyncEnumerable<InspectionEvent> GetInspectionStreamAsync([EnumeratorCancellation] CancellationToken ct = default)
     {
-        using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        cts.CancelAfter(IpcTimeouts.Streaming);
-
-        using var stream = await _httpClient.GetStreamAsync("/ipc/inspect/stream", cts.Token);
+        using var stream = await _httpClient.GetStreamAsync("/ipc/inspect/stream", ct);
         using var reader = new StreamReader(stream, Encoding.UTF8);
 
-        while (!cts.Token.IsCancellationRequested)
+        while (!ct.IsCancellationRequested)
         {
-            var line = await reader.ReadLineAsync(cts.Token);
+            var line = await reader.ReadLineAsync(ct);
             if (line == null) break;
 
             if (line.StartsWith("data: ", StringComparison.Ordinal))

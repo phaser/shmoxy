@@ -29,7 +29,10 @@ public class FrontendTestFixture : IAsyncLifetime
         Environment.SetEnvironmentVariable("ASPNETCORE_ENVIRONMENT", "Development");
         Environment.SetEnvironmentVariable("ASPNETCORE_APPLICATIONNAME", "shmoxy.api");
 
-        _app = Program.CreateApp(["--urls", BaseUrl, "--contentRoot", apiProjectDir]);
+        // Use a dynamic port for the proxy to avoid conflicts with port 8080
+        var proxyPort = GetAvailablePort();
+        _app = Program.CreateApp(["--urls", BaseUrl, "--contentRoot", apiProjectDir,
+            "--ApiConfig:ProxyPort", proxyPort.ToString()]);
 
         // Start the app in the background
         _ = _app.RunAsync();

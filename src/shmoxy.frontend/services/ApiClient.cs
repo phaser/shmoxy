@@ -1,4 +1,7 @@
 using System.Net.Http.Json;
+using System.Runtime.CompilerServices;
+using System.Text.Json;
+using shmoxy.frontend.models;
 
 namespace shmoxy.frontend.services;
 
@@ -8,8 +11,9 @@ public class ApiClient(HttpClient httpClient)
 
     public async Task<FrontendProxyConfig> GetProxyConfigAsync()
     {
-        var response = await _httpClient.GetAsync("/api/proxy-config");
-        if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+        var response = await _httpClient.GetAsync("/api/proxies/local/config");
+        if (response.StatusCode == System.Net.HttpStatusCode.NotFound
+            || response.StatusCode == System.Net.HttpStatusCode.BadRequest)
             return FrontendProxyConfig.Default;
 
         response.EnsureSuccessStatusCode();
@@ -18,21 +22,85 @@ public class ApiClient(HttpClient httpClient)
 
     public async Task SaveProxyConfigAsync(FrontendProxyConfig config)
     {
-        var response = await _httpClient.PutAsJsonAsync("/api/proxy-config", config);
+        var response = await _httpClient.PutAsJsonAsync("/api/proxies/local/config", config);
         response.EnsureSuccessStatusCode();
     }
 
     public async Task<FrontendProxyStatus> GetProxyStatusAsync()
     {
-        var response = await _httpClient.GetAsync("/api/proxies");
+        var response = await _httpClient.GetAsync("/api/proxies/local");
         if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
             return FrontendProxyStatus.Stopped;
 
         response.EnsureSuccessStatusCode();
-        var proxies = await response.Content.ReadFromJsonAsync<List<ProxyInfo>>();
-        return proxies?.FirstOrDefault() is ProxyInfo pi
-            ? new FrontendProxyStatus(IsRunning: true, Address: $"{pi.Host}:{pi.Port}")
-            : FrontendProxyStatus.Stopped;
+        var state = await response.Content.ReadFromJsonAsync<ProxyInstanceStateDto>();
+        if (state is null)
+            return FrontendProxyStatus.Stopped;
+
+        var isRunning = string.Equals(state.State, "Running", StringComparison.OrdinalIgnoreCase);
+        var address = state.Port.HasValue ? $"localhost:{state.Port}" : null;
+        return new FrontendProxyStatus(IsRunning: isRunning, Address: address);
+    }
+
+    public async Task<FrontendProxyStatus> StartProxyAsync()
+    {
+        var response = await _httpClient.PostAsync("/api/proxies/local/start", null);
+        await EnsureSuccessOrThrowWithBody(response);
+        var state = await response.Content.ReadFromJsonAsync<ProxyInstanceStateDto>();
+        if (state is null)
+            return FrontendProxyStatus.Stopped;
+
+        var isRunning = string.Equals(state.State, "Running", StringComparison.OrdinalIgnoreCase);
+        var address = state.Port.HasValue ? $"localhost:{state.Port}" : null;
+        return new FrontendProxyStatus(IsRunning: isRunning, Address: address);
+    }
+
+    public async Task StopProxyAsync()
+    {
+        var response = await _httpClient.PostAsync("/api/proxies/local/stop", null);
+        await EnsureSuccessOrThrowWithBody(response);
+    }
+
+    private static async Task EnsureSuccessOrThrowWithBody(HttpResponseMessage response)
+    {
+        if (response.IsSuccessStatusCode)
+            return;
+
+        var body = await response.Content.ReadAsStringAsync();
+
+        // Try to extract error details from JSON error responses
+        try
+        {
+            using var doc = JsonDocument.Parse(body);
+            string? message = null;
+            string? error = null;
+
+            if (doc.RootElement.TryGetProperty("message", out var msgProp)
+                || doc.RootElement.TryGetProperty("Message", out msgProp))
+            {
+                message = msgProp.GetString();
+            }
+
+            if (doc.RootElement.TryGetProperty("error", out var errProp)
+                || doc.RootElement.TryGetProperty("Error", out errProp))
+            {
+                error = errProp.GetString();
+            }
+
+            if (message is not null)
+            {
+                var detail = error is not null ? $"{message}: {error}" : message;
+                throw new HttpRequestException(detail);
+            }
+        }
+        catch (JsonException)
+        {
+            // Not JSON — fall through
+        }
+
+        throw new HttpRequestException(string.IsNullOrWhiteSpace(body)
+            ? $"Request failed with status {(int)response.StatusCode}"
+            : body);
     }
 
     public async Task<List<InspectionRequestInfo>> GetRequestHistoryAsync()
@@ -43,5 +111,36 @@ public class ApiClient(HttpClient httpClient)
 
         response.EnsureSuccessStatusCode();
         return await response.Content.ReadFromJsonAsync<List<InspectionRequestInfo>>() ?? [];
+    }
+
+    public async IAsyncEnumerable<InspectionEventDto> StreamInspectionEventsAsync(
+        string proxyId = "local",
+        [EnumeratorCancellation] CancellationToken ct = default)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Get, $"/api/proxies/{proxyId}/inspect/stream");
+        using var response = await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct);
+        response.EnsureSuccessStatusCode();
+
+        using var stream = await response.Content.ReadAsStreamAsync(ct);
+        using var reader = new StreamReader(stream);
+
+        while (!ct.IsCancellationRequested)
+        {
+            var line = await reader.ReadLineAsync(ct);
+            if (line is null)
+                break;
+
+            if (!line.StartsWith("data: ", StringComparison.Ordinal))
+                continue;
+
+            var json = line["data: ".Length..];
+            var evt = JsonSerializer.Deserialize<InspectionEventDto>(json, new JsonSerializerOptions
+            {
+                PropertyNameCaseInsensitive = true
+            });
+
+            if (evt is not null)
+                yield return evt;
+        }
     }
 }

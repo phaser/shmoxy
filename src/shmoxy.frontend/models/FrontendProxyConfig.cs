@@ -2,10 +2,12 @@ namespace shmoxy.frontend.services;
 
 public class FrontendProxyConfig
 {
-    public string Host { get; set; } = "localhost";
     public int Port { get; set; } = 8080;
-    public bool EnableHttps { get; set; }
-    public string CertificatePath { get; set; } = "";
+    public string? CertPath { get; set; }
+    public string? KeyPath { get; set; }
+    public string LogLevel { get; set; } = "Info";
+    public int MaxConcurrentConnections { get; set; } = Environment.ProcessorCount * 4;
+    public string CertStoragePath { get; set; } = "";
 
     public static FrontendProxyConfig Default => new();
 }
