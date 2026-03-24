@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Headers;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Moq;
 using shmoxy.api.models;
@@ -15,7 +16,16 @@ public class InspectionIntegrationTests : IClassFixture<WebApplicationFactory<Pr
 
     public InspectionIntegrationTests(WebApplicationFactory<Program> factory)
     {
-        _factory = factory;
+        _factory = factory.WithWebHostBuilder(builder =>
+        {
+            builder.ConfigureAppConfiguration((context, config) =>
+            {
+                config.AddInMemoryCollection(new Dictionary<string, string?>
+                {
+                    ["ApiConfig:AutoStartProxy"] = "false"
+                });
+            });
+        });
     }
 
     [Fact]

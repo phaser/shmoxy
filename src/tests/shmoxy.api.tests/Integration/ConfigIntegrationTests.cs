@@ -2,6 +2,7 @@ using System.Net;
 using System.Text;
 using System.Text.Json;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Moq;
 using shmoxy.api.ipc;
@@ -18,7 +19,16 @@ public class ConfigIntegrationTests : IClassFixture<WebApplicationFactory<Progra
 
     public ConfigIntegrationTests(WebApplicationFactory<Program> factory)
     {
-        _factory = factory;
+        _factory = factory.WithWebHostBuilder(builder =>
+        {
+            builder.ConfigureAppConfiguration((context, config) =>
+            {
+                config.AddInMemoryCollection(new Dictionary<string, string?>
+                {
+                    ["ApiConfig:AutoStartProxy"] = "false"
+                });
+            });
+        });
     }
 
     [Fact]
