@@ -48,7 +48,8 @@ fi
 
 BRANCH_NAME="pr/$SANITIZED_NAME"
 WORKTREE_PATH="$WORKTREES_DIR/$SANITIZED_NAME"
-DOC_FILE="$DOCS_PRS_DIR/${SANITIZED_NAME}.md"
+TIMESTAMP=$(date '+%Y-%m-%d-%H%M')
+DOC_FILE="$DOCS_PRS_DIR/${TIMESTAMP}-${SANITIZED_NAME}.md"
 
 # Check if worktree already exists for this PR
 if [ -d "$WORKTREE_PATH/.git" ]; then
