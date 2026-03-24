@@ -154,8 +154,6 @@ All development must follow this isolated PR workflow:
    ./scripts/cleanup-pr.sh <pr-name>
    ```
 
-5. **Delete PR documentation after merge:** PR docs in `docs/prs/` are working documents needed only during development. After the PR is merged, delete the corresponding `docs/prs/<pr-name>.md` file as part of cleanup.
-
-6. **Documentation location:** All PR tracking is in `docs/prs/`
+5. **Documentation location:** All PR tracking is in `docs/prs/`
 
 **Never make changes directly on main or existing branches.** Always use the worktree workflow for isolated development.
