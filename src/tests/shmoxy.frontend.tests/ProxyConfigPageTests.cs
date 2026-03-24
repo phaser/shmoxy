@@ -173,4 +173,22 @@ public class ProxyConfigPageTests
             await page.WaitForTimeoutAsync(15000);
         }
     }
+
+    [Fact]
+    public async Task ProxyConfigPage_CertLinksNotVisible_WhenStopped()
+    {
+        var page = await _fixture.CreatePageAsync();
+        await page.GotoAsync($"{_fixture.BaseUrl}/proxy-config", new PageGotoOptions
+        {
+            WaitUntil = WaitUntilState.NetworkIdle,
+            Timeout = 30000
+        });
+
+        await page.WaitForTimeoutAsync(3000);
+
+        // Cert download links should not be visible when proxy is stopped
+        var certLinks = page.Locator(".cert-links");
+        Assert.False(await certLinks.IsVisibleAsync(),
+            "Certificate download links should not be visible when proxy is stopped");
+    }
 }
