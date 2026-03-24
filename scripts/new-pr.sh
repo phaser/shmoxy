@@ -80,14 +80,6 @@ cat > "$DOC_FILE" << EOF
 
 ${DESCRIPTION:-No description provided}
 
-## Status
-
-- [ ] Development in progress
-- [ ] Tests added/updated
-- [ ] Documentation updated
-- [ ] Ready for review
-- [ ] Merged
-
 ## Notes
 
 Add any relevant notes, decisions, or context here.

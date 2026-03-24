@@ -8,14 +8,6 @@
 
 Fix error after clicking Start Proxy by using IPC client in ConfigController
 
-## Status
-
-- [ ] Development in progress
-- [ ] Tests added/updated
-- [ ] Documentation updated
-- [ ] Ready for review
-- [ ] Merged
-
 ## Notes
 
 Add any relevant notes, decisions, or context here.

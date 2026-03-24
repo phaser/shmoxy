@@ -7,14 +7,6 @@
 
 Fixes the broken theme switching (dark/light mode had no visual effect) and redesigns the frontend layout to match the Aspire Dashboard style — narrow icon sidebar, top header bar, and a dedicated Settings page for theme control.
 
-## Status
-
-- [x] Development in progress
-- [x] Tests added/updated
-- [x] Documentation updated
-- [x] Ready for review
-- [ ] Merged
-
 ## Changes Made
 
 ### Theme fix

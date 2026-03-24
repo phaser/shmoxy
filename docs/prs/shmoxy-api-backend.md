@@ -8,20 +8,6 @@
 
 Create the `shmoxy.api` backend project that manages proxy instances (local and remote) and exposes a user-facing REST API.
 
-## Status
-
-- [x] Phase 1: Project Setup
-- [x] Phase 2: ProxyIpcClient
-- [x] Phase 3: Local Proxy Management
-- [x] Phase 4: Remote Proxy Registry
-- [ ] Phase 5: REST API Controllers
-- [ ] Phase 6: Tests
-- [x] Development in progress
-- [x] Tests added/updated
-- [ ] Documentation updated
-- [ ] Ready for review
-- [ ] Merged
-
 ## Implementation Plan
 
 ### Phase 1: Project Setup ✅ COMPLETED
