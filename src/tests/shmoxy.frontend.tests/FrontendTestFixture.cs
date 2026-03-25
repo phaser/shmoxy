@@ -32,7 +32,8 @@ public class FrontendTestFixture : IAsyncLifetime
         // Use a dynamic port for the proxy to avoid conflicts with port 8080
         var proxyPort = GetAvailablePort();
         _app = Program.CreateApp(["--urls", BaseUrl, "--contentRoot", apiProjectDir,
-            "--ApiConfig:ProxyPort", proxyPort.ToString()]);
+            "--ApiConfig:ProxyPort", proxyPort.ToString(),
+            "--ApiConfig:AutoStartProxy", "false"]);
 
         // Start the app in the background
         _ = _app.RunAsync();
