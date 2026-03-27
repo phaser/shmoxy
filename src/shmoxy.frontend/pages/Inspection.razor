@@ -30,6 +30,7 @@
                     <th>#</th>
                     <th>Method</th>
                     <th>URL</th>
+                    <th>Status</th>
                     <th>Duration</th>
                 </tr>
             </thead>
@@ -37,17 +38,28 @@
                 @if (filteredRows.Count == 0)
                 {
                     <tr>
-                        <td colspan="4" class="empty-state">Start the proxy to see requests</td>
+                        <td colspan="5" class="empty-state">Start the proxy to see requests</td>
                     </tr>
                 }
                 else
                 {
                     @foreach (var row in filteredRows)
                     {
-                        <tr>
+                        <tr class="clickable-row @(selectedRow?.Id == row.Id ? "selected-row" : "")"
+                            @onclick="() => SelectRow(row)">
                             <td>@row.Id</td>
                             <td><span class="method-badge method-@row.Method.ToLowerInvariant()">@row.Method</span></td>
                             <td class="url-cell">@row.Url</td>
+                            <td>
+                                @if (row.StatusCode.HasValue)
+                                {
+                                    <span class="status-badge status-@GetStatusClass(row.StatusCode.Value)">@row.StatusCode</span>
+                                }
+                                else
+                                {
+                                    <span>-</span>
+                                }
+                            </td>
                             <td>@(row.Duration.HasValue ? $"{row.Duration.Value.TotalMilliseconds:F0} ms" : "-")</td>
                         </tr>
                     }
@@ -66,11 +78,17 @@
     }
 </div>
 
+@if (selectedRow is not null)
+{
+    <InspectionDetail Row="selectedRow" OnClose="CloseDetail" />
+}
+
 @code {
     private List<InspectionRow> filteredRows = new();
     private string searchQuery = "";
     private string methodFilter = "";
     private bool isAtBottom = true;
+    private InspectionRow? selectedRow;
     private const string ContainerId = "inspection-scroll-container";
 
     protected override void OnInitialized()
@@ -122,11 +140,30 @@
             .ToList();
     }
 
+    private void SelectRow(InspectionRow row)
+    {
+        selectedRow = row;
+    }
+
+    private void CloseDetail()
+    {
+        selectedRow = null;
+    }
+
     private async Task ResumeAutoScroll()
     {
         await JS.InvokeVoidAsync("inspectionAutoScroll.scrollToBottom", ContainerId);
         isAtBottom = true;
     }
+
+    private static string GetStatusClass(int statusCode) => statusCode switch
+    {
+        >= 200 and < 300 => "success",
+        >= 300 and < 400 => "redirect",
+        >= 400 and < 500 => "client-error",
+        >= 500 => "server-error",
+        _ => "unknown"
+    };
 
     public async ValueTask DisposeAsync()
     {
@@ -189,7 +226,15 @@
     color: var(--neutral-foreground-rest);
 }
 
-.inspection-table tbody tr:hover {
+.clickable-row {
+    cursor: pointer;
+}
+
+.clickable-row:hover {
+    background: var(--neutral-layer-3);
+}
+
+.selected-row {
     background: var(--neutral-layer-3);
 }
 
@@ -213,6 +258,21 @@
 .method-put { background: rgba(200, 150, 0, 0.15); color: #b08800; }
 .method-delete { background: rgba(200, 0, 0, 0.15); color: #cb2431; }
 .method-patch { background: rgba(128, 0, 200, 0.15); color: #6f42c1; }
+
+.status-badge {
+    display: inline-block;
+    padding: 2px 6px;
+    border-radius: calc(var(--control-corner-radius) * 1px);
+    font-weight: 600;
+    font-size: 0.7rem;
+    font-family: monospace;
+}
+
+.status-success { background: rgba(0, 128, 0, 0.15); color: #22863a; }
+.status-redirect { background: rgba(0, 100, 200, 0.15); color: #0366d6; }
+.status-client-error { background: rgba(200, 150, 0, 0.15); color: #b08800; }
+.status-server-error { background: rgba(200, 0, 0, 0.15); color: #cb2431; }
+.status-unknown { background: rgba(128, 128, 128, 0.15); color: #6a737d; }
 
 .empty-state {
     text-align: center;
