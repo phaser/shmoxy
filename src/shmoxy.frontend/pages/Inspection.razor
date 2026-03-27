@@ -25,6 +25,7 @@
             <thead>
                 <tr>
                     <th>#</th>
+                    <th>Time</th>
                     <th>Method</th>
                     <th>URL</th>
                     <th>Status</th>
@@ -35,7 +36,7 @@
                 @if (filteredRows.Count == 0)
                 {
                     <tr>
-                        <td colspan="5" class="empty-state">Start the proxy to see requests</td>
+                        <td colspan="6" class="empty-state">Start the proxy to see requests</td>
                     </tr>
                 }
                 else
@@ -45,6 +46,7 @@
                         <tr class="clickable-row @(selectedRow?.Id == row.Id ? "selected-row" : "")"
                             @onclick="() => SelectRow(row)">
                             <td>@row.Id</td>
+                            <td class="time-cell">@row.Timestamp.ToLocalTime().ToString("HH:mm:ss.fff")</td>
                             <td><span class="method-badge method-@row.Method.ToLowerInvariant()">@row.Method</span></td>
                             <td class="url-cell">@row.Url</td>
                             <td>
@@ -241,6 +243,13 @@
 
 .selected-row {
     background: var(--neutral-layer-3);
+}
+
+.time-cell {
+    font-family: monospace;
+    font-size: 0.75rem;
+    white-space: nowrap;
+    color: var(--neutral-foreground-hint);
 }
 
 .url-cell {
