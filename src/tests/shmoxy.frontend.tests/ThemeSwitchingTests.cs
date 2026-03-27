@@ -95,8 +95,9 @@ public class ThemeSwitchingTests
 
         await page.WaitForTimeoutAsync(2000);
 
-        var heading = page.Locator("h1");
-        var text = await heading.InnerTextAsync();
-        Assert.Equal("Request Inspection", text);
+        var table = page.Locator(".inspection-table");
+        await table.WaitForAsync(new LocatorWaitForOptions { Timeout = 10000 });
+        var isVisible = await table.IsVisibleAsync();
+        Assert.True(isVisible);
     }
 }

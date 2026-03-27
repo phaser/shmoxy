@@ -4,10 +4,6 @@
 @inject IJSRuntime JS
 @implements IAsyncDisposable
 
-<h1>Request Inspection</h1>
-
-<p class="description">View and analyze intercepted requests and responses.</p>
-
 <div class="inspection-container">
     <div class="filters">
         <FluentTextField Placeholder="Search requests..." @bind-Value="searchQuery"
@@ -182,7 +178,9 @@
 
 <style>
 .inspection-container {
-    max-width: 1200px;
+    width: 100%;
+    padding: 0 1rem;
+    box-sizing: border-box;
 }
 
 .filters {
