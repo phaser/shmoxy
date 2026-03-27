@@ -1,5 +1,6 @@
 @page "/proxy-config"
 @inject ApiClient ApiClient
+@inject ProxyStatusService ProxyStatusService
 
 <h1>Proxy Configuration</h1>
 
@@ -184,6 +185,7 @@
         try
         {
             proxyStatus = await ApiClient.StartProxyAsync();
+            ProxyStatusService.UpdateStatus(proxyStatus);
             proxyActionMessage = "Proxy started successfully!";
             proxyActionSuccess = true;
             await LoadConfig();
@@ -207,6 +209,7 @@
         {
             await ApiClient.StopProxyAsync();
             proxyStatus = FrontendProxyStatus.Stopped;
+            ProxyStatusService.UpdateStatus(proxyStatus);
             proxyActionMessage = "Proxy stopped.";
             proxyActionSuccess = true;
         }
