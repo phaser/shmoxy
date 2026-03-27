@@ -372,6 +372,26 @@ public class ProxyProcessManager : IProxyProcessManager, IDisposable
         cts.CancelAfter(HealthCheckTimeoutMs);
 
         var stopwatch = Stopwatch.StartNew();
+
+        // When using a dynamically-created socket, wait for the file to appear before
+        // attempting IPC health checks to avoid noisy connection errors during startup.
+        if (_injectedIpcClient is null)
+        {
+            while (!File.Exists(_socketPath) && !cts.Token.IsCancellationRequested)
+            {
+                _logger.LogDebug("Waiting for socket file {Socket} to appear ({Elapsed}ms)", _socketPath, stopwatch.ElapsedMilliseconds);
+                try
+                {
+                    await Task.Delay(HealthCheckIntervalMs, cts.Token);
+                }
+                catch (OperationCanceledException) when (cts.Token.IsCancellationRequested)
+                {
+                    _logger.LogWarning("Timed out waiting for socket file after {Timeout}ms", HealthCheckTimeoutMs);
+                    return false;
+                }
+            }
+        }
+
         while (stopwatch.ElapsedMilliseconds < HealthCheckTimeoutMs && !cts.Token.IsCancellationRequested)
         {
             try

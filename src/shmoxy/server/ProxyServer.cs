@@ -23,6 +23,8 @@ public class ProxyServer : IDisposable
     private bool _isListening;
     private X509Certificate2? _rootCert;
 
+    private const int UpstreamReadTimeoutMs = 30000;
+
     /// <summary>
     /// Gets whether the server is currently listening for connections.
     /// </summary>
@@ -479,6 +481,7 @@ public class ProxyServer : IDisposable
     private async Task ForwardHttpRequestAsync(TcpClient client, InterceptedRequest request, string host, int port)
     {
         using var targetClient = new TcpClient();
+        targetClient.ReceiveTimeout = UpstreamReadTimeoutMs;
         await targetClient.ConnectAsync(host, port);
         using var targetStream = targetClient.GetStream();
 
@@ -511,13 +514,26 @@ public class ProxyServer : IDisposable
 
         await targetStream.FlushAsync();
 
-        // Read the full response from the target and relay it back to the client
+        // Stream the response from the target back to the client as chunks arrive
         var clientStream = client.GetStream();
         var responseBuffer = new byte[8192];
         int read;
-        while ((read = await targetStream.ReadAsync(responseBuffer, 0, responseBuffer.Length)) > 0)
+        using var readCts = new CancellationTokenSource(UpstreamReadTimeoutMs);
+        try
         {
-            await clientStream.WriteAsync(responseBuffer, 0, read);
+            while ((read = await targetStream.ReadAsync(responseBuffer, 0, responseBuffer.Length, readCts.Token)) > 0)
+            {
+                await clientStream.WriteAsync(responseBuffer, 0, read);
+                readCts.CancelAfter(UpstreamReadTimeoutMs);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            Log(ProxyConfig.LogLevelEnum.Debug, $"Upstream read timed out for {host}:{port}{request.Path}");
+        }
+        catch (IOException)
+        {
+            // Connection closed by server — expected with Connection: close
         }
 
         await clientStream.FlushAsync();
@@ -599,6 +615,7 @@ public class ProxyServer : IDisposable
 
             // Forward to upstream
             using var targetClient = new TcpClient();
+            targetClient.ReceiveTimeout = UpstreamReadTimeoutMs;
             await targetClient.ConnectAsync(host, port);
 
             Stream targetStream;
@@ -645,35 +662,51 @@ public class ProxyServer : IDisposable
 
                 await targetStream.FlushAsync();
 
-                // Read response and relay back
+                // Read response and stream it back to the client as chunks arrive,
+                // rather than buffering the entire response in memory first.
                 using var ms = new MemoryStream();
                 var responseBuf = new byte[8192];
                 int responseRead;
-                while ((responseRead = await targetStream.ReadAsync(responseBuf, 0, responseBuf.Length)) > 0)
+                using var readCts = new CancellationTokenSource(UpstreamReadTimeoutMs);
+                try
                 {
-                    ms.Write(responseBuf, 0, responseRead);
+                    while ((responseRead = await targetStream.ReadAsync(responseBuf, 0, responseBuf.Length, readCts.Token)) > 0)
+                    {
+                        await clientStream.WriteAsync(responseBuf, 0, responseRead);
+                        ms.Write(responseBuf, 0, responseRead);
+
+                        // Reset the idle timeout after each successful read
+                        readCts.CancelAfter(UpstreamReadTimeoutMs);
+                    }
+                }
+                catch (OperationCanceledException)
+                {
+                    Log(ProxyConfig.LogLevelEnum.Debug, $"Upstream read timed out for {host}:{port}{result.Path}");
+                }
+                catch (IOException)
+                {
+                    // Connection closed by server — expected with Connection: close
                 }
 
-                var responseBytes = ms.ToArray();
+                await clientStream.FlushAsync();
 
                 // Parse status code for intercept hook
-                var responseText = Encoding.ASCII.GetString(responseBytes, 0, Math.Min(responseBytes.Length, 4096));
-                var statusLine = responseText.Split("\r\n").FirstOrDefault() ?? "";
-                var statusParts = statusLine.Split(' ');
-                var statusCode = statusParts.Length >= 2 && int.TryParse(statusParts[1], out var sc) ? sc : 0;
-
-                // Intercept response
-                var interceptedResponse = new InterceptedResponse
+                var responseBytes = ms.ToArray();
+                if (responseBytes.Length > 0)
                 {
-                    StatusCode = statusCode,
-                    Headers = new Dictionary<string, string>(),
-                    Body = responseBytes
-                };
-                await _interceptor.OnResponseAsync(interceptedResponse);
+                    var responseText = Encoding.ASCII.GetString(responseBytes, 0, Math.Min(responseBytes.Length, 4096));
+                    var statusLine = responseText.Split("\r\n").FirstOrDefault() ?? "";
+                    var statusParts = statusLine.Split(' ');
+                    var statusCode = statusParts.Length >= 2 && int.TryParse(statusParts[1], out var sc) ? sc : 0;
 
-                // Write full response back to client
-                await clientStream.WriteAsync(responseBytes, 0, responseBytes.Length);
-                await clientStream.FlushAsync();
+                    var interceptedResponse = new InterceptedResponse
+                    {
+                        StatusCode = statusCode,
+                        Headers = new Dictionary<string, string>(),
+                        Body = responseBytes
+                    };
+                    await _interceptor.OnResponseAsync(interceptedResponse);
+                }
             }
 
             // Connection: close means we're done after one request
