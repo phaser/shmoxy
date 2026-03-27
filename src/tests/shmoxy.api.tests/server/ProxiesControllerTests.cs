@@ -106,7 +106,7 @@ public class ProxiesControllerTests
     [Fact]
     public async Task StopProxy_ReturnsOk()
     {
-        _mockProcessManager.Setup(m => m.StopAsync(It.IsAny<CancellationToken>()))
+        _mockProcessManager.Setup(m => m.StopAsync(It.IsAny<ShutdownSource>(), It.IsAny<CancellationToken>()))
             .Returns(Task.CompletedTask);
 
         var result = await _controller.StopProxy(CancellationToken.None);
@@ -118,7 +118,7 @@ public class ProxiesControllerTests
     [Fact]
     public async Task StopProxy_Returns500_WhenException()
     {
-        _mockProcessManager.Setup(m => m.StopAsync(It.IsAny<CancellationToken>()))
+        _mockProcessManager.Setup(m => m.StopAsync(It.IsAny<ShutdownSource>(), It.IsAny<CancellationToken>()))
             .ThrowsAsync(new Exception("Stop failed"));
 
         var result = await _controller.StopProxy(CancellationToken.None);
@@ -138,7 +138,7 @@ public class ProxiesControllerTests
             SocketPath = "/tmp/test.sock",
             Port = 8080
         };
-        _mockProcessManager.Setup(m => m.StopAsync(It.IsAny<CancellationToken>()))
+        _mockProcessManager.Setup(m => m.StopAsync(It.IsAny<ShutdownSource>(), It.IsAny<CancellationToken>()))
             .Returns(Task.CompletedTask);
         _mockProcessManager.Setup(m => m.StartAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(expectedState);
@@ -150,14 +150,14 @@ public class ProxiesControllerTests
         var state = Assert.IsType<ProxyInstanceState>(actionResult.Value);
         Assert.Equal(ProxyProcessState.Running, state.State);
 
-        _mockProcessManager.Verify(m => m.StopAsync(It.IsAny<CancellationToken>()), Times.Once);
+        _mockProcessManager.Verify(m => m.StopAsync(It.IsAny<ShutdownSource>(), It.IsAny<CancellationToken>()), Times.Once);
         _mockProcessManager.Verify(m => m.StartAsync(It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
     public async Task RestartProxy_Returns500_WhenException()
     {
-        _mockProcessManager.Setup(m => m.StopAsync(It.IsAny<CancellationToken>()))
+        _mockProcessManager.Setup(m => m.StopAsync(It.IsAny<ShutdownSource>(), It.IsAny<CancellationToken>()))
             .ThrowsAsync(new Exception("Restart failed"));
 
         var result = await _controller.RestartProxy(CancellationToken.None);
@@ -165,5 +165,37 @@ public class ProxiesControllerTests
         var actionResult = Assert.IsType<ActionResult<ProxyInstanceState>>(result);
         var statusCodeResult = Assert.IsType<ObjectResult>(actionResult.Result);
         Assert.Equal(500, statusCodeResult.StatusCode);
+    }
+
+    [Fact]
+    public async Task StopProxy_PassesUserShutdownSource()
+    {
+        _mockProcessManager.Setup(m => m.StopAsync(It.IsAny<ShutdownSource>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+
+        await _controller.StopProxy(CancellationToken.None);
+
+        _mockProcessManager.Verify(m => m.StopAsync(ShutdownSource.User, It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task RestartProxy_PassesUserShutdownSource()
+    {
+        var expectedState = new ProxyInstanceState
+        {
+            Id = "test-id",
+            State = ProxyProcessState.Running,
+            ProcessId = 12345,
+            SocketPath = "/tmp/test.sock",
+            Port = 8080
+        };
+        _mockProcessManager.Setup(m => m.StopAsync(It.IsAny<ShutdownSource>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+        _mockProcessManager.Setup(m => m.StartAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(expectedState);
+
+        await _controller.RestartProxy(CancellationToken.None);
+
+        _mockProcessManager.Verify(m => m.StopAsync(ShutdownSource.User, It.IsAny<CancellationToken>()), Times.Once);
     }
 }

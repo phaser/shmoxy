@@ -68,8 +68,8 @@ public class ProxiesController : ControllerBase
     {
         try
         {
-            _logger.LogInformation("Stopping local proxy");
-            await _processManager.StopAsync(ct);
+            _logger.LogInformation("Stopping local proxy (user request)");
+            await _processManager.StopAsync(ShutdownSource.User, ct);
             _logger.LogInformation("Local proxy stopped");
             return Ok(new { Message = "Proxy stopped successfully" });
         }
@@ -88,8 +88,8 @@ public class ProxiesController : ControllerBase
     {
         try
         {
-            _logger.LogInformation("Restarting local proxy");
-            await _processManager.StopAsync(ct);
+            _logger.LogInformation("Restarting local proxy (user request)");
+            await _processManager.StopAsync(ShutdownSource.User, ct);
             var state = await _processManager.StartAsync(ct);
             _logger.LogInformation("Local proxy restarted with state {State}", state.State);
             return Ok(state);

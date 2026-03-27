@@ -220,4 +220,34 @@ public class ProxyProcessManagerTests
         Assert.NotNull(state);
         Assert.Equal(ProxyProcessState.Stopped, state.State);
     }
+
+    [Fact]
+    public async Task StopAsync_SetsExitReasonBasedOnSource_User()
+    {
+        var manager = new ProxyProcessManager(_mockLogger.Object, _mockIpcClient.Object, _mockConfig.Object);
+        _mockIpcClient.Setup(c => c.IsHealthyAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+
+        await manager.StartAsync();
+        await manager.StopAsync(ShutdownSource.User);
+
+        var state = await manager.GetStateAsync();
+        Assert.NotNull(state);
+        Assert.Equal("Stopped by user", state.ExitReason);
+    }
+
+    [Fact]
+    public async Task StopAsync_SetsExitReasonBasedOnSource_System()
+    {
+        var manager = new ProxyProcessManager(_mockLogger.Object, _mockIpcClient.Object, _mockConfig.Object);
+        _mockIpcClient.Setup(c => c.IsHealthyAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+
+        await manager.StartAsync();
+        await manager.StopAsync(ShutdownSource.System);
+
+        var state = await manager.GetStateAsync();
+        Assert.NotNull(state);
+        Assert.Equal("Stopped by system (application shutdown)", state.ExitReason);
+    }
 }

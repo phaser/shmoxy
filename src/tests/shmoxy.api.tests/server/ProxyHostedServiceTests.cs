@@ -52,19 +52,32 @@ public class ProxyHostedServiceTests
         var service = new ProxyHostedService(_mockLogger.Object, _mockProcessManager.Object, _mockConfig.Object);
         await service.StopAsync(CancellationToken.None);
 
-        _mockProcessManager.Verify(m => m.StopAsync(It.IsAny<CancellationToken>()), Times.Once);
+        _mockProcessManager.Verify(m => m.StopAsync(It.IsAny<ShutdownSource>(), It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
     public async Task StopAsync_DoesNotThrow_WhenStopFails()
     {
         _mockConfig.Setup(c => c.Value).Returns(new ApiConfig { AutoStartProxy = false });
-        _mockProcessManager.Setup(m => m.StopAsync(It.IsAny<CancellationToken>()))
+        _mockProcessManager.Setup(m => m.StopAsync(It.IsAny<ShutdownSource>(), It.IsAny<CancellationToken>()))
             .ThrowsAsync(new InvalidOperationException("test error"));
 
         var service = new ProxyHostedService(_mockLogger.Object, _mockProcessManager.Object, _mockConfig.Object);
 
         var exception = await Record.ExceptionAsync(() => service.StopAsync(CancellationToken.None));
         Assert.Null(exception);
+    }
+
+    [Fact]
+    public async Task StopAsync_PassesSystemShutdownSource()
+    {
+        _mockConfig.Setup(c => c.Value).Returns(new ApiConfig { AutoStartProxy = false });
+        _mockProcessManager.Setup(m => m.StopAsync(It.IsAny<ShutdownSource>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+
+        var service = new ProxyHostedService(_mockLogger.Object, _mockProcessManager.Object, _mockConfig.Object);
+        await service.StopAsync(CancellationToken.None);
+
+        _mockProcessManager.Verify(m => m.StopAsync(ShutdownSource.System, It.IsAny<CancellationToken>()), Times.Once);
     }
 }

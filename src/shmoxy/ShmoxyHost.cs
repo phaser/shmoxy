@@ -114,7 +114,8 @@ public static class ShmoxyHost
                     app.UseRouting();
                     app.UseEndpoints(endpoints =>
                     {
-                        endpoints.MapProxyControlApi(stateService, config);
+                        var loggerFactory = app.ApplicationServices.GetRequiredService<ILoggerFactory>();
+                        endpoints.MapProxyControlApi(stateService, config, loggerFactory);
                     });
                 });
             })

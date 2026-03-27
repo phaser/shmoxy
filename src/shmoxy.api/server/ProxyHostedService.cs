@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using shmoxy.api.models;
 using shmoxy.api.models.configuration;
 using shmoxy.api.server;
 
@@ -46,10 +47,10 @@ public class ProxyHostedService : IHostedService
 
     public async Task StopAsync(CancellationToken cancellationToken)
     {
-        _logger.LogInformation("Stopping proxy on application shutdown");
+        _logger.LogInformation("Stopping proxy on application shutdown (source: {ShutdownSource})", ShutdownSource.System);
         try
         {
-            await _processManager.StopAsync(cancellationToken);
+            await _processManager.StopAsync(ShutdownSource.System, cancellationToken);
             _logger.LogInformation("Proxy stopped");
         }
         catch (Exception ex)
