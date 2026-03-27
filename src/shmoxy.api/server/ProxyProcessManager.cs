@@ -179,13 +179,19 @@ public class ProxyProcessManager : IProxyProcessManager, IDisposable
         return _currentState;
     }
 
-    public async Task StopAsync(CancellationToken ct = default)
+    public async Task StopAsync(ShutdownSource source = ShutdownSource.User, CancellationToken ct = default)
     {
+        var shutdownRequestedAt = DateTime.UtcNow;
+
         if (_currentState.State == ProxyProcessState.Stopped || _currentState.State == ProxyProcessState.Stopping)
         {
             _logger.LogWarning("Proxy is already {State}", _currentState.State);
             return;
         }
+
+        _logger.LogInformation(
+            "Proxy shutdown requested at {ShutdownRequestedAt} by {ShutdownSource}",
+            shutdownRequestedAt, source);
 
         UpdateState(new ProxyInstanceState
         {
@@ -195,7 +201,7 @@ public class ProxyProcessManager : IProxyProcessManager, IDisposable
             SocketPath = _currentState.SocketPath,
             Port = _currentState.Port,
             StartedAt = _currentState.StartedAt,
-            StoppedAt = DateTime.UtcNow
+            StoppedAt = shutdownRequestedAt
         });
 
         _healthCheckCts.Cancel();
@@ -222,7 +228,7 @@ public class ProxyProcessManager : IProxyProcessManager, IDisposable
                     }
                     else
                     {
-                        _logger.LogWarning("Graceful shutdown timed out, force killing...");
+                        _logger.LogWarning("Graceful shutdown timed out after {TimeoutMs}ms, force killing...", ShutdownTimeoutMs);
                         _process.Kill(entireProcessTree: true);
                         _process.WaitForExit();
                     }
@@ -245,6 +251,15 @@ public class ProxyProcessManager : IProxyProcessManager, IDisposable
 
         CleanupSocketFile();
 
+        var exitReason = source switch
+        {
+            ShutdownSource.User => "Stopped by user",
+            ShutdownSource.System => "Stopped by system (application shutdown)",
+            ShutdownSource.HealthCheck => "Stopped after health check failure",
+            ShutdownSource.Dispose => "Stopped during resource disposal",
+            _ => $"Stopped ({source})"
+        };
+
         UpdateState(new ProxyInstanceState
         {
             Id = _currentState.Id,
@@ -254,10 +269,10 @@ public class ProxyProcessManager : IProxyProcessManager, IDisposable
             Port = null,
             StartedAt = _currentState.StartedAt,
             StoppedAt = DateTime.UtcNow,
-            ExitReason = "Stopped by user"
+            ExitReason = exitReason
         });
 
-        _logger.LogInformation("Proxy process stopped");
+        _logger.LogInformation("Proxy process stopped (source: {ShutdownSource}, reason: {ExitReason})", source, exitReason);
     }
 
     public Task<ProxyInstanceState?> GetStateAsync()
@@ -532,7 +547,7 @@ public class ProxyProcessManager : IProxyProcessManager, IDisposable
         {
             try
             {
-                StopAsync(CancellationToken.None).GetAwaiter().GetResult();
+                StopAsync(ShutdownSource.Dispose, CancellationToken.None).GetAwaiter().GetResult();
             }
             catch (Exception ex)
             {

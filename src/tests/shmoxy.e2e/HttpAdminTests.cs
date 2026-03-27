@@ -67,7 +67,8 @@ public class HttpAdminTests : IAsyncLifetime
                     app.UseMiddleware<ApiKeyAuthenticationMiddleware>();
                     app.UseEndpoints(endpoints =>
                     {
-                        endpoints.MapProxyControlApi(stateService, config);
+                        var loggerFactory = app.ApplicationServices.GetRequiredService<Microsoft.Extensions.Logging.ILoggerFactory>();
+                        endpoints.MapProxyControlApi(stateService, config, loggerFactory);
                     });
                 });
             })

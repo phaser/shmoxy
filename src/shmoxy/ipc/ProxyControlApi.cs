@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using shmoxy.shared.ipc;
 
 namespace shmoxy.ipc;
@@ -12,8 +13,10 @@ namespace shmoxy.ipc;
 /// </summary>
 public static class ProxyControlApi
 {
-    public static IEndpointRouteBuilder MapProxyControlApi(this IEndpointRouteBuilder endpoints, ProxyStateService stateService, ProxyConfig config)
+    public static IEndpointRouteBuilder MapProxyControlApi(this IEndpointRouteBuilder endpoints, ProxyStateService stateService, ProxyConfig config, ILoggerFactory loggerFactory)
     {
+        var logger = loggerFactory.CreateLogger("shmoxy.ipc.ProxyControlApi");
+
         endpoints.MapGet("/ipc/status", () =>
         {
             return Results.Json(new ProxyStatus
@@ -27,8 +30,12 @@ public static class ProxyControlApi
 
         endpoints.MapPost("/ipc/shutdown", async (IHostApplicationLifetime lifetime) =>
         {
+            var requestedAt = DateTime.UtcNow;
+            logger.LogInformation(
+                "Shutdown requested via IPC at {ShutdownRequestedAt}",
+                requestedAt);
             lifetime.StopApplication();
-            return Results.Json(new ShutdownResponse { Success = true, Message = "Shutdown initiated" });
+            return Results.Json(new ShutdownResponse { Success = true, Message = $"Shutdown initiated at {requestedAt:O}" });
         });
 
         endpoints.MapGet("/ipc/config", () =>

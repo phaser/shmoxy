@@ -38,6 +38,8 @@ public class ProxyHostedService : IHostedService
 
     public async Task StopAsync(CancellationToken cancellationToken)
     {
+        _logger.LogInformation("Proxy server shutdown requested at {ShutdownRequestedAt}", DateTime.UtcNow);
+
         if (_shutdownCts != null)
         {
             _shutdownCts.Cancel();
@@ -47,6 +49,8 @@ public class ProxyHostedService : IHostedService
         {
             await _proxyTask;
         }
+
+        _logger.LogInformation("Proxy server shutdown completed at {ShutdownCompletedAt}", DateTime.UtcNow);
     }
 
     public ProxyServer GetProxyServer() => _server;

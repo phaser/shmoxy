@@ -69,7 +69,8 @@ public class IpcHostedService : IHostedService, IDisposable
                     app.UseMiddleware<ApiKeyAuthenticationMiddleware>();
                     app.UseEndpoints(endpoints =>
                     {
-                        endpoints.MapProxyControlApi(_stateService, _config);
+                        var loggerFactory = app.ApplicationServices.GetRequiredService<ILoggerFactory>();
+                        endpoints.MapProxyControlApi(_stateService, _config, loggerFactory);
                     });
                 });
             })
