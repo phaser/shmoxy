@@ -39,9 +39,53 @@
                         <table class="headers-table">
                             @foreach (var header in Row.RequestHeaders)
                             {
+                                var jwtKey = $"request-{header.Key}";
+                                var bearerToken = IsAuthorizationBearer(header) ? JwtDecoder.ExtractBearerToken(header.Value) : null;
+                                var isJwt = bearerToken != null && JwtDecoder.IsJwt(bearerToken);
                                 <tr>
                                     <td class="header-name">@header.Key</td>
-                                    <td class="header-value">@header.Value</td>
+                                    <td class="header-value">
+                                        @if (isJwt)
+                                        {
+                                            <div class="jwt-header">
+                                                <div class="jwt-toggle">
+                                                    <button class="jwt-decode-btn @(jwtExpanded.Contains(jwtKey) ? "active" : "")"
+                                                            @onclick="() => ToggleJwt(jwtKey)">
+                                                        @(jwtExpanded.Contains(jwtKey) ? "Raw" : "Decode JWT")
+                                                    </button>
+                                                </div>
+                                                @if (jwtExpanded.Contains(jwtKey))
+                                                {
+                                                    var decoded = JwtDecoder.Decode(bearerToken!);
+                                                    if (decoded != null)
+                                                    {
+                                                        <div class="jwt-decoded">
+                                                            <div class="jwt-section">
+                                                                <span class="jwt-label">Header</span>
+                                                                <pre class="jwt-json"><code class="language-json">@decoded.Header</code></pre>
+                                                            </div>
+                                                            <div class="jwt-section">
+                                                                <span class="jwt-label">Payload</span>
+                                                                <pre class="jwt-json"><code class="language-json">@decoded.Payload</code></pre>
+                                                            </div>
+                                                            <div class="jwt-section">
+                                                                <span class="jwt-label">Signature</span>
+                                                                <code class="jwt-signature">@decoded.Signature</code>
+                                                            </div>
+                                                        </div>
+                                                    }
+                                                }
+                                                else
+                                                {
+                                                    @header.Value
+                                                }
+                                            </div>
+                                        }
+                                        else
+                                        {
+                                            @header.Value
+                                        }
+                                    </td>
                                 </tr>
                             }
                         </table>
@@ -82,9 +126,53 @@
                         <table class="headers-table">
                             @foreach (var header in Row.ResponseHeaders)
                             {
+                                var jwtKey = $"response-{header.Key}";
+                                var bearerToken = IsAuthorizationBearer(header) ? JwtDecoder.ExtractBearerToken(header.Value) : null;
+                                var isJwt = bearerToken != null && JwtDecoder.IsJwt(bearerToken);
                                 <tr>
                                     <td class="header-name">@header.Key</td>
-                                    <td class="header-value">@header.Value</td>
+                                    <td class="header-value">
+                                        @if (isJwt)
+                                        {
+                                            <div class="jwt-header">
+                                                <div class="jwt-toggle">
+                                                    <button class="jwt-decode-btn @(jwtExpanded.Contains(jwtKey) ? "active" : "")"
+                                                            @onclick="() => ToggleJwt(jwtKey)">
+                                                        @(jwtExpanded.Contains(jwtKey) ? "Raw" : "Decode JWT")
+                                                    </button>
+                                                </div>
+                                                @if (jwtExpanded.Contains(jwtKey))
+                                                {
+                                                    var decoded = JwtDecoder.Decode(bearerToken!);
+                                                    if (decoded != null)
+                                                    {
+                                                        <div class="jwt-decoded">
+                                                            <div class="jwt-section">
+                                                                <span class="jwt-label">Header</span>
+                                                                <pre class="jwt-json"><code class="language-json">@decoded.Header</code></pre>
+                                                            </div>
+                                                            <div class="jwt-section">
+                                                                <span class="jwt-label">Payload</span>
+                                                                <pre class="jwt-json"><code class="language-json">@decoded.Payload</code></pre>
+                                                            </div>
+                                                            <div class="jwt-section">
+                                                                <span class="jwt-label">Signature</span>
+                                                                <code class="jwt-signature">@decoded.Signature</code>
+                                                            </div>
+                                                        </div>
+                                                    }
+                                                }
+                                                else
+                                                {
+                                                    @header.Value
+                                                }
+                                            </div>
+                                        }
+                                        else
+                                        {
+                                            @header.Value
+                                        }
+                                    </td>
                                 </tr>
                             }
                         </table>
@@ -133,6 +221,7 @@
 
     private string activeTab = "request";
     private ElementReference overlayRef;
+    private HashSet<string> jwtExpanded = new();
 
     private async Task SetTab(string tab)
     {
@@ -226,6 +315,22 @@
         {
             // Circuit disconnected
         }
+    }
+
+    private static bool IsAuthorizationBearer(KeyValuePair<string, string> header)
+    {
+        return header.Key.Equals("Authorization", StringComparison.OrdinalIgnoreCase)
+            && header.Value.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private async Task ToggleJwt(string key)
+    {
+        if (!jwtExpanded.Remove(key))
+            jwtExpanded.Add(key);
+
+        StateHasChanged();
+        await Task.Yield();
+        await HighlightCode();
     }
 
     private static string GetStatusClass(int statusCode) => statusCode switch
@@ -454,5 +559,72 @@
     color: var(--neutral-foreground-hint);
     font-style: italic;
     font-size: 0.875rem;
+}
+
+.jwt-header {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.jwt-toggle {
+    display: flex;
+    align-items: center;
+}
+
+.jwt-decode-btn {
+    background: var(--neutral-layer-3);
+    border: 1px solid var(--neutral-stroke-rest);
+    color: var(--accent-foreground-rest);
+    padding: 2px 8px;
+    border-radius: calc(var(--control-corner-radius) * 1px);
+    cursor: pointer;
+    font-size: 0.7rem;
+    font-weight: 600;
+}
+
+.jwt-decode-btn:hover {
+    background: var(--neutral-layer-2);
+}
+
+.jwt-decode-btn.active {
+    background: var(--accent-foreground-rest);
+    color: white;
+    border-color: var(--accent-foreground-rest);
+}
+
+.jwt-decoded {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-top: 4px;
+}
+
+.jwt-section {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.jwt-label {
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    color: var(--neutral-foreground-hint);
+    letter-spacing: 0.05em;
+}
+
+.jwt-json {
+    margin: 0;
+    border-radius: calc(var(--control-corner-radius) * 1px);
+    font-size: 0.75rem;
+    max-height: 200px;
+    overflow-y: auto;
+}
+
+.jwt-signature {
+    font-size: 0.75rem;
+    word-break: break-all;
+    color: var(--neutral-foreground-hint);
 }
 </style>
