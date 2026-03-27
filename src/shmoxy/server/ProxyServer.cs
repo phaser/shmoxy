@@ -516,6 +516,7 @@ public class ProxyServer : IDisposable
 
         // Stream the response from the target back to the client as chunks arrive
         var clientStream = client.GetStream();
+        using var ms = new MemoryStream();
         var responseBuffer = new byte[8192];
         int read;
         using var readCts = new CancellationTokenSource(UpstreamReadTimeoutMs);
@@ -524,6 +525,7 @@ public class ProxyServer : IDisposable
             while ((read = await targetStream.ReadAsync(responseBuffer, 0, responseBuffer.Length, readCts.Token)) > 0)
             {
                 await clientStream.WriteAsync(responseBuffer, 0, read);
+                ms.Write(responseBuffer, 0, read);
                 readCts.CancelAfter(UpstreamReadTimeoutMs);
             }
         }
@@ -537,6 +539,21 @@ public class ProxyServer : IDisposable
         }
 
         await clientStream.FlushAsync();
+
+        // Parse and capture response for inspection
+        var responseBytes = ms.ToArray();
+        if (responseBytes.Length > 0)
+        {
+            var (respStatusCode, respHeaders, respBody) = ParseRawHttpResponse(responseBytes);
+
+            var interceptedResponse = new InterceptedResponse
+            {
+                StatusCode = respStatusCode,
+                Headers = respHeaders,
+                Body = respBody
+            };
+            await _interceptor.OnResponseAsync(interceptedResponse);
+        }
     }
 
     /// <summary>
