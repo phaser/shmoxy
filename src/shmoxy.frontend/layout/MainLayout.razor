@@ -19,17 +19,13 @@
 
     <div class="body">
         <nav class="icon-sidebar">
-            <NavLink href="/" Match="NavLinkMatch.All" class="nav-item" title="Home">
-                <FluentIcon Value="@(new Icons.Regular.Size20.Home())" />
-                <span>Home</span>
+            <NavLink href="/" Match="NavLinkMatch.All" class="nav-item" title="Inspection">
+                <FluentIcon Value="@(new Icons.Regular.Size20.DocumentSearch())" />
+                <span>Inspection</span>
             </NavLink>
             <NavLink href="/proxy-config" Match="NavLinkMatch.Prefix" class="nav-item" title="Proxy Config">
                 <FluentIcon Value="@(new Icons.Regular.Size20.Server())" />
                 <span>Proxy</span>
-            </NavLink>
-            <NavLink href="/inspection" Match="NavLinkMatch.Prefix" class="nav-item" title="Inspection">
-                <FluentIcon Value="@(new Icons.Regular.Size20.DocumentSearch())" />
-                <span>Inspection</span>
             </NavLink>
             <NavLink href="/settings" Match="NavLinkMatch.Prefix" class="nav-item" title="Settings">
                 <FluentIcon Value="@(new Icons.Regular.Size20.Settings())" />
