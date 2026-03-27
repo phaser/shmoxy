@@ -157,6 +157,77 @@ public class ProxyServerTests : IClassFixture<ProxyTestFixture>, IDisposable
         Assert.True(body.Length > 0, $"{name} should return content");
     }
 
+    [Fact]
+    public void ParseRawHttpResponse_ParsesStatusCode()
+    {
+        var raw = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\nHello"u8.ToArray();
+
+        var (statusCode, _, _) = ProxyServer.ParseRawHttpResponse(raw);
+
+        Assert.Equal(200, statusCode);
+    }
+
+    [Fact]
+    public void ParseRawHttpResponse_ParsesHeaders()
+    {
+        var raw = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nX-Custom: value\r\n\r\nBody"u8.ToArray();
+
+        var (_, headers, _) = ProxyServer.ParseRawHttpResponse(raw);
+
+        Assert.Equal("text/plain", headers["Content-Type"]);
+        Assert.Equal("value", headers["X-Custom"]);
+    }
+
+    [Fact]
+    public void ParseRawHttpResponse_SeparatesBodyFromHeaders()
+    {
+        var bodyContent = "Hello, World!";
+        var raw = System.Text.Encoding.ASCII.GetBytes($"HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\n{bodyContent}");
+
+        var (_, _, body) = ProxyServer.ParseRawHttpResponse(raw);
+
+        Assert.Equal(bodyContent, System.Text.Encoding.ASCII.GetString(body));
+    }
+
+    [Fact]
+    public void ParseRawHttpResponse_EmptyBodyWhenNoContent()
+    {
+        var raw = "HTTP/1.1 204 No Content\r\nX-Header: value\r\n\r\n"u8.ToArray();
+
+        var (statusCode, headers, body) = ProxyServer.ParseRawHttpResponse(raw);
+
+        Assert.Equal(204, statusCode);
+        Assert.Equal("value", headers["X-Header"]);
+        Assert.Empty(body);
+    }
+
+    [Fact]
+    public void ParseRawHttpResponse_HandlesNoHeaderBodySeparator()
+    {
+        var raw = "HTTP/1.1 200 OK\r\nContent-Type: text/plain"u8.ToArray();
+
+        var (statusCode, headers, body) = ProxyServer.ParseRawHttpResponse(raw);
+
+        Assert.Equal(200, statusCode);
+        Assert.Equal("text/plain", headers["Content-Type"]);
+        Assert.Empty(body);
+    }
+
+    [Fact]
+    public void ParseRawHttpResponse_ParsesBinaryBody()
+    {
+        var headerBytes = System.Text.Encoding.ASCII.GetBytes("HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\n\r\n");
+        var bodyBytes = new byte[] { 0x00, 0x01, 0xFF, 0xFE };
+        var raw = new byte[headerBytes.Length + bodyBytes.Length];
+        Buffer.BlockCopy(headerBytes, 0, raw, 0, headerBytes.Length);
+        Buffer.BlockCopy(bodyBytes, 0, raw, headerBytes.Length, bodyBytes.Length);
+
+        var (_, headers, body) = ProxyServer.ParseRawHttpResponse(raw);
+
+        Assert.Equal("application/octet-stream", headers["Content-Type"]);
+        Assert.Equal(bodyBytes, body);
+    }
+
     public void Dispose()
     {
         if (_disposed) return;

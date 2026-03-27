@@ -690,20 +690,17 @@ public class ProxyServer : IDisposable
 
                 await clientStream.FlushAsync();
 
-                // Parse status code for intercept hook
+                // Parse status code, headers, and body for intercept hook
                 var responseBytes = ms.ToArray();
                 if (responseBytes.Length > 0)
                 {
-                    var responseText = Encoding.ASCII.GetString(responseBytes, 0, Math.Min(responseBytes.Length, 4096));
-                    var statusLine = responseText.Split("\r\n").FirstOrDefault() ?? "";
-                    var statusParts = statusLine.Split(' ');
-                    var statusCode = statusParts.Length >= 2 && int.TryParse(statusParts[1], out var sc) ? sc : 0;
+                    var (respStatusCode, respHeaders, respBody) = ParseRawHttpResponse(responseBytes);
 
                     var interceptedResponse = new InterceptedResponse
                     {
-                        StatusCode = statusCode,
-                        Headers = new Dictionary<string, string>(),
-                        Body = responseBytes
+                        StatusCode = respStatusCode,
+                        Headers = respHeaders,
+                        Body = respBody
                     };
                     await _interceptor.OnResponseAsync(interceptedResponse);
                 }
@@ -723,6 +720,68 @@ public class ProxyServer : IDisposable
         var stream = client.GetStream();
         await stream.WriteAsync(bytes, 0, bytes.Length);
         await stream.FlushAsync();
+    }
+
+    /// <summary>
+    /// Parses a raw HTTP response into status code, headers, and body.
+    /// </summary>
+    internal static (int StatusCode, Dictionary<string, string> Headers, byte[] Body) ParseRawHttpResponse(byte[] rawResponse)
+    {
+        var headerText = Encoding.ASCII.GetString(rawResponse, 0, Math.Min(rawResponse.Length, 8192));
+
+        var headerEndIndex = headerText.IndexOf("\r\n\r\n", StringComparison.Ordinal);
+        if (headerEndIndex < 0)
+        {
+            // No header/body separator found — treat entire response as headers-only
+            var lines = headerText.Split("\r\n");
+            var statusLine = lines.FirstOrDefault() ?? "";
+            var statusParts = statusLine.Split(' ');
+            var sc = statusParts.Length >= 2 && int.TryParse(statusParts[1], out var s) ? s : 0;
+            return (sc, ParseHeaders(lines.Skip(1)), Array.Empty<byte>());
+        }
+
+        var headerSection = headerText[..headerEndIndex];
+        var headerLines = headerSection.Split("\r\n");
+
+        // Parse status code from first line
+        var firstLine = headerLines.FirstOrDefault() ?? "";
+        var parts = firstLine.Split(' ');
+        var statusCode = parts.Length >= 2 && int.TryParse(parts[1], out var code) ? code : 0;
+
+        // Parse headers from remaining lines
+        var headers = ParseHeaders(headerLines.Skip(1));
+
+        // Body starts after \r\n\r\n (4 bytes past the header end in the raw bytes)
+        var bodyStart = headerEndIndex + 4;
+        byte[] body;
+        if (bodyStart < rawResponse.Length)
+        {
+            body = new byte[rawResponse.Length - bodyStart];
+            Buffer.BlockCopy(rawResponse, bodyStart, body, 0, body.Length);
+        }
+        else
+        {
+            body = Array.Empty<byte>();
+        }
+
+        return (statusCode, headers, body);
+    }
+
+    private static Dictionary<string, string> ParseHeaders(IEnumerable<string> lines)
+    {
+        var headers = new Dictionary<string, string>();
+        foreach (var line in lines)
+        {
+            if (string.IsNullOrWhiteSpace(line)) break;
+            var colonIndex = line.IndexOf(':');
+            if (colonIndex > 0)
+            {
+                var key = line[..colonIndex].Trim();
+                var value = line[(colonIndex + 1)..].Trim();
+                headers[key] = value;
+            }
+        }
+        return headers;
     }
 
     /// <summary>
