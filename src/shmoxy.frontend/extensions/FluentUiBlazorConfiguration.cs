@@ -27,6 +27,7 @@ public static class FluentUiBlazorConfiguration
         });
         services.AddScoped<ThemeState>();
         services.AddSingleton<InspectionDataService>();
+        services.AddSingleton<ProxyStatusService>();
 
         return services;
     }

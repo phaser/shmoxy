@@ -1,0 +1,67 @@
+@inject ProxyStatusService StatusService
+@implements IDisposable
+
+<div class="proxy-status-indicator" title="@StatusTooltip">
+    <span class="status-dot @StatusClass"></span>
+    <span class="status-label">@StatusLabel</span>
+</div>
+
+@code {
+    protected override void OnInitialized()
+    {
+        StatusService.StartPolling();
+        StatusService.OnStatusChanged += OnStatusChanged;
+    }
+
+    private async void OnStatusChanged()
+    {
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private string StatusClass => StatusService.CurrentStatus.IsRunning ? "running" : "stopped";
+
+    private string StatusLabel => StatusService.CurrentStatus.IsRunning ? "Running" : "Stopped";
+
+    private string StatusTooltip => StatusService.CurrentStatus.IsRunning
+        ? $"Proxy running on {StatusService.CurrentStatus.Address ?? "unknown"}"
+        : "Proxy is stopped";
+
+    public void Dispose()
+    {
+        StatusService.OnStatusChanged -= OnStatusChanged;
+    }
+}
+
+<style>
+.proxy-status-indicator {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    border-radius: calc(var(--control-corner-radius) * 1px);
+    font-size: 0.75rem;
+    font-weight: 500;
+    cursor: default;
+}
+
+.status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
+.status-dot.running {
+    background-color: #22863a;
+    box-shadow: 0 0 4px rgba(34, 134, 58, 0.5);
+}
+
+.status-dot.stopped {
+    background-color: #6a737d;
+}
+
+.status-label {
+    color: var(--neutral-foreground-hint);
+    white-space: nowrap;
+}
+</style>
