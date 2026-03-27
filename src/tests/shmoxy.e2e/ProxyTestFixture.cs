@@ -76,7 +76,9 @@ public sealed class ProxyTestFixture : IAsyncLifetime
 
         var contextOptions = new BrowserNewContextOptions
         {
-            IgnoreHTTPSErrors = false
+            // When routing through the proxy, the browser must trust the proxy's
+            // dynamically generated MITM certificates for HTTPS sites.
+            IgnoreHTTPSErrors = useProxy
         };
 
         // Only set proxy if explicitly requested

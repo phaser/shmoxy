@@ -220,7 +220,7 @@ public class ProxyIpcClient : IProxyIpcClient, IDisposable
             catch (HttpRequestException ex) when (attempt < MaxRetries && IsTransient(ex))
             {
                 attempt++;
-                _logger.LogWarning(ex, "Transient error (attempt {Attempt}/{MaxRetries}), retrying in {Delay}ms",
+                _logger.LogDebug(ex, "Transient error (attempt {Attempt}/{MaxRetries}), retrying in {Delay}ms",
                     attempt, MaxRetries, delay.TotalMilliseconds);
 
                 await Task.Delay(delay, ct);
@@ -229,7 +229,7 @@ public class ProxyIpcClient : IProxyIpcClient, IDisposable
             catch (TaskCanceledException ex) when (attempt < MaxRetries)
             {
                 attempt++;
-                _logger.LogWarning(ex, "Timeout (attempt {Attempt}/{MaxRetries}), retrying in {Delay}ms",
+                _logger.LogDebug(ex, "Timeout (attempt {Attempt}/{MaxRetries}), retrying in {Delay}ms",
                     attempt, MaxRetries, delay.TotalMilliseconds);
 
                 await Task.Delay(delay, ct);

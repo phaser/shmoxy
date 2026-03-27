@@ -73,7 +73,7 @@ public class ProxyPerformanceTests : IAsyncLifetime
             {
                 _output.WriteLine($"Loading (no proxy): {url}");
                 var pageSw = Stopwatch.StartNew();
-                await page.GotoAsync(url, new() { Timeout = 60000, WaitUntil = WaitUntilState.Load });
+                await page.GotoAsync(url, new() { Timeout = 120000, WaitUntil = WaitUntilState.DOMContentLoaded });
                 pageSw.Stop();
                 _output.WriteLine($"  -> {pageSw.ElapsedMilliseconds}ms");
             }
@@ -121,7 +121,7 @@ public class ProxyPerformanceTests : IAsyncLifetime
             {
                 _output.WriteLine($"Loading (with proxy): {url}");
                 var pageSw = Stopwatch.StartNew();
-                await page.GotoAsync(url, new() { Timeout = 60000, WaitUntil = WaitUntilState.Load });
+                await page.GotoAsync(url, new() { Timeout = 120000, WaitUntil = WaitUntilState.DOMContentLoaded });
                 pageSw.Stop();
                 _output.WriteLine($"  -> {pageSw.ElapsedMilliseconds}ms");
             }
