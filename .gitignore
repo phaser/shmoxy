@@ -19,6 +19,11 @@ result*
 .nix-profile/
 .drv/
 
+# Generated docs
+docs/proxy-server-architecture.html
+docs/proxy-server-architecture.pdf
+docs/proxy-server-architecture-assets/
+
 # macOS
 .DS_Store
 

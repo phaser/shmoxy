@@ -11,9 +11,18 @@ Work through open GitHub issues sequentially. If an issue number is provided ($0
 ## Before Starting
 
 1. Read `AGENTS.md` and follow all instructions
-2. Make sure you're on the `main` branch and it's up to date: `git checkout main && git pull origin main`
 
 ## For Each Issue
+
+### 0. Sync Main
+
+Before starting work on any issue, always sync main first:
+
+```bash
+git checkout main && git pull origin main
+```
+
+This ensures the worktree branch is always created from the latest main.
 
 ### 1. Understand the Issue
 
@@ -58,11 +67,11 @@ All work happens in the worktree — never modify main directly.
 ### 7. After PR is Created
 
 - Tell the user the PR is ready and show the PR URL
-- **Ask the user** whether to merge, or wait for review
-- If told to merge: merge the PR, update main (`git pull`), clean up the worktree (`./scripts/cleanup-pr.sh`)
+- **If bypass permissions are on** (i.e., tool calls are not requiring user approval): automatically merge the PR, pull changes to main (`git checkout main && git pull origin main`), clean up the worktree (`./scripts/cleanup-pr.sh`), and immediately move to the next issue
+- **Otherwise**: ask the user whether to merge or wait for review. If told to merge: merge the PR, update main (`git checkout main && git pull`), clean up the worktree (`./scripts/cleanup-pr.sh`)
 
 ### 8. Move to Next Issue
 
 - After the current issue is fully done (merged + cleaned up), immediately pick up the next open issue
-- Repeat from step 1
+- Repeat from step 0 (sync main)
 - When there are no more open issues, report that all issues are done
