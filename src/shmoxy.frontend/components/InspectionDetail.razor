@@ -1,0 +1,407 @@
+@inject IJSRuntime JS
+@using shmoxy.frontend.services
+
+<div class="detail-overlay" @onclick="OnClose">
+    <div class="detail-panel" @onclick:stopPropagation="true">
+        <div class="detail-header">
+            <div class="detail-title">
+                <span class="method-badge method-@Row.Method.ToLowerInvariant()">@Row.Method</span>
+                <span class="detail-url" title="@Row.Url">@Row.Url</span>
+            </div>
+            <div class="detail-meta">
+                @if (Row.StatusCode.HasValue)
+                {
+                    <span class="status-badge status-@GetStatusClass(Row.StatusCode.Value)">@Row.StatusCode</span>
+                }
+                @if (Row.Duration.HasValue)
+                {
+                    <span class="detail-duration">@($"{Row.Duration.Value.TotalMilliseconds:F0}") ms</span>
+                }
+                <span class="detail-time">@Row.Timestamp.ToString("HH:mm:ss.fff")</span>
+            </div>
+            <button class="close-button" @onclick="OnClose" title="Close (Esc)">&times;</button>
+        </div>
+
+        <div class="detail-tabs">
+            <button class="tab @(activeTab == "request" ? "active" : "")" @onclick='() => SetTab("request")'>Request</button>
+            <button class="tab @(activeTab == "response" ? "active" : "")" @onclick='() => SetTab("response")'>Response</button>
+        </div>
+
+        <div id="detail-content" class="detail-body">
+            @if (activeTab == "request")
+            {
+                <div class="section">
+                    <div class="section-header">
+                        <h3>Headers</h3>
+                    </div>
+                    @if (Row.RequestHeaders.Count > 0)
+                    {
+                        <table class="headers-table">
+                            @foreach (var header in Row.RequestHeaders)
+                            {
+                                <tr>
+                                    <td class="header-name">@header.Key</td>
+                                    <td class="header-value">@header.Value</td>
+                                </tr>
+                            }
+                        </table>
+                    }
+                    else
+                    {
+                        <p class="no-data">No headers captured</p>
+                    }
+                </div>
+
+                <div class="section">
+                    <div class="section-header">
+                        <h3>Body</h3>
+                        @if (!string.IsNullOrEmpty(Row.RequestBody))
+                        {
+                            <button class="copy-button" @onclick="() => CopyToClipboard(Row.RequestBody)">Copy</button>
+                        }
+                    </div>
+                    @if (!string.IsNullOrEmpty(Row.RequestBody))
+                    {
+                        var (formatted, lang) = FormatBody(Row.RequestBody, Row.RequestHeaders);
+                        <pre class="code-block"><code id="request-body-code" class="language-@lang">@formatted</code></pre>
+                    }
+                    else
+                    {
+                        <p class="no-data">No body</p>
+                    }
+                </div>
+            }
+            else
+            {
+                <div class="section">
+                    <div class="section-header">
+                        <h3>Headers</h3>
+                    </div>
+                    @if (Row.ResponseHeaders.Count > 0)
+                    {
+                        <table class="headers-table">
+                            @foreach (var header in Row.ResponseHeaders)
+                            {
+                                <tr>
+                                    <td class="header-name">@header.Key</td>
+                                    <td class="header-value">@header.Value</td>
+                                </tr>
+                            }
+                        </table>
+                    }
+                    else
+                    {
+                        <p class="no-data">No headers captured</p>
+                    }
+                </div>
+
+                <div class="section">
+                    <div class="section-header">
+                        <h3>Body</h3>
+                        @if (!string.IsNullOrEmpty(Row.ResponseBody))
+                        {
+                            <button class="copy-button" @onclick="() => CopyToClipboard(Row.ResponseBody)">Copy</button>
+                        }
+                    </div>
+                    @if (!string.IsNullOrEmpty(Row.ResponseBody))
+                    {
+                        var (formatted, lang) = FormatBody(Row.ResponseBody, Row.ResponseHeaders);
+                        <pre class="code-block"><code id="response-body-code" class="language-@lang">@formatted</code></pre>
+                    }
+                    else
+                    {
+                        <p class="no-data">No body</p>
+                    }
+                </div>
+            }
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired]
+    public InspectionRow Row { get; set; } = default!;
+
+    [Parameter]
+    public EventCallback OnClose { get; set; }
+
+    private string activeTab = "request";
+
+    private async Task SetTab(string tab)
+    {
+        activeTab = tab;
+        StateHasChanged();
+        await Task.Yield();
+        await HighlightCode();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            await HighlightCode();
+        }
+    }
+
+    private async Task HighlightCode()
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("syntaxHighlight.highlightAll", "detail-content");
+        }
+        catch (JSDisconnectedException)
+        {
+            // Circuit disconnected
+        }
+    }
+
+    private static (string FormattedContent, string Language) FormatBody(string body, Dictionary<string, string> headers)
+    {
+        headers.TryGetValue("Content-Type", out var contentType);
+        if (contentType is null)
+            headers.TryGetValue("content-type", out contentType);
+
+        return PayloadFormatter.Format(body, contentType);
+    }
+
+    private async Task CopyToClipboard(string? text)
+    {
+        if (string.IsNullOrEmpty(text)) return;
+        try
+        {
+            await JS.InvokeVoidAsync("clipboard.copyText", text);
+        }
+        catch (JSDisconnectedException)
+        {
+            // Circuit disconnected
+        }
+    }
+
+    private static string GetStatusClass(int statusCode) => statusCode switch
+    {
+        >= 200 and < 300 => "success",
+        >= 300 and < 400 => "redirect",
+        >= 400 and < 500 => "client-error",
+        >= 500 => "server-error",
+        _ => "unknown"
+    };
+}
+
+<style>
+.detail-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 100;
+    display: flex;
+    justify-content: flex-end;
+}
+
+.detail-panel {
+    width: 700px;
+    max-width: 90vw;
+    height: 100vh;
+    background: var(--neutral-layer-1);
+    display: flex;
+    flex-direction: column;
+    box-shadow: -4px 0 20px rgba(0, 0, 0, 0.3);
+    overflow: hidden;
+}
+
+.detail-header {
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--neutral-stroke-rest);
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 12px;
+    position: relative;
+}
+
+.detail-title {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex: 1;
+    min-width: 0;
+}
+
+.detail-url {
+    font-family: monospace;
+    font-size: 0.875rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--neutral-foreground-rest);
+}
+
+.detail-meta {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-shrink: 0;
+}
+
+.status-badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: calc(var(--control-corner-radius) * 1px);
+    font-weight: 600;
+    font-size: 0.8rem;
+    font-family: monospace;
+}
+
+.status-success { background: rgba(0, 128, 0, 0.15); color: #22863a; }
+.status-redirect { background: rgba(0, 100, 200, 0.15); color: #0366d6; }
+.status-client-error { background: rgba(200, 150, 0, 0.15); color: #b08800; }
+.status-server-error { background: rgba(200, 0, 0, 0.15); color: #cb2431; }
+.status-unknown { background: rgba(128, 128, 128, 0.15); color: #6a737d; }
+
+.detail-duration {
+    font-family: monospace;
+    font-size: 0.8rem;
+    color: var(--neutral-foreground-hint);
+}
+
+.detail-time {
+    font-family: monospace;
+    font-size: 0.8rem;
+    color: var(--neutral-foreground-hint);
+}
+
+.close-button {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    background: none;
+    border: none;
+    color: var(--neutral-foreground-rest);
+    font-size: 1.5rem;
+    cursor: pointer;
+    padding: 4px 8px;
+    border-radius: calc(var(--control-corner-radius) * 1px);
+    line-height: 1;
+}
+
+.close-button:hover {
+    background: var(--neutral-layer-3);
+}
+
+.detail-tabs {
+    display: flex;
+    border-bottom: 1px solid var(--neutral-stroke-rest);
+    padding: 0 20px;
+}
+
+.tab {
+    background: none;
+    border: none;
+    padding: 10px 20px;
+    cursor: pointer;
+    color: var(--neutral-foreground-hint);
+    font-size: 0.875rem;
+    font-weight: 500;
+    border-bottom: 2px solid transparent;
+    transition: color 0.15s, border-color 0.15s;
+}
+
+.tab:hover {
+    color: var(--neutral-foreground-rest);
+}
+
+.tab.active {
+    color: var(--accent-foreground-rest);
+    border-bottom-color: var(--accent-foreground-rest);
+}
+
+.detail-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 20px;
+}
+
+.section {
+    margin-bottom: 24px;
+}
+
+.section-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 8px;
+}
+
+.section-header h3 {
+    margin: 0;
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--neutral-foreground-rest);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.copy-button {
+    background: var(--neutral-layer-3);
+    border: 1px solid var(--neutral-stroke-rest);
+    color: var(--neutral-foreground-rest);
+    padding: 4px 12px;
+    border-radius: calc(var(--control-corner-radius) * 1px);
+    cursor: pointer;
+    font-size: 0.75rem;
+}
+
+.copy-button:hover {
+    background: var(--neutral-layer-2);
+}
+
+.headers-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.8rem;
+}
+
+.headers-table tr {
+    border-bottom: 1px solid var(--neutral-stroke-divider-rest);
+}
+
+.headers-table td {
+    padding: 6px 8px;
+    vertical-align: top;
+}
+
+.header-name {
+    font-weight: 600;
+    font-family: monospace;
+    white-space: nowrap;
+    color: var(--accent-foreground-rest);
+    width: 200px;
+}
+
+.header-value {
+    font-family: monospace;
+    word-break: break-all;
+    color: var(--neutral-foreground-rest);
+}
+
+.code-block {
+    margin: 0;
+    border-radius: calc(var(--control-corner-radius) * 1px);
+    overflow-x: auto;
+    max-height: 500px;
+    overflow-y: auto;
+}
+
+.code-block code {
+    font-size: 0.8rem;
+    line-height: 1.5;
+}
+
+.no-data {
+    color: var(--neutral-foreground-hint);
+    font-style: italic;
+    font-size: 0.875rem;
+}
+</style>

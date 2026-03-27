@@ -1,3 +1,4 @@
+using System.Text;
 using shmoxy.frontend.models;
 
 namespace shmoxy.frontend.services;
@@ -89,7 +90,9 @@ public class InspectionDataService : IDisposable
                 Id = _nextId++,
                 Method = evt.Method,
                 Url = evt.Url,
-                Timestamp = evt.Timestamp
+                Timestamp = evt.Timestamp,
+                RequestHeaders = evt.Headers ?? new Dictionary<string, string>(),
+                RequestBody = DecodeBody(evt.Body)
             };
             _rows.Add(row);
             _unpairedRequests.Enqueue((_rows.Count - 1, evt.Timestamp));
@@ -116,8 +119,26 @@ public class InspectionDataService : IDisposable
                 if (rowIndex < _rows.Count)
                 {
                     _rows[rowIndex].Duration = evt.Timestamp - requestTimestamp;
+                    _rows[rowIndex].StatusCode = evt.StatusCode;
+                    _rows[rowIndex].ResponseHeaders = evt.Headers ?? new Dictionary<string, string>();
+                    _rows[rowIndex].ResponseBody = DecodeBody(evt.Body);
                 }
             }
+        }
+    }
+
+    private static string? DecodeBody(byte[]? body)
+    {
+        if (body is null || body.Length == 0)
+            return null;
+
+        try
+        {
+            return Encoding.UTF8.GetString(body);
+        }
+        catch
+        {
+            return $"[Binary data: {body.Length} bytes]";
         }
     }
 
@@ -137,4 +158,9 @@ public class InspectionRow
     public string Url { get; set; } = string.Empty;
     public TimeSpan? Duration { get; set; }
     public DateTime Timestamp { get; set; }
+    public int? StatusCode { get; set; }
+    public Dictionary<string, string> RequestHeaders { get; set; } = new();
+    public Dictionary<string, string> ResponseHeaders { get; set; } = new();
+    public string? RequestBody { get; set; }
+    public string? ResponseBody { get; set; }
 }
