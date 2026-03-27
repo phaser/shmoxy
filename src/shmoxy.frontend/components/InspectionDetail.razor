@@ -1,7 +1,7 @@
 @inject IJSRuntime JS
 @using shmoxy.frontend.services
 
-<div class="detail-overlay" @onclick="OnClose">
+<div class="detail-overlay" @onclick="OnClose" @onkeydown="HandleKeyDown" tabindex="0" @ref="overlayRef">
     <div class="detail-panel" @onclick:stopPropagation="true">
         <div class="detail-header">
             <div class="detail-title">
@@ -125,7 +125,14 @@
     [Parameter]
     public EventCallback OnClose { get; set; }
 
+    [Parameter]
+    public IReadOnlyList<InspectionRow> FilteredRows { get; set; } = Array.Empty<InspectionRow>();
+
+    [Parameter]
+    public EventCallback<InspectionRow> OnNavigate { get; set; }
+
     private string activeTab = "request";
+    private ElementReference overlayRef;
 
     private async Task SetTab(string tab)
     {
@@ -139,7 +146,51 @@
     {
         if (firstRender)
         {
+            try
+            {
+                await overlayRef.FocusAsync();
+            }
+            catch (JSDisconnectedException) { }
             await HighlightCode();
+        }
+    }
+
+    private async Task HandleKeyDown(KeyboardEventArgs e)
+    {
+        switch (e.Key)
+        {
+            case "Escape":
+                await OnClose.InvokeAsync();
+                break;
+            case "ArrowDown":
+                await NavigateToAdjacentRow(1);
+                break;
+            case "ArrowUp":
+                await NavigateToAdjacentRow(-1);
+                break;
+        }
+    }
+
+    private async Task NavigateToAdjacentRow(int direction)
+    {
+        if (FilteredRows.Count == 0) return;
+
+        var currentIndex = -1;
+        for (int i = 0; i < FilteredRows.Count; i++)
+        {
+            if (FilteredRows[i].Id == Row.Id)
+            {
+                currentIndex = i;
+                break;
+            }
+        }
+
+        if (currentIndex < 0) return;
+
+        var nextIndex = currentIndex + direction;
+        if (nextIndex >= 0 && nextIndex < FilteredRows.Count)
+        {
+            await OnNavigate.InvokeAsync(FilteredRows[nextIndex]);
         }
     }
 
