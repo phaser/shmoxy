@@ -102,6 +102,8 @@ html, body {
     flex: 1;
     overflow: auto;
     padding: 1.5rem 2rem;
+    display: flex;
+    flex-direction: column;
 }
 
 /* Ensure FluentSelect dropdown popups are not clipped */
