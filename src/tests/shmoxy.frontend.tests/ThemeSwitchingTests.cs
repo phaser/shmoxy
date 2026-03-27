@@ -80,11 +80,11 @@ public class ThemeSwitchingTests
         // Icon sidebar uses NavLink which renders as <a> elements
         var navLinks = page.Locator("nav.icon-sidebar a[href]");
         var count = await navLinks.CountAsync();
-        Assert.True(count >= 4, $"Expected at least 4 nav links, found {count}");
+        Assert.True(count >= 3, $"Expected at least 3 nav links, found {count}");
     }
 
     [Fact]
-    public async Task DashboardPage_LoadsCards()
+    public async Task RootPage_LoadsInspector()
     {
         var page = await _fixture.CreatePageAsync();
         await page.GotoAsync($"{_fixture.BaseUrl}/", new PageGotoOptions
@@ -95,8 +95,8 @@ public class ThemeSwitchingTests
 
         await page.WaitForTimeoutAsync(2000);
 
-        var cards = page.Locator("fluent-card");
-        var count = await cards.CountAsync();
-        Assert.Equal(3, count);
+        var heading = page.Locator("h1");
+        var text = await heading.InnerTextAsync();
+        Assert.Equal("Request Inspection", text);
     }
 }
