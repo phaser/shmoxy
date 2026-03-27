@@ -26,6 +26,7 @@ public static class FluentUiBlazorConfiguration
             }
         });
         services.AddScoped<ThemeState>();
+        services.AddSingleton<InspectionDataService>();
 
         return services;
     }

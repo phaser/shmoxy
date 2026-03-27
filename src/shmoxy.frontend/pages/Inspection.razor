@@ -1,5 +1,5 @@
 @page "/inspection"
-@inject ApiClient ApiClient
+@inject InspectionDataService InspectionService
 @inject IJSRuntime JS
 @implements IAsyncDisposable
 
@@ -67,20 +67,17 @@
 </div>
 
 @code {
-    private readonly List<InspectionRow> rows = new();
     private List<InspectionRow> filteredRows = new();
     private string searchQuery = "";
     private string methodFilter = "";
     private bool isAtBottom = true;
-    private CancellationTokenSource cts = new();
-    private int nextId = 1;
-    private readonly Queue<(int RowIndex, DateTime Timestamp)> unpairedRequests = new();
-    private const int MaxRows = 1000;
     private const string ContainerId = "inspection-scroll-container";
 
     protected override void OnInitialized()
     {
-        _ = ConsumeStreamAsync();
+        InspectionService.StartCapture();
+        InspectionService.OnRowsChanged += OnRowsChanged;
+        ApplyFilters();
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -91,73 +88,30 @@
         }
     }
 
-    private async Task ConsumeStreamAsync()
+    private async void OnRowsChanged()
     {
-        try
+        ApplyFilters();
+        await InvokeAsync(async () =>
         {
-            await foreach (var evt in ApiClient.StreamInspectionEventsAsync("local", cts.Token))
+            StateHasChanged();
+            try
             {
-                if (string.Equals(evt.EventType, "request", StringComparison.OrdinalIgnoreCase))
-                {
-                    var row = new InspectionRow
-                    {
-                        Id = nextId++,
-                        Method = evt.Method,
-                        Url = evt.Url,
-                        Timestamp = evt.Timestamp
-                    };
-                    rows.Add(row);
-                    unpairedRequests.Enqueue((rows.Count - 1, evt.Timestamp));
-
-                    if (rows.Count > MaxRows)
-                    {
-                        rows.RemoveAt(0);
-                        // Adjust queued indices
-                        var adjusted = new Queue<(int, DateTime)>();
-                        while (unpairedRequests.Count > 0)
-                        {
-                            var (idx, ts) = unpairedRequests.Dequeue();
-                            if (idx > 0)
-                                adjusted.Enqueue((idx - 1, ts));
-                        }
-                        while (adjusted.Count > 0)
-                            unpairedRequests.Enqueue(adjusted.Dequeue());
-                    }
-                }
-                else if (string.Equals(evt.EventType, "response", StringComparison.OrdinalIgnoreCase))
-                {
-                    if (unpairedRequests.Count > 0)
-                    {
-                        var (rowIndex, requestTimestamp) = unpairedRequests.Dequeue();
-                        if (rowIndex < rows.Count)
-                        {
-                            rows[rowIndex].Duration = evt.Timestamp - requestTimestamp;
-                        }
-                    }
-                }
-
-                ApplyFilters();
-                await InvokeAsync(StateHasChanged);
-
                 isAtBottom = await JS.InvokeAsync<bool>("inspectionAutoScroll.isAtBottom", ContainerId);
                 if (isAtBottom)
                 {
                     await JS.InvokeVoidAsync("inspectionAutoScroll.scrollToBottom", ContainerId);
                 }
             }
-        }
-        catch (OperationCanceledException)
-        {
-            // Expected on dispose
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"SSE stream error: {ex.Message}");
-        }
+            catch (JSDisconnectedException)
+            {
+                // Circuit disconnected
+            }
+        });
     }
 
     private void ApplyFilters()
     {
+        var rows = InspectionService.GetRows();
         filteredRows = rows
             .Where(r =>
                 string.IsNullOrEmpty(searchQuery) ||
@@ -176,8 +130,7 @@
 
     public async ValueTask DisposeAsync()
     {
-        await cts.CancelAsync();
-        cts.Dispose();
+        InspectionService.OnRowsChanged -= OnRowsChanged;
         try
         {
             await JS.InvokeVoidAsync("inspectionAutoScroll.dispose", ContainerId);
@@ -186,15 +139,6 @@
         {
             // Circuit already disconnected
         }
-    }
-
-    private class InspectionRow
-    {
-        public int Id { get; set; }
-        public string Method { get; set; } = string.Empty;
-        public string Url { get; set; } = string.Empty;
-        public TimeSpan? Duration { get; set; }
-        public DateTime Timestamp { get; set; }
     }
 }
 
