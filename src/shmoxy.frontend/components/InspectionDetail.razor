@@ -53,6 +53,9 @@
                                                             @onclick="() => ToggleJwt(jwtKey)">
                                                         @(jwtExpanded.Contains(jwtKey) ? "Raw" : "Decode JWT")
                                                     </button>
+                                                    <button class="jwt-copy-btn" @onclick="() => CopyToClipboard(bearerToken)" title="Copy JWT token">
+                                                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                                                    </button>
                                                 </div>
                                                 @if (jwtExpanded.Contains(jwtKey))
                                                 {
@@ -139,6 +142,9 @@
                                                     <button class="jwt-decode-btn @(jwtExpanded.Contains(jwtKey) ? "active" : "")"
                                                             @onclick="() => ToggleJwt(jwtKey)">
                                                         @(jwtExpanded.Contains(jwtKey) ? "Raw" : "Decode JWT")
+                                                    </button>
+                                                    <button class="jwt-copy-btn" @onclick="() => CopyToClipboard(bearerToken)" title="Copy JWT token">
+                                                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
                                                     </button>
                                                 </div>
                                                 @if (jwtExpanded.Contains(jwtKey))
@@ -570,6 +576,7 @@
 .jwt-toggle {
     display: flex;
     align-items: center;
+    gap: 4px;
 }
 
 .jwt-decode-btn {
@@ -591,6 +598,24 @@
     background: var(--accent-foreground-rest);
     color: white;
     border-color: var(--accent-foreground-rest);
+}
+
+.jwt-copy-btn {
+    background: var(--neutral-layer-3);
+    border: 1px solid var(--neutral-stroke-rest);
+    color: var(--neutral-foreground-hint);
+    padding: 2px 4px;
+    border-radius: calc(var(--control-corner-radius) * 1px);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 1;
+}
+
+.jwt-copy-btn:hover {
+    background: var(--neutral-layer-2);
+    color: var(--neutral-foreground-rest);
 }
 
 .jwt-decoded {
