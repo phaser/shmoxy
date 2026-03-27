@@ -43,7 +43,10 @@ All work happens in the worktree — never modify main directly.
 ### 5. Verify
 
 - `dotnet build` — must succeed with zero warnings
-- `dotnet test tests/shmoxy.tests` and `dotnet test tests/shmoxy.api.tests` — all tests must pass
+- Run the **entire** test suite, not just new tests:
+  - `dotnet test tests/shmoxy.tests`
+  - `dotnet test tests/shmoxy.api.tests`
+  - `dotnet test tests/shmoxy.frontend.tests` (includes both unit tests and Playwright e2e)
 - `nix build .#shmoxy` — must succeed
 
 ### 6. Commit and Create PR
