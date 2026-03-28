@@ -113,6 +113,42 @@ public class ApiClient(HttpClient httpClient)
         return await response.Content.ReadFromJsonAsync<List<InspectionRequestInfo>>() ?? [];
     }
 
+    public async Task<List<SessionSummary>> ListSessionsAsync()
+    {
+        var response = await _httpClient.GetAsync("/api/sessions");
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<List<SessionSummary>>() ?? [];
+    }
+
+    public async Task<SessionSummary> CreateSessionAsync(string name, List<SessionRowData> rows)
+    {
+        var response = await _httpClient.PostAsJsonAsync("/api/sessions", new { Name = name, Rows = rows });
+        await EnsureSuccessOrThrowWithBody(response);
+        return await response.Content.ReadFromJsonAsync<SessionSummary>()
+            ?? throw new HttpRequestException("Failed to create session");
+    }
+
+    public async Task<List<SessionRowData>> LoadSessionRowsAsync(string sessionId)
+    {
+        var response = await _httpClient.GetAsync($"/api/sessions/{sessionId}");
+        await EnsureSuccessOrThrowWithBody(response);
+        return await response.Content.ReadFromJsonAsync<List<SessionRowData>>() ?? [];
+    }
+
+    public async Task<SessionSummary> UpdateSessionAsync(string sessionId, List<SessionRowData> rows)
+    {
+        var response = await _httpClient.PutAsJsonAsync($"/api/sessions/{sessionId}", new { Rows = rows });
+        await EnsureSuccessOrThrowWithBody(response);
+        return await response.Content.ReadFromJsonAsync<SessionSummary>()
+            ?? throw new HttpRequestException("Failed to update session");
+    }
+
+    public async Task DeleteSessionAsync(string sessionId)
+    {
+        var response = await _httpClient.DeleteAsync($"/api/sessions/{sessionId}");
+        await EnsureSuccessOrThrowWithBody(response);
+    }
+
     public async IAsyncEnumerable<InspectionEventDto> StreamInspectionEventsAsync(
         string proxyId = "local",
         [EnumeratorCancellation] CancellationToken ct = default)
