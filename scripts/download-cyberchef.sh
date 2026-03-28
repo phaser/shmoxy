@@ -26,11 +26,11 @@ rm -rf "$TARGET_DIR"
 mkdir -p "$TARGET_DIR"
 unzip -q "$TEMP_DIR/cyberchef.zip" -d "$TARGET_DIR"
 
-# Create a stable CyberChef.html symlink to the versioned HTML file
+# Create a stable CyberChef.html copy of the versioned HTML file
 VERSIONED_HTML=$(find "$TARGET_DIR" -maxdepth 1 -name 'CyberChef_v*.html' | head -1)
 if [ -n "$VERSIONED_HTML" ]; then
-    ln -sf "$(basename "$VERSIONED_HTML")" "$TARGET_DIR/CyberChef.html"
-    echo "Created symlink: CyberChef.html -> $(basename "$VERSIONED_HTML")"
+    cp "$VERSIONED_HTML" "$TARGET_DIR/CyberChef.html"
+    echo "Created CyberChef.html from $(basename "$VERSIONED_HTML")"
 fi
 
 # Download the Apache 2.0 LICENSE file
