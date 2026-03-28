@@ -28,6 +28,28 @@ public class ProxyIpcClientTests
     }
 
     [Fact]
+    public async Task GetStatusAsync_ReturnsVersion()
+    {
+        var json = """{"isListening":true,"port":8080,"uptime":"00:01:30","activeConnections":5,"version":"1.2.3"}""";
+        var client = CreateClientWithResponse(json, HttpStatusCode.OK);
+
+        var status = await client.GetStatusAsync();
+
+        Assert.Equal("1.2.3", status.Version);
+    }
+
+    [Fact]
+    public async Task GetStatusAsync_ReturnsNullVersion_WhenNotProvided()
+    {
+        var json = """{"isListening":true,"port":8080,"uptime":"00:01:30","activeConnections":5}""";
+        var client = CreateClientWithResponse(json, HttpStatusCode.OK);
+
+        var status = await client.GetStatusAsync();
+
+        Assert.Null(status.Version);
+    }
+
+    [Fact]
     public async Task ShutdownAsync_ReturnsSuccess()
     {
         var json = """{"success":true,"message":"Shutdown initiated"}""";

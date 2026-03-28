@@ -142,6 +142,17 @@ public class ProxyProcessManager : IProxyProcessManager, IDisposable
 
             if (await WaitForHealthyAsync(ct))
             {
+                string? proxyVersion = null;
+                try
+                {
+                    var status = await GetOrCreateSocketIpcClient().GetStatusAsync(ct);
+                    proxyVersion = status.Version;
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogDebug(ex, "Failed to fetch proxy version during startup");
+                }
+
                 UpdateState(new ProxyInstanceState
                 {
                     Id = _currentState.Id,
@@ -149,7 +160,8 @@ public class ProxyProcessManager : IProxyProcessManager, IDisposable
                     ProcessId = _process.Id,
                     SocketPath = _socketPath,
                     Port = _config.Value.ProxyPort,
-                    StartedAt = _currentState.StartedAt
+                    StartedAt = _currentState.StartedAt,
+                    ProxyVersion = proxyVersion
                 });
 
                 StartHealthCheckLoop();

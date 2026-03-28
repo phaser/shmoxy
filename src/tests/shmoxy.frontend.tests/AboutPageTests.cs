@@ -14,7 +14,7 @@ public class AboutPageTests
     }
 
     [Fact]
-    public async Task AboutPage_ShowsVersionNumber()
+    public async Task AboutPage_ShowsFrontendVersion()
     {
         var page = await _fixture.CreatePageAsync();
         await page.GotoAsync($"{_fixture.BaseUrl}/about", new PageGotoOptions
@@ -26,7 +26,24 @@ public class AboutPageTests
         await page.WaitForTimeoutAsync(3000);
 
         var content = await page.TextContentAsync(".about-container");
-        Assert.Contains("Version", content);
+        Assert.Contains("Frontend Version", content);
+    }
+
+    [Fact]
+    public async Task AboutPage_ShowsProxyVersionNotConnected_WhenProxyStopped()
+    {
+        var page = await _fixture.CreatePageAsync();
+        await page.GotoAsync($"{_fixture.BaseUrl}/about", new PageGotoOptions
+        {
+            WaitUntil = WaitUntilState.NetworkIdle,
+            Timeout = 30000
+        });
+
+        await page.WaitForTimeoutAsync(3000);
+
+        var content = await page.TextContentAsync(".about-container");
+        Assert.Contains("Proxy Server Version", content);
+        Assert.Contains("Not connected", content);
     }
 
     [Fact]

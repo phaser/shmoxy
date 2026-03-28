@@ -39,7 +39,7 @@ public class ApiClient(HttpClient httpClient)
 
         var isRunning = string.Equals(state.State, "Running", StringComparison.OrdinalIgnoreCase);
         var address = state.Port.HasValue ? $"localhost:{state.Port}" : null;
-        return new FrontendProxyStatus(IsRunning: isRunning, Address: address);
+        return new FrontendProxyStatus(IsRunning: isRunning, Address: address, ProxyVersion: state.ProxyVersion);
     }
 
     public async Task<FrontendProxyStatus> StartProxyAsync()
@@ -52,7 +52,7 @@ public class ApiClient(HttpClient httpClient)
 
         var isRunning = string.Equals(state.State, "Running", StringComparison.OrdinalIgnoreCase);
         var address = state.Port.HasValue ? $"localhost:{state.Port}" : null;
-        return new FrontendProxyStatus(IsRunning: isRunning, Address: address);
+        return new FrontendProxyStatus(IsRunning: isRunning, Address: address, ProxyVersion: state.ProxyVersion);
     }
 
     public async Task StopProxyAsync()

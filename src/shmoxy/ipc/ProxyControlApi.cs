@@ -24,7 +24,8 @@ public static class ProxyControlApi
                 IsListening = stateService.IsListening,
                 Port = stateService.Port,
                 Uptime = stateService.Uptime,
-                ActiveConnections = stateService.ActiveConnections
+                ActiveConnections = stateService.ActiveConnections,
+                Version = typeof(ProxyControlApi).Assembly.GetName().Version?.ToString(3)
             });
         });
 

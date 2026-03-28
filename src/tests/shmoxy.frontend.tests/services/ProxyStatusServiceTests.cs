@@ -33,6 +33,23 @@ public class ProxyStatusServiceTests
     }
 
     [Fact]
+    public void UpdateStatus_IncludesProxyVersion()
+    {
+        using var service = CreateService();
+
+        var newStatus = new FrontendProxyStatus(IsRunning: true, Address: "localhost:8080", ProxyVersion: "1.2.3");
+        service.UpdateStatus(newStatus);
+
+        Assert.Equal("1.2.3", service.CurrentStatus.ProxyVersion);
+    }
+
+    [Fact]
+    public void StoppedStatus_HasNullProxyVersion()
+    {
+        Assert.Null(FrontendProxyStatus.Stopped.ProxyVersion);
+    }
+
+    [Fact]
     public void UpdateStatus_FiresOnStatusChanged()
     {
         using var service = CreateService();

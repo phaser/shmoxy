@@ -44,6 +44,29 @@ public class ProxiesControllerTests
     }
 
     [Fact]
+    public async Task GetProxyState_IncludesProxyVersion()
+    {
+        var expectedState = new ProxyInstanceState
+        {
+            Id = "test-id",
+            State = ProxyProcessState.Running,
+            ProcessId = 12345,
+            SocketPath = "/tmp/test.sock",
+            Port = 8080,
+            ProxyVersion = "1.2.3"
+        };
+        _mockProcessManager.Setup(m => m.GetStateAsync())
+            .ReturnsAsync(expectedState);
+
+        var result = await _controller.GetProxyState(CancellationToken.None);
+
+        var okResult = Assert.IsType<ActionResult<ProxyInstanceState>>(result);
+        var actionResult = Assert.IsType<OkObjectResult>(okResult.Result);
+        var state = Assert.IsType<ProxyInstanceState>(actionResult.Value);
+        Assert.Equal("1.2.3", state.ProxyVersion);
+    }
+
+    [Fact]
     public async Task GetProxyState_ReturnsNotFound_WhenStateIsNull()
     {
         _mockProcessManager.Setup(m => m.GetStateAsync())

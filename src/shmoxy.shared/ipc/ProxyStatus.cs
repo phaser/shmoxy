@@ -9,4 +9,5 @@ public record ProxyStatus
     public int Port { get; init; }
     public TimeSpan Uptime { get; init; }
     public int ActiveConnections { get; init; }
+    public string? Version { get; init; }
 }
