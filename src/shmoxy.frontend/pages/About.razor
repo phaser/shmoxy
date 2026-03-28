@@ -1,0 +1,80 @@
+@page "/about"
+
+<h1>About</h1>
+
+<div class="about-container">
+    <FluentCard>
+        <div class="about-section">
+            <h3>Shmoxy</h3>
+            <p>Version @_version</p>
+            <p>
+                Licensed under the
+                <a href="https://github.com/phaser/shmoxy/blob/main/LICENSE" target="_blank" rel="noopener noreferrer">MIT License</a>.
+            </p>
+        </div>
+    </FluentCard>
+
+    <FluentCard>
+        <div class="about-section">
+            <h3>Third-Party Software</h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>License</th>
+                        <th>Link</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var dep in _thirdPartyDeps)
+                    {
+                        <tr>
+                            <td>@dep.Name</td>
+                            <td>@dep.License</td>
+                            <td>
+                                <a href="@dep.Url" target="_blank" rel="noopener noreferrer">GitHub</a>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </FluentCard>
+</div>
+
+@code {
+    private string _version = "";
+
+    private static readonly List<ThirdPartyDep> _thirdPartyDeps =
+    [
+        new("CyberChef", "Apache 2.0", "https://github.com/gchq/CyberChef"),
+    ];
+
+    protected override void OnInitialized()
+    {
+        var assemblyVersion = typeof(App).Assembly.GetName().Version;
+        _version = assemblyVersion?.ToString(3) ?? "unknown";
+    }
+
+    private sealed record ThirdPartyDep(string Name, string License, string Url);
+}
+
+<style>
+.about-container {
+    max-width: 600px;
+}
+
+.about-section h3 {
+    margin-top: 0;
+    margin-bottom: 1rem;
+    font-weight: 600;
+}
+
+.about-section p {
+    margin: 0.5rem 0;
+}
+
+.about-section a {
+    color: var(--accent-foreground-rest);
+}
+</style>

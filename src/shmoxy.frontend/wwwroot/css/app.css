@@ -66,6 +66,7 @@ html, body {
     flex-direction: column;
     align-items: center;
     padding-top: 0.5rem;
+    padding-bottom: 0.5rem;
     gap: 0.25rem;
     background-color: var(--neutral-layer-2);
     border-right: 1px solid var(--neutral-stroke-divider-rest);
@@ -86,6 +87,10 @@ html, body {
     gap: 0.125rem;
     cursor: pointer;
     transition: background-color 0.15s;
+}
+
+.icon-sidebar .nav-spacer {
+    flex: 1;
 }
 
 .icon-sidebar .nav-item:hover {
