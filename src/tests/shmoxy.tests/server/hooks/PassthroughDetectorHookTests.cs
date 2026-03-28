@@ -49,7 +49,7 @@ public class PassthroughDetectorHookTests
     {
         var hook = new PassthroughDetectorHook();
         hook.AddDetector(new CloudflareDetector());
-        // cloudflare is disabled by default
+        hook.SetDetectorEnabled("cloudflare", false); // explicitly disable
 
         var request = new InterceptedRequest
         {
@@ -168,7 +168,7 @@ public class PassthroughDetectorHookTests
         Assert.Equal(2, detectors.Count);
         Assert.Contains(detectors, d => d.Id == "cloudflare");
         Assert.Contains(detectors, d => d.Id == "waf");
-        Assert.All(detectors, d => Assert.False(d.Enabled)); // disabled by default
+        Assert.All(detectors, d => Assert.True(d.Enabled)); // enabled by default
     }
 
     [Fact]
