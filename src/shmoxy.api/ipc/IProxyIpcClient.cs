@@ -24,6 +24,7 @@ public interface IProxyIpcClient
     Task<IReadOnlyList<DetectorDescriptor>> GetDetectorsAsync(CancellationToken ct = default);
     Task EnableDetectorAsync(string id, CancellationToken ct = default);
     Task DisableDetectorAsync(string id, CancellationToken ct = default);
+    Task<IReadOnlyList<PassthroughSuggestion>> GetSuggestionsAsync(CancellationToken ct = default);
     Task AcceptSuggestionAsync(string host, CancellationToken ct = default);
     Task DismissSuggestionAsync(string host, CancellationToken ct = default);
     IAsyncEnumerable<PassthroughSuggestion> GetSuggestionStreamAsync(CancellationToken ct = default);

@@ -211,6 +211,14 @@ public static class ProxyControlApi
             return Results.Json(new { Success = success, Message = success ? "Detector disabled" : $"Unknown detector: {id}" });
         });
 
+        endpoints.MapGet("/ipc/detectors/suggestions", () =>
+        {
+            if (stateService.DetectorHook == null)
+                return Results.Json(Array.Empty<PassthroughSuggestion>());
+
+            return Results.Json(stateService.DetectorHook.GetSuggestions());
+        });
+
         endpoints.MapGet("/ipc/detectors/suggestions/stream", async (HttpResponse response) =>
         {
             if (stateService.DetectorHook == null)
