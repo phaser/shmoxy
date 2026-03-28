@@ -362,17 +362,17 @@
 
     private async Task OnDetectorToggled(string detectorId, bool enabled)
     {
+        detectorStates[detectorId] = enabled;
         try
         {
             if (enabled)
                 await ApiClient.EnableDetectorAsync(detectorId);
             else
                 await ApiClient.DisableDetectorAsync(detectorId);
-
-            detectorStates[detectorId] = enabled;
         }
         catch (Exception ex)
         {
+            detectorStates[detectorId] = !enabled;
             saveMessage = $"Failed to toggle detector: {ex.Message}";
             saveMessageType = MessageType.Error;
         }
