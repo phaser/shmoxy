@@ -22,6 +22,11 @@
             <FluentOption TOption="string" Value="PATCH">PATCH</FluentOption>
         </FluentSelect>
 
+        <label class="api-filter-toggle">
+            <input type="checkbox" @bind="apiOnlyFilter" @bind:after="ApplyFilters" />
+            API only
+        </label>
+
         <div class="toolbar-spacer"></div>
 
         <div class="session-actions">
@@ -168,6 +173,7 @@
     private List<InspectionRow> filteredRows = new();
     private string searchQuery = "";
     private string methodFilter = "";
+    private bool apiOnlyFilter;
     private bool isAtBottom = true;
     private InspectionRow? selectedRow;
     private const string ContainerId = "inspection-scroll-container";
@@ -228,6 +234,10 @@
                 r.Method.Contains(searchQuery, StringComparison.OrdinalIgnoreCase))
             .Where(r =>
                 string.IsNullOrEmpty(methodFilter) || r.Method == methodFilter)
+            .Where(r =>
+                !apiOnlyFilter ||
+                r.StatusCode is null ||
+                ContentTypeClassifier.IsApiResponse(r.ResponseHeaders))
             .ToList();
     }
 
@@ -578,6 +588,17 @@
     display: flex;
     justify-content: center;
     margin-top: 0.75rem;
+}
+
+.api-filter-toggle {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.85rem;
+    cursor: pointer;
+    white-space: nowrap;
+    color: var(--neutral-foreground-rest);
+    align-self: center;
 }
 
 .toolbar-spacer {
