@@ -1,4 +1,5 @@
 using System.Text.Json.Serialization;
+using System.Text.RegularExpressions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using shmoxy.api.models.configuration;
@@ -55,7 +56,7 @@ public partial class Program
         using (var scope = app.Services.CreateScope())
         {
             var dbContext = scope.ServiceProvider.GetRequiredService<ProxiesDbContext>();
-            dbContext.Database.EnsureCreated();
+            EnsureSchemaCreated(dbContext);
         }
 
         app.UseBlazorFrontendMiddleware();
@@ -65,6 +66,36 @@ public partial class Program
         app.MapGet("/api/health", () => new { Status = "Healthy", Timestamp = DateTime.UtcNow });
 
         return app;
+    }
+
+    /// <summary>
+    /// Ensures the database schema is fully created, including any tables added after
+    /// the database was initially created. EnsureCreated() alone is a no-op when the
+    /// database file already exists, so we also run the creation script with
+    /// CREATE TABLE IF NOT EXISTS for existing databases.
+    /// </summary>
+    internal static void EnsureSchemaCreated(ProxiesDbContext dbContext)
+    {
+        var created = dbContext.Database.EnsureCreated();
+        if (!created)
+        {
+            // Database already existed — create any tables/indexes added since initial creation.
+            // GenerateCreateScript() produces the full DDL from the current EF Core model.
+            // Adding IF NOT EXISTS makes it safe to run against an existing database:
+            // SQLite skips objects that already exist.
+            var script = dbContext.Database.GenerateCreateScript();
+            var safeScript = Regex.Replace(
+                script,
+                @"CREATE\s+(UNIQUE\s+)?TABLE",
+                "CREATE TABLE IF NOT EXISTS",
+                RegexOptions.IgnoreCase);
+            safeScript = Regex.Replace(
+                safeScript,
+                @"CREATE\s+(UNIQUE\s+)?INDEX",
+                "CREATE $1INDEX IF NOT EXISTS",
+                RegexOptions.IgnoreCase);
+            dbContext.Database.ExecuteSqlRaw(safeScript);
+        }
     }
 
     private static string GetDefaultConnectionString()
