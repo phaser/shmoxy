@@ -20,7 +20,7 @@ public class FrontendSettingsTests
     {
         var settings = new FrontendSettings();
 
-        Assert.Equal("/cyberchef/CyberChef.html", settings.CyberChefUrl);
+        Assert.Equal("/_content/shmoxy.frontend/cyberchef/CyberChef.html", settings.CyberChefUrl);
     }
 
     [Fact]
@@ -146,6 +146,6 @@ public class FrontendSettingsTests
         await settings.LoadAsync(jsMock.Object);
 
         Assert.False(settings.EnableCyberChef);
-        Assert.Equal("/cyberchef/CyberChef.html", settings.CyberChefUrl);
+        Assert.Equal("/_content/shmoxy.frontend/cyberchef/CyberChef.html", settings.CyberChefUrl);
     }
 }
