@@ -18,6 +18,7 @@ public class SessionsController : ControllerBase
     }
 
     [HttpPost]
+    [DisableRequestSizeLimit]
     public async Task<ActionResult<SessionResponse>> CreateSession(
         [FromBody] CreateSessionRequest request,
         CancellationToken ct)
@@ -50,6 +51,7 @@ public class SessionsController : ControllerBase
     }
 
     [HttpPut("{id}")]
+    [DisableRequestSizeLimit]
     public async Task<ActionResult<SessionResponse>> UpdateSession(
         string id,
         [FromBody] UpdateSessionRequest request,
