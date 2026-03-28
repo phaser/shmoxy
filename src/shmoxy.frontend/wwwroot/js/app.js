@@ -1,3 +1,9 @@
+window.themeSync = {
+    setTheme: function (isDark) {
+        document.body.setAttribute('data-theme', isDark ? 'dark' : 'light');
+    }
+};
+
 window.syntaxHighlight = {
     highlightElement: function (elementId) {
         var el = document.getElementById(elementId);

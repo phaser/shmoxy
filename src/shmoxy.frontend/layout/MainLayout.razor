@@ -1,5 +1,6 @@
 @inherits LayoutComponentBase
 @inject ThemeState ThemeState
+@inject IJSRuntime JS
 @implements IDisposable
 
 <FluentDesignTheme @ref="_theme" @bind-Mode="_mode" StorageName="preferred-theme">
@@ -53,10 +54,30 @@
         ThemeState.OnChange += OnThemeStateChanged;
     }
 
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            try
+            {
+                await JS.InvokeVoidAsync("themeSync.setTheme", _mode == DesignThemeModes.Dark);
+            }
+            catch (JSDisconnectedException) { }
+        }
+    }
+
     private void OnThemeStateChanged()
     {
         _mode = ThemeState.Mode;
-        InvokeAsync(StateHasChanged);
+        InvokeAsync(async () =>
+        {
+            StateHasChanged();
+            try
+            {
+                await JS.InvokeVoidAsync("themeSync.setTheme", _mode == DesignThemeModes.Dark);
+            }
+            catch (JSDisconnectedException) { }
+        });
     }
 
     public void Dispose()

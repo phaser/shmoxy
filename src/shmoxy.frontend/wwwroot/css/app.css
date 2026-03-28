@@ -182,21 +182,130 @@ pre {
     word-break: break-word;
 }
 
-/* Override Blazor Server reconnect dialog to respect theme */
-.components-reconnect-dialog {
-    background-color: var(--neutral-layer-floating, var(--neutral-layer-2));
-    color: var(--neutral-foreground-rest);
+/*
+ * Custom Blazor reconnect modal.
+ * Uses id="components-reconnect-modal" in App.razor for full control.
+ * Theme is synced from localStorage via inline script on <body>.
+ */
+#components-reconnect-modal {
+    position: fixed;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 10000;
+    display: none;
+    overflow: hidden;
 }
 
-.components-reconnect-dialog button {
-    background-color: var(--accent-fill-rest, #6b9ed2);
-    color: var(--foreground-on-accent-rest, white);
+#components-reconnect-modal.components-reconnect-show,
+#components-reconnect-modal.components-reconnect-failed,
+#components-reconnect-modal.components-reconnect-rejected {
+    display: flex;
+    align-items: center;
+    justify-content: center;
 }
 
-.components-reconnect-dialog button:hover {
-    background-color: var(--accent-fill-hover, #3b6ea2);
+#components-reconnect-modal::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.5);
 }
 
-.components-reconnect-dialog button:active {
-    background-color: var(--accent-fill-active, #6b9ed2);
+.reconnect-card {
+    position: relative;
+    width: 20rem;
+    padding: 2rem;
+    border-radius: 0.5rem;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1rem;
+    text-align: center;
+    z-index: 1;
+}
+
+body[data-theme="dark"] .reconnect-card {
+    background-color: #292929;
+    color: #e0e0e0;
+    border: 1px solid #404040;
+    box-shadow: 0 3px 6px 2px rgba(0, 0, 0, 0.4);
+}
+
+body:not([data-theme="dark"]) .reconnect-card {
+    background-color: white;
+    color: #1b1b1f;
+    border: 1px solid #e0e0e0;
+    box-shadow: 0 3px 6px 2px rgba(0, 0, 0, 0.15);
+}
+
+.reconnect-card p {
+    margin: 0;
+}
+
+.reconnect-spinner {
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    border: 3px solid transparent;
+    animation: reconnect-spin 1s linear infinite;
+}
+
+body[data-theme="dark"] .reconnect-spinner {
+    border-top-color: #4a90d9;
+}
+
+body:not([data-theme="dark"]) .reconnect-spinner {
+    border-top-color: #0078d4;
+}
+
+@keyframes reconnect-spin {
+    to { transform: rotate(360deg); }
+}
+
+.reconnect-card button {
+    border: 0;
+    padding: 6px 24px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.875rem;
+    font-weight: 500;
+}
+
+body[data-theme="dark"] .reconnect-card button {
+    background-color: #4a90d9;
+    color: white;
+}
+
+body[data-theme="dark"] .reconnect-card button:hover {
+    background-color: #3a7bc8;
+}
+
+body:not([data-theme="dark"]) .reconnect-card button {
+    background-color: #0078d4;
+    color: white;
+}
+
+body:not([data-theme="dark"]) .reconnect-card button:hover {
+    background-color: #006cbe;
+}
+
+/* Messages shown/hidden based on modal state */
+#components-reconnect-modal .reconnect-attempting,
+#components-reconnect-modal .reconnect-failed,
+#components-reconnect-modal .reconnect-rejected {
+    display: none;
+}
+
+#components-reconnect-modal.components-reconnect-show .reconnect-attempting {
+    display: contents;
+}
+
+#components-reconnect-modal.components-reconnect-failed .reconnect-failed {
+    display: contents;
+}
+
+#components-reconnect-modal.components-reconnect-rejected .reconnect-rejected {
+    display: contents;
 }
