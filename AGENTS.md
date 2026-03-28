@@ -109,6 +109,20 @@ The test suite includes:
 - **Unit tests** (`shmoxy.tests`): Fast tests for individual components
 - **E2E tests** (`shmoxy.e2e`): Browser-based tests using Playwright
 
+## Knowledge Management
+
+Before starting a new task, review existing rules and hypotheses for this domain. Apply rules by default. Check if any hypothesis can be tested with today's work.
+
+At the end of each task, extract insights. Store them in domain folders, e.g.:
+    /knowledge/pricing/
+        knowledge.md (facts and patterns)
+        hypotheses.md (need more data)
+        rules.md (confirmed — apply by default)
+
+Maintain a /knowledge/INDEX.md that routes to each domain folder. Create the structure if it doesn't exist yet.
+
+When a hypothesis gets confirmed 5+ times, promote it to a rule. When a rule gets contradicted by new data, demote it back to hypothesis.
+
 ## Nix Build Verification
 
 The project uses Nix for reproducible builds across platforms. After any code change, verify the Nix build works:
