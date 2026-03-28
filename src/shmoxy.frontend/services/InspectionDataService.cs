@@ -58,6 +58,23 @@ public class InspectionDataService : IDisposable
         OnRowsChanged?.Invoke();
     }
 
+    public void LoadRows(IReadOnlyList<InspectionRow> rows)
+    {
+        lock (_lock)
+        {
+            _rows.Clear();
+            _unpairedRequests.Clear();
+            _nextId = 1;
+
+            foreach (var row in rows)
+            {
+                row.Id = _nextId++;
+                _rows.Add(row);
+            }
+        }
+        OnRowsChanged?.Invoke();
+    }
+
     private async Task ConsumeStreamAsync(CancellationToken ct)
     {
         try
