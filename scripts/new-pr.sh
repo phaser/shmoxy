@@ -90,6 +90,12 @@ Add any relevant notes, decisions, or context here.
 EOF
 
 log_info "PR documentation created at: $DOC_FILE"
+
+# Auto-commit the PR doc so it's tracked from the start and won't be lost on cleanup
+git -C "$WORKTREE_PATH" add "$DOC_FILE"
+git -C "$WORKTREE_PATH" commit -m "Add PR documentation for $PR_NAME"
+log_info "PR documentation committed as initial commit in worktree"
+
 echo ""
 log_info "To view the documentation:"
 echo "  cat $DOC_FILE"

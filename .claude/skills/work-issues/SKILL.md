@@ -60,6 +60,7 @@ All work happens in the worktree — never modify main directly.
 
 ### 6. Commit and Create PR
 
+- Ensure the PR documentation file in `docs/prs/` is included in your commits (it is auto-committed by `new-pr.sh`, but update it with status/notes and stage any changes)
 - Commit with a descriptive message referencing the issue (e.g., "Closes #N")
 - Push branch and create PR via `gh pr create`
 - PR body must include: Summary, Test plan, and `Closes #N`
