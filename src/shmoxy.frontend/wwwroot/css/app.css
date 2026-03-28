@@ -181,3 +181,22 @@ pre {
     white-space: pre-wrap;
     word-break: break-word;
 }
+
+/* Override Blazor Server reconnect dialog to respect theme */
+.components-reconnect-dialog {
+    background-color: var(--neutral-layer-floating, var(--neutral-layer-2));
+    color: var(--neutral-foreground-rest);
+}
+
+.components-reconnect-dialog button {
+    background-color: var(--accent-fill-rest, #6b9ed2);
+    color: var(--foreground-on-accent-rest, white);
+}
+
+.components-reconnect-dialog button:hover {
+    background-color: var(--accent-fill-hover, #3b6ea2);
+}
+
+.components-reconnect-dialog button:active {
+    background-color: var(--accent-fill-active, #6b9ed2);
+}
