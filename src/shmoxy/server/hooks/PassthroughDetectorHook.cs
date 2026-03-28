@@ -22,6 +22,12 @@ public class PassthroughDetectorHook : IInterceptHook, IDisposable
     private readonly object _lock = new();
     private bool _disposed;
 
+    /// <summary>
+    /// Callback invoked when a detector triggers, enabling temporary passthrough.
+    /// Parameters: host, detectorId, reason.
+    /// </summary>
+    public Action<string, string, string>? OnDetectorTriggered { get; set; }
+
     public PassthroughDetectorHook()
     {
         _suggestions = Channel.CreateUnbounded<PassthroughSuggestion>();
@@ -193,6 +199,20 @@ public class PassthroughDetectorHook : IInterceptHook, IDisposable
         }
 
         _suggestions.Writer.TryWrite(suggestion);
+        OnDetectorTriggered?.Invoke(result.Host, result.DetectorId, result.Reason);
+    }
+
+    /// <summary>
+    /// Clears a host from the suggested set so it can be re-detected.
+    /// Called when a temporary passthrough window expires.
+    /// </summary>
+    public void ClearSuggestedHost(string host)
+    {
+        lock (_lock)
+        {
+            _suggestedHosts.Remove(host);
+            _activeSuggestions.RemoveAll(s => s.Host == host);
+        }
     }
 
     public void Dispose()

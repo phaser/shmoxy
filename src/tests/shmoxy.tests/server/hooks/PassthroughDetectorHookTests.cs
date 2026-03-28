@@ -182,4 +182,115 @@ public class PassthroughDetectorHookTests
         var detectors = hook.GetDetectors();
         Assert.True(detectors.Single(d => d.Id == "cloudflare").Enabled);
     }
+
+    [Fact]
+    public async Task EmitsSuggestion_CallsOnDetectorTriggered()
+    {
+        var hook = new PassthroughDetectorHook();
+        hook.AddDetector(new CloudflareDetector());
+
+        string? triggeredHost = null;
+        string? triggeredDetectorId = null;
+        hook.OnDetectorTriggered = (host, detectorId, reason) =>
+        {
+            triggeredHost = host;
+            triggeredDetectorId = detectorId;
+        };
+
+        var request = new InterceptedRequest
+        {
+            Method = "GET",
+            Host = "api.example.com",
+            Port = 443,
+            Path = "/data",
+            Headers = new() { ["Accept"] = "application/json" },
+            CorrelationId = "test-trigger"
+        };
+
+        var response = new InterceptedResponse
+        {
+            StatusCode = 400,
+            Headers = new()
+            {
+                ["Server"] = "cloudflare",
+                ["CF-RAY"] = "abc",
+                ["Content-Type"] = "text/html"
+            },
+            CorrelationId = "test-trigger"
+        };
+
+        await hook.OnRequestAsync(request);
+        await hook.OnResponseAsync(response);
+
+        Assert.Equal("api.example.com", triggeredHost);
+        Assert.Equal("cloudflare", triggeredDetectorId);
+    }
+
+    [Fact]
+    public async Task ClearSuggestedHost_AllowsReDetection()
+    {
+        var hook = new PassthroughDetectorHook();
+        hook.AddDetector(new CloudflareDetector());
+
+        // First detection
+        var request = new InterceptedRequest
+        {
+            Method = "GET",
+            Host = "api.example.com",
+            Port = 443,
+            Path = "/data",
+            Headers = new() { ["Accept"] = "application/json" },
+            CorrelationId = "test-1"
+        };
+
+        var response = new InterceptedResponse
+        {
+            StatusCode = 400,
+            Headers = new()
+            {
+                ["Server"] = "cloudflare",
+                ["CF-RAY"] = "abc",
+                ["Content-Type"] = "text/html"
+            },
+            CorrelationId = "test-1"
+        };
+
+        await hook.OnRequestAsync(request);
+        await hook.OnResponseAsync(response);
+
+        // Should have one suggestion
+        Assert.Single(hook.GetSuggestions());
+
+        // Clear the suggested host
+        hook.ClearSuggestedHost("api.example.com");
+
+        // Second detection should now work
+        var request2 = new InterceptedRequest
+        {
+            Method = "GET",
+            Host = "api.example.com",
+            Port = 443,
+            Path = "/data",
+            Headers = new() { ["Accept"] = "application/json" },
+            CorrelationId = "test-2"
+        };
+
+        var response2 = new InterceptedResponse
+        {
+            StatusCode = 400,
+            Headers = new()
+            {
+                ["Server"] = "cloudflare",
+                ["CF-RAY"] = "def",
+                ["Content-Type"] = "text/html"
+            },
+            CorrelationId = "test-2"
+        };
+
+        await hook.OnRequestAsync(request2);
+        await hook.OnResponseAsync(response2);
+
+        // Should have one suggestion again (the cleared one was re-detected)
+        Assert.Single(hook.GetSuggestions());
+    }
 }

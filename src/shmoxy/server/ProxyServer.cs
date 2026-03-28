@@ -17,6 +17,7 @@ public class ProxyServer : IDisposable
     private readonly TcpListener _listener;
     private readonly TlsHandler _tlsHandler;
     private readonly IInterceptHook _interceptor;
+    private readonly TemporaryPassthroughService? _tempPassthrough;
     private readonly ProxyConfig _config;
     private readonly object _lock = new();
     private CancellationTokenSource? _cts;
@@ -97,6 +98,14 @@ public class ProxyServer : IDisposable
     public ProxyServer(ProxyConfig config, IInterceptHook interceptor) : this(config)
     {
         _interceptor = interceptor ?? throw new ArgumentNullException(nameof(interceptor));
+    }
+
+    /// <summary>
+    /// Creates a proxy server with custom interceptor and temporary passthrough support.
+    /// </summary>
+    public ProxyServer(ProxyConfig config, IInterceptHook interceptor, TemporaryPassthroughService tempPassthrough) : this(config, interceptor)
+    {
+        _tempPassthrough = tempPassthrough ?? throw new ArgumentNullException(nameof(tempPassthrough));
     }
 
     /// <summary>
@@ -217,6 +226,15 @@ public class ProxyServer : IDisposable
         // Check if host is configured for TLS passthrough
         if (_config.PassthroughHosts.Count > 0 && HostMatcher.IsMatch(host, _config.PassthroughHosts))
         {
+            await HandlePassthroughAsync(client, host, port);
+            return;
+        }
+
+        // Check if host has an active temporary passthrough window
+        if (_tempPassthrough?.ShouldPassthrough(host) == true)
+        {
+            Log(ProxyConfig.LogLevelEnum.Info, $"Temporary passthrough for {host}");
+            _tempPassthrough.RecordConnection(host);
             await HandlePassthroughAsync(client, host, port);
             return;
         }

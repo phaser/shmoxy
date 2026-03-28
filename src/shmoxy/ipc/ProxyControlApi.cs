@@ -254,6 +254,14 @@ public static class ProxyControlApi
             }
         });
 
+        endpoints.MapGet("/ipc/detectors/temp-passthrough", () =>
+        {
+            if (stateService.TempPassthrough == null)
+                return Results.Json(Array.Empty<TemporaryPassthroughEntry>());
+
+            return Results.Json(stateService.TempPassthrough.GetActiveEntries());
+        });
+
         endpoints.MapPost("/ipc/detectors/suggestions/dismiss", (DismissSuggestionRequest req) =>
         {
             if (stateService.DetectorHook == null)
