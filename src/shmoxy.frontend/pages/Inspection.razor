@@ -1,8 +1,10 @@
 @page "/"
 @page "/inspection"
 @inject InspectionDataService InspectionService
+@inject ApiClient ApiClient
 @inject IJSRuntime JS
 @implements IAsyncDisposable
+@using shmoxy.frontend.models
 
 <div class="inspection-container">
     <div class="filters">
@@ -18,6 +20,36 @@
             <FluentOption TOption="string" Value="DELETE">DELETE</FluentOption>
             <FluentOption TOption="string" Value="PATCH">PATCH</FluentOption>
         </FluentSelect>
+
+        <div class="toolbar-spacer"></div>
+
+        @if (!showSaveDialog)
+        {
+            <FluentButton Appearance="Appearance.Accent"
+                          Disabled="@(InspectionService.GetRows().Count == 0 || isSaving)"
+                          OnClick="@OpenSaveDialog">
+                Save Session
+            </FluentButton>
+        }
+        else
+        {
+            <div class="save-dialog">
+                <FluentTextField @bind-Value="sessionName" Placeholder="Session name..." />
+                <FluentButton Appearance="Appearance.Accent"
+                              Disabled="@(string.IsNullOrWhiteSpace(sessionName) || isSaving)"
+                              OnClick="@SaveSession">
+                    @(isSaving ? "Saving..." : "Save")
+                </FluentButton>
+                <FluentButton Appearance="Appearance.Stealth" OnClick="@CloseSaveDialog">
+                    Cancel
+                </FluentButton>
+            </div>
+        }
+
+        @if (saveMessage is not null)
+        {
+            <span class="save-message @(saveMessageIsError ? "save-error" : "save-success")">@saveMessage</span>
+        }
     </div>
 
     <div id="inspection-scroll-container" class="scroll-container">
@@ -90,6 +122,12 @@
     private bool isAtBottom = true;
     private InspectionRow? selectedRow;
     private const string ContainerId = "inspection-scroll-container";
+
+    private bool showSaveDialog;
+    private string sessionName = "";
+    private bool isSaving;
+    private string? saveMessage;
+    private bool saveMessageIsError;
 
     protected override void OnInitialized()
     {
@@ -169,6 +207,62 @@
         >= 500 => "server-error",
         _ => "unknown"
     };
+
+    private void OpenSaveDialog()
+    {
+        showSaveDialog = true;
+        saveMessage = null;
+        sessionName = $"Session {DateTime.Now:yyyy-MM-dd HH:mm}";
+    }
+
+    private void CloseSaveDialog()
+    {
+        showSaveDialog = false;
+        sessionName = "";
+    }
+
+    private async Task SaveSession()
+    {
+        if (string.IsNullOrWhiteSpace(sessionName))
+            return;
+
+        isSaving = true;
+        saveMessage = null;
+        StateHasChanged();
+
+        try
+        {
+            var rows = InspectionService.GetRows();
+            var rowData = rows.Select(r => new SessionRowData
+            {
+                Method = r.Method,
+                Url = r.Url,
+                StatusCode = r.StatusCode,
+                DurationMs = r.Duration.HasValue ? (long)r.Duration.Value.TotalMilliseconds : null,
+                Timestamp = r.Timestamp,
+                RequestHeaders = r.RequestHeaders.Count > 0 ? new Dictionary<string, string>(r.RequestHeaders) : null,
+                ResponseHeaders = r.ResponseHeaders.Count > 0 ? new Dictionary<string, string>(r.ResponseHeaders) : null,
+                RequestBody = r.RequestBody,
+                ResponseBody = r.ResponseBody
+            }).ToList();
+
+            await ApiClient.CreateSessionAsync(sessionName.Trim(), rowData);
+
+            saveMessage = $"Saved \"{sessionName.Trim()}\" ({rowData.Count} rows)";
+            saveMessageIsError = false;
+            showSaveDialog = false;
+            sessionName = "";
+        }
+        catch (Exception ex)
+        {
+            saveMessage = $"Failed to save: {ex.Message}";
+            saveMessageIsError = true;
+        }
+        finally
+        {
+            isSaving = false;
+        }
+    }
 
     public async ValueTask DisposeAsync()
     {
@@ -303,5 +397,29 @@
     display: flex;
     justify-content: center;
     margin-top: 0.75rem;
+}
+
+.toolbar-spacer {
+    flex: 1;
+}
+
+.save-dialog {
+    display: flex;
+    gap: 0.5rem;
+    align-items: flex-end;
+}
+
+.save-message {
+    font-size: 0.8rem;
+    align-self: center;
+    white-space: nowrap;
+}
+
+.save-success {
+    color: #22863a;
+}
+
+.save-error {
+    color: #cb2431;
 }
 </style>
