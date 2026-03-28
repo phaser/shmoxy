@@ -5,6 +5,7 @@
 @inject IJSRuntime JS
 @implements IAsyncDisposable
 @using shmoxy.frontend.models
+@using shmoxy.frontend.services
 
 <div class="inspection-container">
     <div class="filters">
@@ -24,6 +25,11 @@
         <div class="toolbar-spacer"></div>
 
         <div class="session-actions">
+            <FluentButton Appearance="Appearance.Outline"
+                          OnClick="@ToggleCapture">
+                @(InspectionService.IsCapturing ? "Pause Capture" : "Resume Capture")
+            </FluentButton>
+
             <FluentButton Appearance="Appearance.Outline"
                           OnClick="@ToggleSessionPicker">
                 @(showSessionPicker ? "Close" : "Load Session")
@@ -109,7 +115,7 @@
                 {
                     @foreach (var row in filteredRows)
                     {
-                        <tr class="clickable-row @(selectedRow?.Id == row.Id ? "selected-row" : "")"
+                        <tr class="clickable-row @(selectedRow?.Id == row.Id ? "selected-row" : "") @(row.Origin == RowOrigin.Loaded ? "loaded-row" : "")"
                             @onclick="() => SelectRow(row)">
                             <td>@row.Id</td>
                             <td class="time-cell">@row.Timestamp.ToLocalTime().ToString("HH:mm:ss.fff")</td>
@@ -245,6 +251,18 @@
         >= 500 => "server-error",
         _ => "unknown"
     };
+
+    private void ToggleCapture()
+    {
+        if (InspectionService.IsCapturing)
+        {
+            InspectionService.StopCapture();
+        }
+        else
+        {
+            InspectionService.StartCapture();
+        }
+    }
 
     private async Task ToggleSessionPicker()
     {
@@ -451,6 +469,10 @@
 
 .selected-row {
     background: var(--neutral-layer-3);
+}
+
+.loaded-row {
+    border-left: 3px solid var(--accent-foreground-rest);
 }
 
 .time-cell {

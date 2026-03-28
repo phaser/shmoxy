@@ -17,6 +17,8 @@ public class InspectionDataService : IDisposable
 
     public const int MaxRows = 1000;
 
+    public bool IsCapturing => _streamTask is not null && !_streamTask.IsCompleted;
+
     public event Action? OnRowsChanged;
 
     public InspectionDataService(ApiClient apiClient)
@@ -69,6 +71,7 @@ public class InspectionDataService : IDisposable
             foreach (var row in rows)
             {
                 row.Id = _nextId++;
+                row.Origin = RowOrigin.Loaded;
                 _rows.Add(row);
             }
         }
@@ -168,6 +171,12 @@ public class InspectionDataService : IDisposable
     }
 }
 
+public enum RowOrigin
+{
+    Live,
+    Loaded
+}
+
 public class InspectionRow
 {
     public int Id { get; set; }
@@ -180,4 +189,5 @@ public class InspectionRow
     public Dictionary<string, string> ResponseHeaders { get; set; } = new();
     public string? RequestBody { get; set; }
     public string? ResponseBody { get; set; }
+    public RowOrigin Origin { get; set; } = RowOrigin.Live;
 }

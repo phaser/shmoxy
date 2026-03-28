@@ -138,4 +138,34 @@ public class InspectionDataServiceTests
 
         Assert.True(changed);
     }
+
+    [Fact]
+    public void LoadRows_SetsOriginToLoaded()
+    {
+        using var service = CreateService();
+
+        var rows = new List<InspectionRow>
+        {
+            new() { Method = "GET", Url = "https://example.com", Timestamp = DateTime.UtcNow }
+        };
+
+        service.LoadRows(rows);
+
+        var loaded = service.GetRows();
+        Assert.All(loaded, r => Assert.Equal(RowOrigin.Loaded, r.Origin));
+    }
+
+    [Fact]
+    public void NewRows_DefaultToLiveOrigin()
+    {
+        var row = new InspectionRow { Method = "GET", Url = "https://example.com" };
+        Assert.Equal(RowOrigin.Live, row.Origin);
+    }
+
+    [Fact]
+    public void IsCapturing_ReturnsFalse_Initially()
+    {
+        using var service = CreateService();
+        Assert.False(service.IsCapturing);
+    }
 }
