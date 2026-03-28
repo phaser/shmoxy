@@ -90,6 +90,27 @@ public class AboutPageTests
     }
 
     [Fact]
+    public async Task AboutPage_ShowsAppIcon()
+    {
+        var page = await _fixture.CreatePageAsync();
+        await page.GotoAsync($"{_fixture.BaseUrl}/about", new PageGotoOptions
+        {
+            WaitUntil = WaitUntilState.NetworkIdle,
+            Timeout = 30000
+        });
+
+        await page.WaitForTimeoutAsync(3000);
+
+        var icon = page.Locator("img.about-icon");
+        await icon.WaitForAsync(new LocatorWaitForOptions { Timeout = 10000 });
+        var isVisible = await icon.IsVisibleAsync();
+        Assert.True(isVisible, "Expected application icon to be visible on About page");
+
+        var src = await icon.GetAttributeAsync("src");
+        Assert.Contains("icon.png", src);
+    }
+
+    [Fact]
     public async Task AboutPage_IsAccessibleFromSidebar()
     {
         var page = await _fixture.CreatePageAsync();
