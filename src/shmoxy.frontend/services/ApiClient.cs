@@ -103,6 +103,39 @@ public class ApiClient(HttpClient httpClient)
             : body);
     }
 
+    public async Task<List<DetectorInfo>> GetDetectorsAsync()
+    {
+        var response = await _httpClient.GetAsync("/api/proxies/local/detectors");
+        if (!response.IsSuccessStatusCode)
+            return [];
+
+        return await response.Content.ReadFromJsonAsync<List<DetectorInfo>>() ?? [];
+    }
+
+    public async Task EnableDetectorAsync(string detectorId)
+    {
+        var response = await _httpClient.PostAsync($"/api/proxies/local/detectors/{detectorId}/enable", null);
+        await EnsureSuccessOrThrowWithBody(response);
+    }
+
+    public async Task DisableDetectorAsync(string detectorId)
+    {
+        var response = await _httpClient.PostAsync($"/api/proxies/local/detectors/{detectorId}/disable", null);
+        await EnsureSuccessOrThrowWithBody(response);
+    }
+
+    public async Task AcceptSuggestionAsync(string host)
+    {
+        var response = await _httpClient.PostAsJsonAsync("/api/proxies/local/detectors/suggestions/accept", new { Host = host });
+        await EnsureSuccessOrThrowWithBody(response);
+    }
+
+    public async Task DismissSuggestionAsync(string host)
+    {
+        var response = await _httpClient.PostAsJsonAsync("/api/proxies/local/detectors/suggestions/dismiss", new { Host = host });
+        await EnsureSuccessOrThrowWithBody(response);
+    }
+
     public async Task<List<InspectionRequestInfo>> GetRequestHistoryAsync()
     {
         var response = await _httpClient.GetAsync("/api/inspection");

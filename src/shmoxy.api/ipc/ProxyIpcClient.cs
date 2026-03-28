@@ -190,6 +190,85 @@ public class ProxyIpcClient : IProxyIpcClient, IDisposable
         }, ct);
     }
 
+    public async Task<IReadOnlyList<DetectorDescriptor>> GetDetectorsAsync(CancellationToken ct = default)
+    {
+        return await RetryAsync(async () =>
+        {
+            using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            cts.CancelAfter(IpcTimeouts.Medium);
+            return await _httpClient.GetFromJsonAsync<IReadOnlyList<DetectorDescriptor>>("/ipc/detectors", _jsonOptions, cts.Token)
+                ?? Array.Empty<DetectorDescriptor>();
+        }, ct);
+    }
+
+    public async Task EnableDetectorAsync(string id, CancellationToken ct = default)
+    {
+        await RetryAsync(async () =>
+        {
+            using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            cts.CancelAfter(IpcTimeouts.Medium);
+            await _httpClient.PostAsync($"/ipc/detectors/{id}/enable", null, cts.Token);
+            return true;
+        }, ct);
+    }
+
+    public async Task DisableDetectorAsync(string id, CancellationToken ct = default)
+    {
+        await RetryAsync(async () =>
+        {
+            using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            cts.CancelAfter(IpcTimeouts.Medium);
+            await _httpClient.PostAsync($"/ipc/detectors/{id}/disable", null, cts.Token);
+            return true;
+        }, ct);
+    }
+
+    public async Task AcceptSuggestionAsync(string host, CancellationToken ct = default)
+    {
+        await RetryAsync(async () =>
+        {
+            using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            cts.CancelAfter(IpcTimeouts.Medium);
+            await _httpClient.PostAsJsonAsync("/ipc/detectors/suggestions/accept",
+                new AcceptSuggestionRequest { Host = host }, _jsonOptions, cts.Token);
+            return true;
+        }, ct);
+    }
+
+    public async Task DismissSuggestionAsync(string host, CancellationToken ct = default)
+    {
+        await RetryAsync(async () =>
+        {
+            using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            cts.CancelAfter(IpcTimeouts.Medium);
+            await _httpClient.PostAsJsonAsync("/ipc/detectors/suggestions/dismiss",
+                new DismissSuggestionRequest { Host = host }, _jsonOptions, cts.Token);
+            return true;
+        }, ct);
+    }
+
+    public async IAsyncEnumerable<PassthroughSuggestion> GetSuggestionStreamAsync([EnumeratorCancellation] CancellationToken ct = default)
+    {
+        using var stream = await _httpClient.GetStreamAsync("/ipc/detectors/suggestions/stream", ct);
+        using var reader = new StreamReader(stream, Encoding.UTF8);
+
+        while (!ct.IsCancellationRequested)
+        {
+            var line = await reader.ReadLineAsync(ct);
+            if (line == null) break;
+
+            if (line.StartsWith("data: ", StringComparison.Ordinal))
+            {
+                var json = line["data: ".Length..];
+                var suggestion = JsonSerializer.Deserialize<PassthroughSuggestion>(json, _jsonOptions);
+                if (suggestion != null)
+                {
+                    yield return suggestion;
+                }
+            }
+        }
+    }
+
     public async Task<bool> IsHealthyAsync(CancellationToken ct = default)
     {
         try

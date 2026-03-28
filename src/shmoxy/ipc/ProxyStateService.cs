@@ -10,12 +10,17 @@ public class ProxyStateService
 {
     private readonly ProxyServer _proxy;
     private readonly InspectionHook? _inspectionHook;
+    private readonly PassthroughDetectorHook? _detectorHook;
     private readonly DateTime _startTime;
 
-    public ProxyStateService(ProxyServer proxy, InspectionHook? inspectionHook = null)
+    public ProxyStateService(
+        ProxyServer proxy,
+        InspectionHook? inspectionHook = null,
+        PassthroughDetectorHook? detectorHook = null)
     {
         _proxy = proxy ?? throw new ArgumentNullException(nameof(proxy));
         _inspectionHook = inspectionHook;
+        _detectorHook = detectorHook;
         _startTime = DateTime.UtcNow;
     }
 
@@ -25,6 +30,7 @@ public class ProxyStateService
     public int ActiveConnections => 0; // TODO: track in ProxyServer
 
     public InspectionHook? InspectionHook => _inspectionHook;
+    public PassthroughDetectorHook? DetectorHook => _detectorHook;
 
     public bool EnableInspection()
     {
