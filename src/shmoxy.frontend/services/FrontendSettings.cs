@@ -6,7 +6,7 @@ public class FrontendSettings
 {
     private const string EnableCyberChefKey = "shmoxy-enable-cyberchef";
     private const string CyberChefUrlKey = "shmoxy-cyberchef-url";
-    private const string DefaultCyberChefUrl = "/cyberchef/CyberChef.html";
+    private const string DefaultCyberChefUrl = "/_content/shmoxy.frontend/cyberchef/CyberChef.html";
 
     public bool EnableCyberChef { get; private set; }
     public string CyberChefUrl { get; private set; } = DefaultCyberChefUrl;
