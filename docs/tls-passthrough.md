@@ -20,6 +20,94 @@ Browsing `alpha.uipath.com` through shmoxy:
 
 This was captured in the `bug-loop` inspection session: 22 failed token exchanges in ~20 seconds.
 
+## TLS Fingerprinting
+
+### What is a TLS fingerprint?
+
+Every TLS client (browser, curl, Python requests, .NET HttpClient) announces its capabilities during the TLS handshake in a message called the **ClientHello**. This message contains:
+
+- **TLS version** (e.g., TLS 1.2, TLS 1.3)
+- **Cipher suites** — the list of encryption algorithms the client supports, in preference order
+- **Extensions** — additional capabilities like SNI (Server Name Indication), ALPN (protocol negotiation), supported groups (elliptic curves), signature algorithms, etc.
+- **Extension order** — the sequence in which extensions appear
+- **Supported groups and point formats** — specific elliptic curve parameters
+
+Each TLS implementation compiles this list differently. Chrome, Firefox, Safari, curl, and .NET's `SslStream` each produce a distinct ClientHello — even when connecting to the same server.
+
+### JA3 and JA4 fingerprints
+
+**JA3** (created by Salesforce) hashes five fields from the ClientHello into an MD5 fingerprint:
+
+```
+JA3 = MD5(TLSVersion, Ciphers, Extensions, EllipticCurves, EllipticCurvePointFormats)
+```
+
+For example:
+- Chrome on macOS: `cd08e31494f9531f560d64c695473da9`
+- Firefox on macOS: `839bbe3ed0b429ae861ce6d2290a1bf2`
+- .NET SslStream: `b32309a26951912be7dba376398abc3b` (varies by .NET version)
+
+**JA4** (by FoxIO) is a newer, more readable format that includes TLS version, SNI, cipher count, extension count, and ALPN:
+
+```
+JA4 = t13d1516h2_8daaf6152771_b0da82dd1658
+```
+
+Both produce a unique identifier per TLS implementation. Cloudflare, Akamai, and other CDNs maintain databases of known browser fingerprints.
+
+### How services use fingerprints for bot detection
+
+1. **Allowlisting**: Cloudflare knows the JA3 hashes of all major browsers. If the fingerprint matches Chrome/Firefox/Safari, the request is likely legitimate.
+
+2. **Blocklisting**: Known automation tools (Selenium, Puppeteer without stealth, HTTP libraries) have distinctive fingerprints. These get challenged or blocked.
+
+3. **Anomaly detection**: If the `User-Agent` header says "Chrome 120" but the JA3 fingerprint matches Python's `requests` library, it's flagged as spoofed.
+
+4. **Per-endpoint enforcement**: Bot detection is often stricter on sensitive endpoints (login, OAuth token exchange, payment) than on static assets. This is why page loads work through MITM but token exchanges fail — Cloudflare applies different policies based on the endpoint sensitivity.
+
+### Why MITM proxies change the fingerprint
+
+When shmoxy (or any MITM proxy) intercepts a CONNECT request:
+
+1. The proxy terminates the client's TLS connection using a dynamically generated certificate
+2. The proxy opens a **new, separate** TLS connection to the upstream server
+3. This upstream connection uses `SslStream` (or whatever the proxy's TLS library is)
+4. The upstream server sees the proxy's TLS fingerprint, not the browser's
+
+```
+Browser (Chrome JA3: cd08e31...)
+    ↓ TLS ClientHello with Chrome fingerprint
+Proxy (terminates TLS, reads HTTP)
+    ↓ NEW TLS ClientHello with .NET SslStream fingerprint (b32309a...)
+Cloudflare
+    → "This isn't Chrome, it's .NET. Blocked."
+```
+
+The two TLS connections are completely independent. The proxy cannot forward the browser's ClientHello because it already consumed it to establish the MITM tunnel. Even if the proxy could somehow copy the browser's cipher suite list, the underlying TLS library's behavior (extension order, padding, etc.) would still differ.
+
+### Fingerprint comparison example
+
+From the `bug-loop` session, the Cloudflare response to `POST /identity_/connect/token`:
+
+```
+HTTP/1.1 400 Bad Request
+Server: cloudflare
+CF-RAY: -
+Content-Type: text/html
+
+<html>
+<head><title>400 Bad Request</title></head>
+<body>
+<center><h1>400 Bad Request</h1></center>
+<hr><center>cloudflare</center>
+</body>
+</html>
+```
+
+This is Cloudflare's generic block page — it never reached the actual UiPath identity server. The `CF-RAY: -` (empty) confirms the request was rejected at Cloudflare's edge, not by the origin server.
+
+The same request through TLS passthrough (browser's fingerprint preserved) returns the expected JSON token response.
+
 ## Solution: TLS Passthrough
 
 TLS passthrough tunnels a CONNECT request as raw TCP without terminating TLS. The browser's TLS bytes flow directly to the upstream server, preserving the original fingerprint.
