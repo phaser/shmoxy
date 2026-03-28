@@ -293,4 +293,73 @@ public class PassthroughDetectorHookTests
         // Should have one suggestion again (the cleared one was re-detected)
         Assert.Single(hook.GetSuggestions());
     }
+
+    [Fact]
+    public async Task SuggestedHost_IsNotReDetected_WithoutExplicitClear()
+    {
+        var hook = new PassthroughDetectorHook();
+        hook.AddDetector(new CloudflareDetector());
+        var triggerCount = 0;
+        hook.OnDetectorTriggered = (_, _, _) => triggerCount++;
+
+        // First detection
+        var request = new InterceptedRequest
+        {
+            Method = "GET",
+            Host = "api.example.com",
+            Port = 443,
+            Path = "/data",
+            Headers = new() { ["Accept"] = "application/json" },
+            CorrelationId = "test-1"
+        };
+
+        var response = new InterceptedResponse
+        {
+            StatusCode = 400,
+            Headers = new()
+            {
+                ["Server"] = "cloudflare",
+                ["CF-RAY"] = "abc",
+                ["Content-Type"] = "text/html"
+            },
+            CorrelationId = "test-1"
+        };
+
+        await hook.OnRequestAsync(request);
+        await hook.OnResponseAsync(response);
+
+        Assert.Equal(1, triggerCount);
+        Assert.Single(hook.GetSuggestions());
+
+        // Same host detected again (simulating what happens after passthrough expires
+        // without clearing the suggested host)
+        var request2 = new InterceptedRequest
+        {
+            Method = "GET",
+            Host = "api.example.com",
+            Port = 443,
+            Path = "/other",
+            Headers = new() { ["Accept"] = "application/json" },
+            CorrelationId = "test-2"
+        };
+
+        var response2 = new InterceptedResponse
+        {
+            StatusCode = 400,
+            Headers = new()
+            {
+                ["Server"] = "cloudflare",
+                ["CF-RAY"] = "def",
+                ["Content-Type"] = "text/html"
+            },
+            CorrelationId = "test-2"
+        };
+
+        await hook.OnRequestAsync(request2);
+        await hook.OnResponseAsync(response2);
+
+        // Should NOT re-trigger - host is still in the suggested set
+        Assert.Equal(1, triggerCount);
+        Assert.Single(hook.GetSuggestions());
+    }
 }

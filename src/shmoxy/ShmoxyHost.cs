@@ -84,7 +84,6 @@ public static class ShmoxyHost
             var tempService = sp.GetRequiredService<TemporaryPassthroughService>();
             hook.OnDetectorTriggered = (host, detectorId, reason) =>
                 tempService.Activate(host, detectorId, reason);
-            tempService.OnExpired += host => hook.ClearSuggestedHost(host);
 
             return hook;
         });
