@@ -168,4 +168,59 @@ public class InspectionDataServiceTests
         using var service = CreateService();
         Assert.False(service.IsCapturing);
     }
+
+    [Fact]
+    public void LoadRows_SetsActiveSession()
+    {
+        using var service = CreateService();
+
+        service.LoadRows(
+            new List<InspectionRow> { new() { Method = "GET", Url = "https://example.com", Timestamp = DateTime.UtcNow } },
+            "session-123",
+            "My Session");
+
+        Assert.Equal("session-123", service.ActiveSessionId);
+        Assert.Equal("My Session", service.ActiveSessionName);
+    }
+
+    [Fact]
+    public void LoadRows_WithoutSessionInfo_ClearsActiveSession()
+    {
+        using var service = CreateService();
+
+        service.LoadRows(
+            new List<InspectionRow> { new() { Method = "GET", Url = "https://example.com", Timestamp = DateTime.UtcNow } },
+            "session-123",
+            "My Session");
+
+        service.LoadRows(
+            new List<InspectionRow> { new() { Method = "POST", Url = "https://example.com", Timestamp = DateTime.UtcNow } });
+
+        Assert.Null(service.ActiveSessionId);
+        Assert.Null(service.ActiveSessionName);
+    }
+
+    [Fact]
+    public void Clear_ClearsActiveSession()
+    {
+        using var service = CreateService();
+
+        service.LoadRows(
+            new List<InspectionRow> { new() { Method = "GET", Url = "https://example.com", Timestamp = DateTime.UtcNow } },
+            "session-123",
+            "My Session");
+
+        service.Clear();
+
+        Assert.Null(service.ActiveSessionId);
+        Assert.Null(service.ActiveSessionName);
+    }
+
+    [Fact]
+    public void ActiveSession_IsNull_Initially()
+    {
+        using var service = CreateService();
+        Assert.Null(service.ActiveSessionId);
+        Assert.Null(service.ActiveSessionName);
+    }
 }

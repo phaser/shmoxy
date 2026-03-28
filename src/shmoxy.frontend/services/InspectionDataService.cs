@@ -19,6 +19,9 @@ public class InspectionDataService : IDisposable
 
     public bool IsCapturing => _streamTask is not null && !_streamTask.IsCompleted;
 
+    public string? ActiveSessionId { get; private set; }
+    public string? ActiveSessionName { get; private set; }
+
     public event Action? OnRowsChanged;
 
     public InspectionDataService(ApiClient apiClient)
@@ -57,10 +60,12 @@ public class InspectionDataService : IDisposable
             _unpairedRequests.Clear();
             _nextId = 1;
         }
+        ActiveSessionId = null;
+        ActiveSessionName = null;
         OnRowsChanged?.Invoke();
     }
 
-    public void LoadRows(IReadOnlyList<InspectionRow> rows)
+    public void LoadRows(IReadOnlyList<InspectionRow> rows, string? sessionId = null, string? sessionName = null)
     {
         lock (_lock)
         {
@@ -75,6 +80,8 @@ public class InspectionDataService : IDisposable
                 _rows.Add(row);
             }
         }
+        ActiveSessionId = sessionId;
+        ActiveSessionName = sessionName;
         OnRowsChanged?.Invoke();
     }
 
