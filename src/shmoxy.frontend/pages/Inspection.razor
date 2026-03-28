@@ -35,28 +35,37 @@
                 @(showSessionPicker ? "Close" : "Load Session")
             </FluentButton>
 
-            @if (!showSaveDialog)
+            @if (InspectionService.ActiveSessionId is not null)
             {
                 <FluentButton Appearance="Appearance.Accent"
                               Disabled="@(InspectionService.GetRows().Count == 0 || isSaving)"
-                              OnClick="@OpenSaveDialog">
-                    Save Session
+                              OnClick="@ResaveSession">
+                    @(isSaving ? "Saving..." : $"Save \"{InspectionService.ActiveSessionName}\"")
                 </FluentButton>
             }
-        else
-        {
-            <div class="save-dialog">
-                <FluentTextField @bind-Value="sessionName" Placeholder="Session name..." />
-                <FluentButton Appearance="Appearance.Accent"
-                              Disabled="@(string.IsNullOrWhiteSpace(sessionName) || isSaving)"
-                              OnClick="@SaveSession">
-                    @(isSaving ? "Saving..." : "Save")
+
+            @if (!showSaveDialog)
+            {
+                <FluentButton Appearance="Appearance.Outline"
+                              Disabled="@(InspectionService.GetRows().Count == 0 || isSaving)"
+                              OnClick="@OpenSaveDialog">
+                    Save As...
                 </FluentButton>
-                <FluentButton Appearance="Appearance.Stealth" OnClick="@CloseSaveDialog">
-                    Cancel
-                </FluentButton>
-            </div>
-        }
+            }
+            else
+            {
+                <div class="save-dialog">
+                    <FluentTextField @bind-Value="sessionName" Placeholder="Session name..." />
+                    <FluentButton Appearance="Appearance.Accent"
+                                  Disabled="@(string.IsNullOrWhiteSpace(sessionName) || isSaving)"
+                                  OnClick="@SaveSession">
+                        @(isSaving ? "Saving..." : "Save")
+                    </FluentButton>
+                    <FluentButton Appearance="Appearance.Stealth" OnClick="@CloseSaveDialog">
+                        Cancel
+                    </FluentButton>
+                </div>
+            }
 
         @if (saveMessage is not null)
         {
@@ -81,7 +90,7 @@
                 @foreach (var session in savedSessions)
                 {
                     <div class="session-picker-item">
-                        <button class="session-picker-load" @onclick="() => LoadSession(session.Id)">
+                        <button class="session-picker-load" @onclick="() => LoadSession(session.Id, session.Name)">
                             <span class="session-name">@session.Name</span>
                             <span class="session-meta">@session.RowCount rows &middot; @session.UpdatedAt.ToLocalTime().ToString("MMM d, HH:mm")</span>
                         </button>
@@ -291,7 +300,7 @@
         }
     }
 
-    private async Task LoadSession(string sessionId)
+    private async Task LoadSession(string sessionId, string sessionName)
     {
         try
         {
@@ -309,15 +318,56 @@
                 ResponseBody = r.ResponseBody
             }).ToList();
 
-            InspectionService.LoadRows(rows);
+            InspectionService.LoadRows(rows, sessionId, sessionName);
             showSessionPicker = false;
-            saveMessage = $"Loaded {rows.Count} rows";
+            saveMessage = $"Loaded \"{sessionName}\" ({rows.Count} rows)";
             saveMessageIsError = false;
         }
         catch (Exception ex)
         {
             saveMessage = $"Failed to load: {ex.Message}";
             saveMessageIsError = true;
+        }
+    }
+
+    private async Task ResaveSession()
+    {
+        if (InspectionService.ActiveSessionId is null)
+            return;
+
+        isSaving = true;
+        saveMessage = null;
+        StateHasChanged();
+
+        try
+        {
+            var rows = InspectionService.GetRows();
+            var rowData = rows.Select(r => new SessionRowData
+            {
+                Method = r.Method,
+                Url = r.Url,
+                StatusCode = r.StatusCode,
+                DurationMs = r.Duration.HasValue ? (long)r.Duration.Value.TotalMilliseconds : null,
+                Timestamp = r.Timestamp,
+                RequestHeaders = r.RequestHeaders.Count > 0 ? new Dictionary<string, string>(r.RequestHeaders) : null,
+                ResponseHeaders = r.ResponseHeaders.Count > 0 ? new Dictionary<string, string>(r.ResponseHeaders) : null,
+                RequestBody = r.RequestBody,
+                ResponseBody = r.ResponseBody
+            }).ToList();
+
+            await ApiClient.UpdateSessionAsync(InspectionService.ActiveSessionId, rowData);
+
+            saveMessage = $"Saved \"{InspectionService.ActiveSessionName}\" ({rowData.Count} rows)";
+            saveMessageIsError = false;
+        }
+        catch (Exception ex)
+        {
+            saveMessage = $"Failed to save: {ex.Message}";
+            saveMessageIsError = true;
+        }
+        finally
+        {
+            isSaving = false;
         }
     }
 
