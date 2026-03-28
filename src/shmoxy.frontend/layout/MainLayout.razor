@@ -2,47 +2,47 @@
 @inject ThemeState ThemeState
 @implements IDisposable
 
-<FluentDesignTheme @ref="_theme" @bind-Mode="_mode" StorageName="preferred-theme" />
+<FluentDesignTheme @ref="_theme" @bind-Mode="_mode" StorageName="preferred-theme">
+    <div class="layout">
+        <header class="header">
+            <div class="header-left">
+                <FluentIcon Value="@(new Icons.Regular.Size24.Globe())" Color="Color.Custom" CustomColor="#7B3FF2" />
+                <span class="header-title">Shmoxy</span>
+            </div>
+            <div class="header-right">
+                <ProxyStatusIndicator />
+                <FluentAnchor Href="/settings" Appearance="Appearance.Stealth" Title="Settings">
+                    <FluentIcon Value="@(new Icons.Regular.Size20.Settings())" />
+                </FluentAnchor>
+            </div>
+        </header>
 
-<div class="layout">
-    <header class="header">
-        <div class="header-left">
-            <FluentIcon Value="@(new Icons.Regular.Size24.Globe())" Color="Color.Custom" CustomColor="#7B3FF2" />
-            <span class="header-title">Shmoxy</span>
+        <div class="body">
+            <nav class="icon-sidebar">
+                <NavLink href="/" Match="NavLinkMatch.All" class="nav-item" title="Inspection">
+                    <FluentIcon Value="@(new Icons.Regular.Size20.DocumentSearch())" />
+                    <span>Inspection</span>
+                </NavLink>
+                <NavLink href="/proxy-config" Match="NavLinkMatch.Prefix" class="nav-item" title="Proxy Config">
+                    <FluentIcon Value="@(new Icons.Regular.Size20.Server())" />
+                    <span>Proxy</span>
+                </NavLink>
+                <NavLink href="/settings" Match="NavLinkMatch.Prefix" class="nav-item" title="Settings">
+                    <FluentIcon Value="@(new Icons.Regular.Size20.Settings())" />
+                    <span>Settings</span>
+                </NavLink>
+            </nav>
+
+            <main class="content">
+                @Body
+            </main>
         </div>
-        <div class="header-right">
-            <ProxyStatusIndicator />
-            <FluentAnchor Href="/settings" Appearance="Appearance.Stealth" Title="Settings">
-                <FluentIcon Value="@(new Icons.Regular.Size20.Settings())" />
-            </FluentAnchor>
-        </div>
-    </header>
-
-    <div class="body">
-        <nav class="icon-sidebar">
-            <NavLink href="/" Match="NavLinkMatch.All" class="nav-item" title="Inspection">
-                <FluentIcon Value="@(new Icons.Regular.Size20.DocumentSearch())" />
-                <span>Inspection</span>
-            </NavLink>
-            <NavLink href="/proxy-config" Match="NavLinkMatch.Prefix" class="nav-item" title="Proxy Config">
-                <FluentIcon Value="@(new Icons.Regular.Size20.Server())" />
-                <span>Proxy</span>
-            </NavLink>
-            <NavLink href="/settings" Match="NavLinkMatch.Prefix" class="nav-item" title="Settings">
-                <FluentIcon Value="@(new Icons.Regular.Size20.Settings())" />
-                <span>Settings</span>
-            </NavLink>
-        </nav>
-
-        <main class="content">
-            @Body
-        </main>
     </div>
-</div>
 
-<FluentToastProvider />
-<FluentDialogProvider />
-<FluentTooltipProvider />
+    <FluentToastProvider />
+    <FluentDialogProvider />
+    <FluentTooltipProvider />
+</FluentDesignTheme>
 
 @code {
     private FluentDesignTheme? _theme;
