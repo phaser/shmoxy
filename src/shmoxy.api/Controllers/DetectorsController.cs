@@ -132,4 +132,22 @@ public class DetectorsController : ControllerBase
             return BadRequest(new { Message = ex.Message });
         }
     }
+
+    [HttpGet("temp-passthrough")]
+    public async Task<IActionResult> GetTempPassthrough(string proxyId, CancellationToken ct)
+    {
+        try
+        {
+            var state = await _processManager.GetStateAsync();
+            if (state?.State != ProxyProcessState.Running)
+                return BadRequest(new { Message = "Proxy must be running" });
+
+            var entries = await _processManager.GetIpcClient().GetTempPassthroughAsync(ct);
+            return Ok(entries);
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(new { Message = ex.Message });
+        }
+    }
 }

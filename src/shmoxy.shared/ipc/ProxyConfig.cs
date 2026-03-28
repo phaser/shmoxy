@@ -36,6 +36,16 @@ public class ProxyConfig
     public List<string> EnabledDetectors { get; set; } = new();
 
     /// <summary>
+    /// Maximum number of CONNECT requests to pass through during a temporary passthrough window.
+    /// </summary>
+    public int TempPassthroughMaxConnections { get; set; } = 2;
+
+    /// <summary>
+    /// Timeout in seconds for temporary passthrough windows.
+    /// </summary>
+    public int TempPassthroughTimeoutSeconds { get; set; } = 30;
+
+    /// <summary>
     /// Logging levels.
     /// </summary>
     public enum LogLevelEnum

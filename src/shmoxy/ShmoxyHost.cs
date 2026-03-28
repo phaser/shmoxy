@@ -62,6 +62,13 @@ public static class ShmoxyHost
         services.Configure<IpcOptions>(context.Configuration.GetSection("IpcOptions"));
 
         services.AddSingleton<InspectionHook>();
+        services.AddSingleton<TemporaryPassthroughService>(sp =>
+        {
+            var config = sp.GetRequiredService<IOptions<ProxyConfig>>().Value;
+            return new TemporaryPassthroughService(
+                config.TempPassthroughMaxConnections,
+                TimeSpan.FromSeconds(config.TempPassthroughTimeoutSeconds));
+        });
         services.AddSingleton<PassthroughDetectorHook>(sp =>
         {
             var hook = new PassthroughDetectorHook();
@@ -72,6 +79,12 @@ public static class ShmoxyHost
             // Enable detectors from config
             var config = sp.GetRequiredService<IOptions<ProxyConfig>>().Value;
             hook.EnableDetectors(config.EnabledDetectors);
+
+            // Wire detector triggers to temporary passthrough
+            var tempService = sp.GetRequiredService<TemporaryPassthroughService>();
+            hook.OnDetectorTriggered = (host, detectorId, reason) =>
+                tempService.Activate(host, detectorId, reason);
+            tempService.OnExpired += host => hook.ClearSuggestedHost(host);
 
             return hook;
         });
@@ -88,7 +101,8 @@ public static class ShmoxyHost
         {
             var config = sp.GetRequiredService<IOptions<ProxyConfig>>().Value;
             var hookChain = sp.GetRequiredService<InterceptHookChain>();
-            return new ProxyServer(config, hookChain);
+            var tempPassthrough = sp.GetRequiredService<TemporaryPassthroughService>();
+            return new ProxyServer(config, hookChain, tempPassthrough);
         });
 
         services.AddSingleton<ProxyStateService>(sp =>
@@ -96,7 +110,8 @@ public static class ShmoxyHost
             var proxy = sp.GetRequiredService<ProxyServer>();
             var inspectionHook = sp.GetRequiredService<InspectionHook>();
             var detectorHook = sp.GetRequiredService<PassthroughDetectorHook>();
-            return new ProxyStateService(proxy, inspectionHook, detectorHook);
+            var tempPassthrough = sp.GetRequiredService<TemporaryPassthroughService>();
+            return new ProxyStateService(proxy, inspectionHook, detectorHook, tempPassthrough);
         });
 
         services.AddHostedService<ProxyHostedService>();

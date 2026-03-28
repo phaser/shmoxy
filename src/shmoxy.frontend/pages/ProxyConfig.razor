@@ -111,6 +111,23 @@
                 <p class="no-items">No detectors available. Start the proxy to load detectors.</p>
             }
 
+            @if (tempPassthroughEntries.Count > 0)
+            {
+                <h3>Active Temporary Passthroughs</h3>
+                <div class="temp-passthrough-list">
+                    @foreach (var entry in tempPassthroughEntries)
+                    {
+                        <div class="temp-passthrough-item">
+                            <div class="temp-passthrough-info">
+                                <strong>@entry.Host</strong>
+                                <span class="temp-passthrough-detail">@entry.Reason</span>
+                                <span class="temp-passthrough-detail">@entry.RemainingConnections/@entry.MaxConnections connections remaining</span>
+                            </div>
+                        </div>
+                    }
+                </div>
+            }
+
             @if (suggestions.Count > 0)
             {
                 <h3>Suggestions</h3>
@@ -219,6 +236,7 @@
     private List<DetectorInfo> detectors = new();
     private Dictionary<string, bool> detectorStates = new();
     private List<PassthroughSuggestionDto> suggestions = new();
+    private List<TemporaryPassthroughEntryDto> tempPassthroughEntries = new();
 
     protected override async Task OnInitializedAsync()
     {
@@ -247,6 +265,7 @@
             detectors = await ApiClient.GetDetectorsAsync();
             detectorStates = detectors.ToDictionary(d => d.Id, d => d.Enabled);
             suggestions = await ApiClient.GetSuggestionsAsync();
+            tempPassthroughEntries = await ApiClient.GetTempPassthroughAsync();
         }
         catch
         {
@@ -617,5 +636,31 @@
     display: flex;
     gap: 0.5rem;
     flex-shrink: 0;
+}
+
+.temp-passthrough-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.temp-passthrough-item {
+    display: flex;
+    align-items: center;
+    padding: 0.5rem;
+    border-radius: 4px;
+    background: var(--neutral-layer-2);
+    border-left: 3px solid var(--warning-fill-rest, #d97706);
+}
+
+.temp-passthrough-info {
+    display: flex;
+    flex-direction: column;
+    gap: 0.125rem;
+}
+
+.temp-passthrough-detail {
+    font-size: 0.8125rem;
+    color: var(--neutral-foreground-hint);
 }
 </style>
