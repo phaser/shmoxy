@@ -297,4 +297,36 @@ public class InspectionDataServiceTests
         Assert.Single(rows);
         Assert.Null(rows[0].StatusCode); // Response was not paired
     }
+
+    [Fact]
+    public void ProcessEvent_PassthroughEvent_CreatesRowWithPassthroughFlag()
+    {
+        using var service = CreateService();
+        var now = DateTime.UtcNow;
+
+        service.ProcessEvent(new InspectionEventDto(now, "passthrough", "CONNECT", "https://example.com:443", null, CorrelationId: "pt-1"));
+
+        var rows = service.GetRows();
+        Assert.Single(rows);
+        Assert.True(rows[0].IsPassthrough);
+        Assert.Equal("CONNECT", rows[0].Method);
+        Assert.Equal("https://example.com:443", rows[0].Url);
+    }
+
+    [Fact]
+    public void ProcessEvent_PassthroughEvent_DoesNotAffectPendingRequests()
+    {
+        using var service = CreateService();
+        var now = DateTime.UtcNow;
+
+        service.ProcessEvent(new InspectionEventDto(now, "request", "GET", "https://other.com", null, CorrelationId: "corr-1"));
+        service.ProcessEvent(new InspectionEventDto(now, "passthrough", "CONNECT", "https://example.com:443", null, CorrelationId: "pt-1"));
+        service.ProcessEvent(new InspectionEventDto(now.AddMilliseconds(100), "response", "", "", 200, CorrelationId: "corr-1"));
+
+        var rows = service.GetRows();
+        Assert.Equal(2, rows.Count);
+        Assert.False(rows[0].IsPassthrough);
+        Assert.Equal(200, rows[0].StatusCode);
+        Assert.True(rows[1].IsPassthrough);
+    }
 }

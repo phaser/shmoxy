@@ -19,4 +19,9 @@ public interface IInterceptHook
     /// Return null or Cancel=true to stop processing.
     /// </summary>
     Task<InterceptedResponse?> OnResponseAsync(InterceptedResponse response);
+
+    /// <summary>
+    /// Called when a CONNECT request is tunneled via TLS passthrough (no MITM).
+    /// </summary>
+    Task OnPassthroughAsync(string host, int port) => Task.CompletedTask;
 }

@@ -23,6 +23,13 @@ public class ProxyConfig
     public string CertStoragePath { get; set; } = DefaultCertStoragePath;
 
     /// <summary>
+    /// Hosts that should be tunneled without TLS termination (passthrough).
+    /// Supports exact matches (e.g. "example.com") and glob patterns (e.g. "*.example.com").
+    /// Passthrough preserves the client's original TLS fingerprint.
+    /// </summary>
+    public List<string> PassthroughHosts { get; set; } = new();
+
+    /// <summary>
     /// Logging levels.
     /// </summary>
     public enum LogLevelEnum

@@ -6,7 +6,7 @@ namespace shmoxy.shared.ipc;
 public record InspectionEvent
 {
     public DateTime Timestamp { get; init; }
-    public string EventType { get; init; } = string.Empty; // "request" | "response"
+    public string EventType { get; init; } = string.Empty; // "request" | "response" | "passthrough"
     public string Method { get; init; } = string.Empty;
     public string Url { get; init; } = string.Empty;
     public int? StatusCode { get; init; }

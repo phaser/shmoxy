@@ -72,6 +72,24 @@ public class InspectionHook : IInterceptHook, IDisposable
         return Task.FromResult<InterceptedResponse?>(response);
     }
 
+    public Task OnPassthroughAsync(string host, int port)
+    {
+        if (!_enabled || _disposed)
+            return Task.CompletedTask;
+
+        var evt = new InspectionEvent
+        {
+            Timestamp = DateTime.UtcNow,
+            EventType = "passthrough",
+            Method = "CONNECT",
+            Url = $"https://{host}:{port}",
+            CorrelationId = Guid.NewGuid().ToString()
+        };
+
+        _channel.Writer.TryWrite(evt);
+        return Task.CompletedTask;
+    }
+
     public void Dispose()
     {
         if (_disposed) return;

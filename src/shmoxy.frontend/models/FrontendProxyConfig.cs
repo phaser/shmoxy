@@ -8,6 +8,7 @@ public class FrontendProxyConfig
     public string LogLevel { get; set; } = "Info";
     public int MaxConcurrentConnections { get; set; } = Environment.ProcessorCount * 4;
     public string CertStoragePath { get; set; } = "";
+    public List<string> PassthroughHosts { get; set; } = new();
 
     public static FrontendProxyConfig Default => new();
 }
