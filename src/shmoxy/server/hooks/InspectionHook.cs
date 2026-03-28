@@ -43,7 +43,8 @@ public class InspectionHook : IInterceptHook, IDisposable
             Method = request.Method,
             Url = request.Url?.ToString() ?? string.Empty,
             Headers = request.Headers,
-            Body = request.Body
+            Body = request.Body,
+            CorrelationId = request.CorrelationId
         };
 
         _channel.Writer.TryWrite(evt);
@@ -63,7 +64,8 @@ public class InspectionHook : IInterceptHook, IDisposable
             Url = string.Empty,
             StatusCode = response.StatusCode,
             Headers = response.Headers,
-            Body = response.Body
+            Body = response.Body,
+            CorrelationId = response.CorrelationId
         };
 
         _channel.Writer.TryWrite(evt);

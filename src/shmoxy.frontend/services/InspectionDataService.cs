@@ -7,7 +7,7 @@ public class InspectionDataService : IDisposable
 {
     private readonly ApiClient _apiClient;
     private readonly List<InspectionRow> _rows = new();
-    private readonly Queue<(int RowIndex, DateTime Timestamp)> _unpairedRequests = new();
+    private readonly Dictionary<string, (int RowIndex, DateTime Timestamp)> _pendingRequests = new();
     private readonly object _lock = new();
 
     private CancellationTokenSource? _cts;
@@ -57,7 +57,7 @@ public class InspectionDataService : IDisposable
         lock (_lock)
         {
             _rows.Clear();
-            _unpairedRequests.Clear();
+            _pendingRequests.Clear();
             _nextId = 1;
         }
         ActiveSessionId = null;
@@ -70,7 +70,7 @@ public class InspectionDataService : IDisposable
         lock (_lock)
         {
             _rows.Clear();
-            _unpairedRequests.Clear();
+            _pendingRequests.Clear();
             _nextId = 1;
 
             foreach (var row in rows)
@@ -108,7 +108,7 @@ public class InspectionDataService : IDisposable
         }
     }
 
-    private void ProcessEvent(InspectionEventDto evt)
+    internal void ProcessEvent(InspectionEventDto evt)
     {
         if (string.Equals(evt.EventType, "request", StringComparison.OrdinalIgnoreCase))
         {
@@ -122,27 +122,35 @@ public class InspectionDataService : IDisposable
                 RequestBody = DecodeBody(evt.Body)
             };
             _rows.Add(row);
-            _unpairedRequests.Enqueue((_rows.Count - 1, evt.Timestamp));
+
+            if (!string.IsNullOrEmpty(evt.CorrelationId))
+            {
+                _pendingRequests[evt.CorrelationId] = (_rows.Count - 1, evt.Timestamp);
+            }
 
             if (_rows.Count > MaxRows)
             {
                 _rows.RemoveAt(0);
-                var adjusted = new Queue<(int, DateTime)>();
-                while (_unpairedRequests.Count > 0)
+                var keysToRemove = new List<string>();
+                var updated = new Dictionary<string, (int, DateTime)>();
+                foreach (var (key, (idx, ts)) in _pendingRequests)
                 {
-                    var (idx, ts) = _unpairedRequests.Dequeue();
                     if (idx > 0)
-                        adjusted.Enqueue((idx - 1, ts));
+                        updated[key] = (idx - 1, ts);
+                    else
+                        keysToRemove.Add(key);
                 }
-                while (adjusted.Count > 0)
-                    _unpairedRequests.Enqueue(adjusted.Dequeue());
+                foreach (var key in keysToRemove)
+                    _pendingRequests.Remove(key);
+                foreach (var (key, value) in updated)
+                    _pendingRequests[key] = value;
             }
         }
         else if (string.Equals(evt.EventType, "response", StringComparison.OrdinalIgnoreCase))
         {
-            if (_unpairedRequests.Count > 0)
+            if (!string.IsNullOrEmpty(evt.CorrelationId) && _pendingRequests.Remove(evt.CorrelationId, out var pending))
             {
-                var (rowIndex, requestTimestamp) = _unpairedRequests.Dequeue();
+                var (rowIndex, requestTimestamp) = pending;
                 if (rowIndex < _rows.Count)
                 {
                     _rows[rowIndex].Duration = evt.Timestamp - requestTimestamp;

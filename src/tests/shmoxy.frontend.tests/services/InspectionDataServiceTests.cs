@@ -1,3 +1,4 @@
+using shmoxy.frontend.models;
 using shmoxy.frontend.services;
 using Xunit;
 
@@ -222,5 +223,78 @@ public class InspectionDataServiceTests
         using var service = CreateService();
         Assert.Null(service.ActiveSessionId);
         Assert.Null(service.ActiveSessionName);
+    }
+
+    [Fact]
+    public void ProcessEvent_PairsResponseToRequest_ByCorrelationId()
+    {
+        using var service = CreateService();
+        var now = DateTime.UtcNow;
+
+        service.ProcessEvent(new InspectionEventDto(now, "request", "GET", "https://example.com/1", null, CorrelationId: "corr-1"));
+        service.ProcessEvent(new InspectionEventDto(now.AddMilliseconds(100), "response", "", "", 200, CorrelationId: "corr-1"));
+
+        var rows = service.GetRows();
+        Assert.Single(rows);
+        Assert.Equal("GET", rows[0].Method);
+        Assert.Equal(200, rows[0].StatusCode);
+    }
+
+    [Fact]
+    public void ProcessEvent_PairsOutOfOrderResponses_Correctly()
+    {
+        using var service = CreateService();
+        var now = DateTime.UtcNow;
+
+        // Send 3 requests
+        service.ProcessEvent(new InspectionEventDto(now, "request", "GET", "https://example.com/1", null, CorrelationId: "corr-1"));
+        service.ProcessEvent(new InspectionEventDto(now, "request", "POST", "https://example.com/2", null, CorrelationId: "corr-2"));
+        service.ProcessEvent(new InspectionEventDto(now, "request", "PUT", "https://example.com/3", null, CorrelationId: "corr-3"));
+
+        // Responses arrive out of order: 3, 1, 2
+        service.ProcessEvent(new InspectionEventDto(now.AddMilliseconds(50), "response", "", "", 201, CorrelationId: "corr-3"));
+        service.ProcessEvent(new InspectionEventDto(now.AddMilliseconds(100), "response", "", "", 200, CorrelationId: "corr-1"));
+        service.ProcessEvent(new InspectionEventDto(now.AddMilliseconds(150), "response", "", "", 202, CorrelationId: "corr-2"));
+
+        var rows = service.GetRows();
+        Assert.Equal(3, rows.Count);
+
+        // Each response should be paired with its correct request
+        Assert.Equal("GET", rows[0].Method);
+        Assert.Equal(200, rows[0].StatusCode);
+
+        Assert.Equal("POST", rows[1].Method);
+        Assert.Equal(202, rows[1].StatusCode);
+
+        Assert.Equal("PUT", rows[2].Method);
+        Assert.Equal(201, rows[2].StatusCode);
+    }
+
+    [Fact]
+    public void ProcessEvent_ResponseWithoutCorrelationId_IsIgnored()
+    {
+        using var service = CreateService();
+        var now = DateTime.UtcNow;
+
+        service.ProcessEvent(new InspectionEventDto(now, "request", "GET", "https://example.com", null, CorrelationId: "corr-1"));
+        service.ProcessEvent(new InspectionEventDto(now.AddMilliseconds(100), "response", "", "", 500, CorrelationId: null));
+
+        var rows = service.GetRows();
+        Assert.Single(rows);
+        Assert.Null(rows[0].StatusCode); // Response was not paired
+    }
+
+    [Fact]
+    public void ProcessEvent_ResponseWithUnknownCorrelationId_IsIgnored()
+    {
+        using var service = CreateService();
+        var now = DateTime.UtcNow;
+
+        service.ProcessEvent(new InspectionEventDto(now, "request", "GET", "https://example.com", null, CorrelationId: "corr-1"));
+        service.ProcessEvent(new InspectionEventDto(now.AddMilliseconds(100), "response", "", "", 404, CorrelationId: "corr-unknown"));
+
+        var rows = service.GetRows();
+        Assert.Single(rows);
+        Assert.Null(rows[0].StatusCode); // Response was not paired
     }
 }

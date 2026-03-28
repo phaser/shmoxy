@@ -17,4 +17,9 @@ public class InterceptedRequest
     /// Gets or sets a value indicating whether to cancel the request.
     /// </summary>
     public bool Cancel { get; set; }
+
+    /// <summary>
+    /// Unique ID linking this request to its corresponding response for inspection.
+    /// </summary>
+    public string? CorrelationId { get; set; }
 }

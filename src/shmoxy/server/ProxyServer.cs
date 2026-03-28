@@ -340,7 +340,8 @@ public class ProxyServer : IDisposable
                 Port = port,
                 Path = relativePath,
                 Headers = headersDict,
-                Body = body
+                Body = body,
+                CorrelationId = Guid.NewGuid().ToString()
             };
 
             var result = await _interceptor.OnRequestAsync(interceptedRequest);
@@ -550,7 +551,8 @@ public class ProxyServer : IDisposable
             {
                 StatusCode = respStatusCode,
                 Headers = respHeaders,
-                Body = respBody
+                Body = respBody,
+                CorrelationId = request.CorrelationId
             };
             await _interceptor.OnResponseAsync(interceptedResponse);
         }
@@ -616,6 +618,7 @@ public class ProxyServer : IDisposable
             Log(ProxyConfig.LogLevelEnum.Info, $"MITM {method} {scheme}://{host}{path}");
 
             // Intercept request
+            var correlationId = Guid.NewGuid().ToString();
             var interceptedRequest = new InterceptedRequest
             {
                 Method = method,
@@ -624,7 +627,8 @@ public class ProxyServer : IDisposable
                 Port = port,
                 Path = path,
                 Headers = headers,
-                Body = body
+                Body = body,
+                CorrelationId = correlationId
             };
 
             var result = await _interceptor.OnRequestAsync(interceptedRequest);
@@ -717,7 +721,8 @@ public class ProxyServer : IDisposable
                     {
                         StatusCode = respStatusCode,
                         Headers = respHeaders,
-                        Body = respBody
+                        Body = respBody,
+                        CorrelationId = correlationId
                     };
                     await _interceptor.OnResponseAsync(interceptedResponse);
                 }
