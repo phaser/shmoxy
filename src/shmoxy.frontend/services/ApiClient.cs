@@ -124,6 +124,15 @@ public class ApiClient(HttpClient httpClient)
         await EnsureSuccessOrThrowWithBody(response);
     }
 
+    public async Task<List<PassthroughSuggestionDto>> GetSuggestionsAsync()
+    {
+        var response = await _httpClient.GetAsync("/api/proxies/local/detectors/suggestions");
+        if (!response.IsSuccessStatusCode)
+            return [];
+
+        return await response.Content.ReadFromJsonAsync<List<PassthroughSuggestionDto>>() ?? [];
+    }
+
     public async Task AcceptSuggestionAsync(string host)
     {
         var response = await _httpClient.PostAsJsonAsync("/api/proxies/local/detectors/suggestions/accept", new { Host = host });

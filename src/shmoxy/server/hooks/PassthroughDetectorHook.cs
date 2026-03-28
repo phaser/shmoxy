@@ -16,6 +16,7 @@ public class PassthroughDetectorHook : IInterceptHook, IDisposable
     private readonly Dictionary<string, bool> _enabledDetectors = new();
     private readonly ConcurrentDictionary<string, InterceptedRequest> _pendingRequests = new();
     private readonly Channel<PassthroughSuggestion> _suggestions;
+    private readonly List<PassthroughSuggestion> _activeSuggestions = new();
     private readonly HashSet<string> _dismissedHosts = new();
     private readonly HashSet<string> _suggestedHosts = new();
     private readonly object _lock = new();
@@ -81,12 +82,24 @@ public class PassthroughDetectorHook : IInterceptHook, IDisposable
     /// <summary>
     /// Dismisses a suggestion so it won't resurface.
     /// </summary>
+    /// <summary>
+    /// Gets all active (non-dismissed) suggestions.
+    /// </summary>
+    public IReadOnlyList<PassthroughSuggestion> GetSuggestions()
+    {
+        lock (_lock)
+        {
+            return _activeSuggestions.ToList();
+        }
+    }
+
     public void DismissSuggestion(string host)
     {
         lock (_lock)
         {
             _dismissedHosts.Add(host);
             _suggestedHosts.Remove(host);
+            _activeSuggestions.RemoveAll(s => s.Host == host);
         }
     }
 
@@ -173,6 +186,11 @@ public class PassthroughDetectorHook : IInterceptHook, IDisposable
             DetectorName = result.DetectorName,
             Reason = result.Reason
         };
+
+        lock (_lock)
+        {
+            _activeSuggestions.Add(suggestion);
+        }
 
         _suggestions.Writer.TryWrite(suggestion);
     }

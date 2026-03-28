@@ -246,6 +246,7 @@
         {
             detectors = await ApiClient.GetDetectorsAsync();
             detectorStates = detectors.ToDictionary(d => d.Id, d => d.Enabled);
+            suggestions = await ApiClient.GetSuggestionsAsync();
         }
         catch
         {

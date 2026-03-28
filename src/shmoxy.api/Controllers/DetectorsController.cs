@@ -77,6 +77,24 @@ public class DetectorsController : ControllerBase
         }
     }
 
+    [HttpGet("suggestions")]
+    public async Task<IActionResult> GetSuggestions(string proxyId, CancellationToken ct)
+    {
+        try
+        {
+            var state = await _processManager.GetStateAsync();
+            if (state?.State != ProxyProcessState.Running)
+                return BadRequest(new { Message = "Proxy must be running" });
+
+            var suggestions = await _processManager.GetIpcClient().GetSuggestionsAsync(ct);
+            return Ok(suggestions);
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(new { Message = ex.Message });
+        }
+    }
+
     [HttpPost("suggestions/accept")]
     public async Task<IActionResult> AcceptSuggestion(
         string proxyId, [FromBody] AcceptSuggestionRequest request, CancellationToken ct)

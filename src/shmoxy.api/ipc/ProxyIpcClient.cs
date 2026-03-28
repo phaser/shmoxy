@@ -223,6 +223,17 @@ public class ProxyIpcClient : IProxyIpcClient, IDisposable
         }, ct);
     }
 
+    public async Task<IReadOnlyList<PassthroughSuggestion>> GetSuggestionsAsync(CancellationToken ct = default)
+    {
+        return await RetryAsync(async () =>
+        {
+            using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            cts.CancelAfter(IpcTimeouts.Medium);
+            return await _httpClient.GetFromJsonAsync<IReadOnlyList<PassthroughSuggestion>>("/ipc/detectors/suggestions", _jsonOptions, cts.Token)
+                ?? Array.Empty<PassthroughSuggestion>();
+        }, ct);
+    }
+
     public async Task AcceptSuggestionAsync(string host, CancellationToken ct = default)
     {
         await RetryAsync(async () =>
