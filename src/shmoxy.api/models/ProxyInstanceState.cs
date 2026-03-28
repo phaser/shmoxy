@@ -19,4 +19,5 @@ public record ProxyInstanceState
     public DateTime? StartedAt { get; init; }
     public DateTime? StoppedAt { get; init; }
     public string? ExitReason { get; init; }
+    public string? ProxyVersion { get; init; }
 }

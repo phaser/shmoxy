@@ -8,5 +8,6 @@ public record ProxyInstanceStateDto(
     int? Port,
     DateTime? StartedAt,
     DateTime? StoppedAt,
-    string? ExitReason
+    string? ExitReason,
+    string? ProxyVersion
 );

@@ -1,4 +1,5 @@
 @page "/about"
+@inject ProxyStatusService ProxyStatusService
 
 <h1>About</h1>
 
@@ -6,7 +7,12 @@
     <FluentCard>
         <div class="about-section">
             <h3>Shmoxy</h3>
-            <p>Version @_version</p>
+            <p>Frontend Version: @_version</p>
+            <p>Proxy Server Version: @_proxyVersion</p>
+            @if (_versionMismatch)
+            {
+                <p class="version-warning">Warning: Frontend and proxy server versions differ.</p>
+            }
             <p>
                 Licensed under the
                 <a href="https://github.com/phaser/shmoxy/blob/main/LICENSE" target="_blank" rel="noopener noreferrer">MIT License</a>.
@@ -44,6 +50,8 @@
 
 @code {
     private string _version = "";
+    private string _proxyVersion = "Not connected";
+    private bool _versionMismatch;
 
     private static readonly List<ThirdPartyDep> _thirdPartyDeps =
     [
@@ -54,6 +62,23 @@
     {
         var assemblyVersion = typeof(App).Assembly.GetName().Version;
         _version = assemblyVersion?.ToString(3) ?? "unknown";
+
+        UpdateProxyVersion();
+    }
+
+    private void UpdateProxyVersion()
+    {
+        var status = ProxyStatusService.CurrentStatus;
+        if (status.IsRunning && !string.IsNullOrEmpty(status.ProxyVersion))
+        {
+            _proxyVersion = status.ProxyVersion;
+            _versionMismatch = _version != _proxyVersion;
+        }
+        else
+        {
+            _proxyVersion = "Not connected";
+            _versionMismatch = false;
+        }
     }
 
     private sealed record ThirdPartyDep(string Name, string License, string Url);
@@ -76,5 +101,10 @@
 
 .about-section a {
     color: var(--accent-foreground-rest);
+}
+
+.version-warning {
+    color: var(--warning);
+    font-weight: 600;
 }
 </style>
