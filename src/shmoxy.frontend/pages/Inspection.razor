@@ -23,14 +23,20 @@
 
         <div class="toolbar-spacer"></div>
 
-        @if (!showSaveDialog)
-        {
-            <FluentButton Appearance="Appearance.Accent"
-                          Disabled="@(InspectionService.GetRows().Count == 0 || isSaving)"
-                          OnClick="@OpenSaveDialog">
-                Save Session
+        <div class="session-actions">
+            <FluentButton Appearance="Appearance.Outline"
+                          OnClick="@ToggleSessionPicker">
+                @(showSessionPicker ? "Close" : "Load Session")
             </FluentButton>
-        }
+
+            @if (!showSaveDialog)
+            {
+                <FluentButton Appearance="Appearance.Accent"
+                              Disabled="@(InspectionService.GetRows().Count == 0 || isSaving)"
+                              OnClick="@OpenSaveDialog">
+                    Save Session
+                </FluentButton>
+            }
         else
         {
             <div class="save-dialog">
@@ -50,7 +56,35 @@
         {
             <span class="save-message @(saveMessageIsError ? "save-error" : "save-success")">@saveMessage</span>
         }
+        </div>
     </div>
+
+    @if (showSessionPicker)
+    {
+        <div class="session-picker">
+            @if (isLoadingSessions)
+            {
+                <span class="session-picker-loading">Loading sessions...</span>
+            }
+            else if (savedSessions.Count == 0)
+            {
+                <span class="session-picker-empty">No saved sessions</span>
+            }
+            else
+            {
+                @foreach (var session in savedSessions)
+                {
+                    <div class="session-picker-item">
+                        <button class="session-picker-load" @onclick="() => LoadSession(session.Id)">
+                            <span class="session-name">@session.Name</span>
+                            <span class="session-meta">@session.RowCount rows &middot; @session.UpdatedAt.ToLocalTime().ToString("MMM d, HH:mm")</span>
+                        </button>
+                        <button class="session-picker-delete" @onclick="() => DeleteSession(session.Id)" title="Delete session">&times;</button>
+                    </div>
+                }
+            }
+        </div>
+    }
 
     <div id="inspection-scroll-container" class="scroll-container">
         <table class="inspection-table">
@@ -128,6 +162,10 @@
     private bool isSaving;
     private string? saveMessage;
     private bool saveMessageIsError;
+
+    private bool showSessionPicker;
+    private bool isLoadingSessions;
+    private List<SessionSummary> savedSessions = new();
 
     protected override void OnInitialized()
     {
@@ -207,6 +245,77 @@
         >= 500 => "server-error",
         _ => "unknown"
     };
+
+    private async Task ToggleSessionPicker()
+    {
+        showSessionPicker = !showSessionPicker;
+        if (showSessionPicker)
+        {
+            await RefreshSessionList();
+        }
+    }
+
+    private async Task RefreshSessionList()
+    {
+        isLoadingSessions = true;
+        StateHasChanged();
+        try
+        {
+            savedSessions = await ApiClient.ListSessionsAsync();
+        }
+        catch
+        {
+            savedSessions = new();
+        }
+        finally
+        {
+            isLoadingSessions = false;
+        }
+    }
+
+    private async Task LoadSession(string sessionId)
+    {
+        try
+        {
+            var rowData = await ApiClient.LoadSessionRowsAsync(sessionId);
+            var rows = rowData.Select(r => new InspectionRow
+            {
+                Method = r.Method,
+                Url = r.Url,
+                StatusCode = r.StatusCode,
+                Duration = r.DurationMs.HasValue ? TimeSpan.FromMilliseconds(r.DurationMs.Value) : null,
+                Timestamp = r.Timestamp,
+                RequestHeaders = r.RequestHeaders ?? new Dictionary<string, string>(),
+                ResponseHeaders = r.ResponseHeaders ?? new Dictionary<string, string>(),
+                RequestBody = r.RequestBody,
+                ResponseBody = r.ResponseBody
+            }).ToList();
+
+            InspectionService.LoadRows(rows);
+            showSessionPicker = false;
+            saveMessage = $"Loaded {rows.Count} rows";
+            saveMessageIsError = false;
+        }
+        catch (Exception ex)
+        {
+            saveMessage = $"Failed to load: {ex.Message}";
+            saveMessageIsError = true;
+        }
+    }
+
+    private async Task DeleteSession(string sessionId)
+    {
+        try
+        {
+            await ApiClient.DeleteSessionAsync(sessionId);
+            await RefreshSessionList();
+        }
+        catch (Exception ex)
+        {
+            saveMessage = $"Failed to delete: {ex.Message}";
+            saveMessageIsError = true;
+        }
+    }
 
     private void OpenSaveDialog()
     {
@@ -420,6 +529,85 @@
 }
 
 .save-error {
+    color: #cb2431;
+}
+
+.session-actions {
+    display: flex;
+    gap: 0.5rem;
+    align-items: flex-end;
+}
+
+.session-picker {
+    border: 1px solid var(--neutral-stroke-rest);
+    border-radius: calc(var(--control-corner-radius) * 1px);
+    background: var(--neutral-layer-2);
+    padding: 0.5rem;
+    margin-bottom: 0.5rem;
+    max-height: 200px;
+    overflow-y: auto;
+    flex-shrink: 0;
+}
+
+.session-picker-loading,
+.session-picker-empty {
+    font-size: 0.8rem;
+    color: var(--neutral-foreground-hint);
+    padding: 0.5rem;
+}
+
+.session-picker-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    border-bottom: 1px solid var(--neutral-stroke-divider-rest);
+}
+
+.session-picker-item:last-child {
+    border-bottom: none;
+}
+
+.session-picker-load {
+    flex: 1;
+    background: none;
+    border: none;
+    padding: 0.5rem;
+    cursor: pointer;
+    text-align: left;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    color: var(--neutral-foreground-rest);
+    border-radius: calc(var(--control-corner-radius) * 1px);
+}
+
+.session-picker-load:hover {
+    background: var(--neutral-layer-3);
+}
+
+.session-name {
+    font-weight: 600;
+    font-size: 0.85rem;
+}
+
+.session-meta {
+    font-size: 0.75rem;
+    color: var(--neutral-foreground-hint);
+}
+
+.session-picker-delete {
+    background: none;
+    border: none;
+    color: var(--neutral-foreground-hint);
+    cursor: pointer;
+    font-size: 1.2rem;
+    padding: 4px 8px;
+    border-radius: calc(var(--control-corner-radius) * 1px);
+    line-height: 1;
+}
+
+.session-picker-delete:hover {
+    background: rgba(200, 0, 0, 0.1);
     color: #cb2431;
 }
 </style>
