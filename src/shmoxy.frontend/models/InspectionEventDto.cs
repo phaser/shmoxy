@@ -7,5 +7,6 @@ public record InspectionEventDto(
     string Url,
     int? StatusCode,
     Dictionary<string, string>? Headers = null,
-    byte[]? Body = null
+    byte[]? Body = null,
+    string? CorrelationId = null
 );

@@ -12,4 +12,5 @@ public record InspectionEvent
     public int? StatusCode { get; init; }
     public Dictionary<string, string> Headers { get; init; } = new();
     public byte[]? Body { get; init; }
+    public string? CorrelationId { get; init; }
 }
