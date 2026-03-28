@@ -44,8 +44,8 @@ public class ThemeSwitchingTests
         var initialLuminance = await page.EvaluateAsync<string>(
             "() => getComputedStyle(document.documentElement).getPropertyValue('--base-layer-luminance').trim()");
 
-        // Find the theme switch and click it to toggle
-        var themeSwitch = page.Locator("fluent-switch");
+        // Find the theme switch (first one on the page) and click it to toggle
+        var themeSwitch = page.Locator("fluent-switch").First;
         await themeSwitch.WaitForAsync(new LocatorWaitForOptions { Timeout = 10000 });
 
         await themeSwitch.ClickAsync();

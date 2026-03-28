@@ -1,4 +1,6 @@
 @inject IJSRuntime JS
+@inject FrontendSettings FrontendSettings
+@inject NavigationManager NavigationManager
 @using shmoxy.frontend.services
 
 <div class="detail-overlay" @onclick="OnClose" @onkeydown="HandleKeyDown" tabindex="0" @ref="overlayRef">
@@ -104,7 +106,13 @@
                         <h3>Body</h3>
                         @if (!string.IsNullOrEmpty(Row.RequestBody))
                         {
-                            <button class="copy-button" @onclick="() => CopyToClipboard(Row.RequestBody)">Copy</button>
+                            <div class="section-actions">
+                                <button class="copy-button" @onclick="() => CopyToClipboard(Row.RequestBody)">Copy</button>
+                                @if (FrontendSettings.EnableCyberChef)
+                                {
+                                    <button class="copy-button" @onclick="() => SendToCyberChef(Row.RequestBody)">CyberChef</button>
+                                }
+                            </div>
                         }
                     </div>
                     @if (!string.IsNullOrEmpty(Row.RequestBody))
@@ -194,7 +202,13 @@
                         <h3>Body</h3>
                         @if (!string.IsNullOrEmpty(Row.ResponseBody))
                         {
-                            <button class="copy-button" @onclick="() => CopyToClipboard(Row.ResponseBody)">Copy</button>
+                            <div class="section-actions">
+                                <button class="copy-button" @onclick="() => CopyToClipboard(Row.ResponseBody)">Copy</button>
+                                @if (FrontendSettings.EnableCyberChef)
+                                {
+                                    <button class="copy-button" @onclick="() => SendToCyberChef(Row.ResponseBody)">CyberChef</button>
+                                }
+                            </div>
                         }
                     </div>
                     @if (!string.IsNullOrEmpty(Row.ResponseBody))
@@ -321,6 +335,13 @@
         {
             // Circuit disconnected
         }
+    }
+
+    private void SendToCyberChef(string? body)
+    {
+        if (string.IsNullOrEmpty(body)) return;
+        var base64 = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(body));
+        NavigationManager.NavigateTo($"/cyberchef?input={Uri.EscapeDataString(base64)}");
     }
 
     private static bool IsAuthorizationBearer(KeyValuePair<string, string> header)
@@ -517,6 +538,11 @@
 
 .copy-button:hover {
     background: var(--neutral-layer-2);
+}
+
+.section-actions {
+    display: flex;
+    gap: 4px;
 }
 
 .headers-table {

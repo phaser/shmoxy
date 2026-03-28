@@ -24,6 +24,9 @@ docs/proxy-server-architecture.html
 docs/proxy-server-architecture.pdf
 docs/proxy-server-architecture-assets/
 
+# CyberChef static files (too large for git, use scripts/download-cyberchef.sh)
+src/shmoxy.frontend/wwwroot/cyberchef/
+
 # macOS
 .DS_Store
 
