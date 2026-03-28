@@ -67,8 +67,10 @@ All work happens in the worktree — never modify main directly.
 ### 7. After PR is Created
 
 - Tell the user the PR is ready and show the PR URL
-- **If bypass permissions are on** (i.e., tool calls are not requiring user approval): automatically merge the PR, pull changes to main (`git checkout main && git pull origin main`), clean up the worktree (`./scripts/cleanup-pr.sh`), and immediately move to the next issue
-- **Otherwise**: ask the user whether to merge or wait for review. If told to merge: merge the PR, update main (`git checkout main && git pull`), clean up the worktree (`./scripts/cleanup-pr.sh`)
+- **If bypass permissions are on** (i.e., tool calls are not requiring user approval): automatically merge the PR, pull changes to main (`git checkout main && git pull origin main`), clean up the worktree (`./scripts/cleanup-pr.sh <pr-name>`), and immediately move to the next issue
+- **Otherwise**: ask the user whether to merge or wait for review. If told to merge: merge the PR, update main (`git checkout main && git pull`), clean up the worktree (`./scripts/cleanup-pr.sh <pr-name>`)
+
+**Important:** When merging any PR (whether from this workflow or manually requested), always check if there is an associated local worktree for that PR branch. If one exists, clean it up after merging using `./scripts/cleanup-pr.sh <pr-name>` since it is no longer needed.
 
 ### 8. Move to Next Issue
 
