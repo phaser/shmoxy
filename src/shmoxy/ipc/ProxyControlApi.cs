@@ -46,11 +46,12 @@ public static class ProxyControlApi
 
         endpoints.MapPut("/ipc/config", (ProxyConfig newConfig) =>
         {
-            // Update runtime config (log level, etc.)
+            // Update runtime config (log level, passthrough hosts, etc.)
             if (newConfig.LogLevel != config.LogLevel)
             {
                 config.LogLevel = newConfig.LogLevel;
             }
+            config.PassthroughHosts = newConfig.PassthroughHosts;
             return Results.Json(config);
         });
 

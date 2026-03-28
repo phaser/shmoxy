@@ -146,6 +146,23 @@ public class InspectionDataService : IDisposable
                     _pendingRequests[key] = value;
             }
         }
+        else if (string.Equals(evt.EventType, "passthrough", StringComparison.OrdinalIgnoreCase))
+        {
+            var row = new InspectionRow
+            {
+                Id = _nextId++,
+                Method = evt.Method,
+                Url = evt.Url,
+                Timestamp = evt.Timestamp,
+                IsPassthrough = true
+            };
+            _rows.Add(row);
+
+            if (_rows.Count > MaxRows)
+            {
+                _rows.RemoveAt(0);
+            }
+        }
         else if (string.Equals(evt.EventType, "response", StringComparison.OrdinalIgnoreCase))
         {
             if (!string.IsNullOrEmpty(evt.CorrelationId) && _pendingRequests.Remove(evt.CorrelationId, out var pending))
@@ -205,4 +222,5 @@ public class InspectionRow
     public string? RequestBody { get; set; }
     public string? ResponseBody { get; set; }
     public RowOrigin Origin { get; set; } = RowOrigin.Live;
+    public bool IsPassthrough { get; set; }
 }

@@ -90,4 +90,32 @@ public class InspectionHookTests
         var reader = hook.GetReader();
         Assert.False(reader.TryRead(out _));
     }
+
+    [Fact]
+    public async Task OnPassthroughAsync_WhenEnabled_WritesPassthroughEvent()
+    {
+        var hook = new InspectionHook();
+        hook.Enabled = true;
+
+        await hook.OnPassthroughAsync("example.com", 443);
+
+        var reader = hook.GetReader();
+        Assert.True(reader.TryRead(out var evt));
+        Assert.Equal("passthrough", evt.EventType);
+        Assert.Equal("CONNECT", evt.Method);
+        Assert.Equal("https://example.com:443", evt.Url);
+        Assert.NotNull(evt.CorrelationId);
+    }
+
+    [Fact]
+    public async Task OnPassthroughAsync_WhenDisabled_DoesNotWriteEvent()
+    {
+        var hook = new InspectionHook();
+        hook.Enabled = false;
+
+        await hook.OnPassthroughAsync("example.com", 443);
+
+        var reader = hook.GetReader();
+        Assert.False(reader.TryRead(out _));
+    }
 }

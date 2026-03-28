@@ -46,6 +46,43 @@
 
     <FluentCard>
         <div class="card-header">
+            <FluentIcon Value="@(new Icons.Regular.Size20.Shield())" />
+            <h2>TLS Passthrough</h2>
+        </div>
+
+        <div class="form-content">
+            <p class="description">Domains listed here will be tunneled without TLS termination, preserving the client's original TLS fingerprint. Use exact hostnames or glob patterns (e.g. <code>*.example.com</code>).</p>
+
+            <div class="passthrough-input-row">
+                <FluentTextField @bind-Value="newPassthroughHost" Placeholder="*.example.com" @onkeydown="OnPassthroughKeyDown" />
+                <FluentButton Appearance="Appearance.Accent" OnClick="@AddPassthroughHost" Disabled="@string.IsNullOrWhiteSpace(newPassthroughHost)">
+                    Add
+                </FluentButton>
+            </div>
+
+            @if (config.PassthroughHosts.Count > 0)
+            {
+                <div class="passthrough-list">
+                    @foreach (var host in config.PassthroughHosts)
+                    {
+                        <div class="passthrough-item">
+                            <span>@host</span>
+                            <FluentButton Appearance="Appearance.Stealth" OnClick="@(() => RemovePassthroughHost(host))">
+                                <FluentIcon Value="@(new Icons.Regular.Size16.Delete())" />
+                            </FluentButton>
+                        </div>
+                    }
+                </div>
+            }
+            else
+            {
+                <p class="no-items">No passthrough domains configured. All HTTPS traffic will be intercepted.</p>
+            }
+        </div>
+    </FluentCard>
+
+    <FluentCard>
+        <div class="card-header">
             <FluentIcon Value="@(new Icons.Regular.Size20.Status())" />
             <h2>Proxy Status</h2>
         </div>
@@ -224,6 +261,31 @@
         }
     }
 
+    private string newPassthroughHost = string.Empty;
+
+    private void AddPassthroughHost()
+    {
+        var host = newPassthroughHost.Trim();
+        if (!string.IsNullOrWhiteSpace(host) && !config.PassthroughHosts.Contains(host))
+        {
+            config.PassthroughHosts.Add(host);
+            newPassthroughHost = string.Empty;
+        }
+    }
+
+    private void RemovePassthroughHost(string host)
+    {
+        config.PassthroughHosts.Remove(host);
+    }
+
+    private void OnPassthroughKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+        {
+            AddPassthroughHost();
+        }
+    }
+
     private enum MessageType
     {
         Success,
@@ -332,5 +394,40 @@
 .cert-separator {
     margin: 0 0.25rem;
     color: var(--neutral-foreground-hint);
+}
+
+.passthrough-input-row {
+    display: flex;
+    gap: 0.5rem;
+    align-items: flex-end;
+}
+
+.passthrough-input-row fluent-text-field {
+    flex: 1;
+}
+
+.passthrough-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+.passthrough-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.25rem 0.5rem;
+    border-radius: 4px;
+    background: var(--neutral-layer-2);
+}
+
+.passthrough-item span {
+    font-family: var(--font-family-monospace, monospace);
+    font-size: 0.875rem;
+}
+
+.no-items {
+    color: var(--neutral-foreground-hint);
+    font-size: 0.875rem;
 }
 </style>

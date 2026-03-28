@@ -2,6 +2,7 @@ using System.Net.Sockets;
 using System.Security.Cryptography.X509Certificates;
 using System.Text;
 using shmoxy.models.dto;
+using shmoxy.server.helpers;
 using shmoxy.server.hooks;
 using shmoxy.server.interfaces;
 using shmoxy.shared.ipc;
@@ -199,6 +200,7 @@ public class ProxyServer : IDisposable
 
     /// <summary>
     /// Handles CONNECT requests for HTTPS tunnels with MITM interception.
+    /// If the host matches the passthrough list, traffic is tunneled without TLS termination.
     /// </summary>
     private async Task HandleConnectAsync(TcpClient client, byte[] buffer, int bytesRead)
     {
@@ -211,6 +213,13 @@ public class ProxyServer : IDisposable
         var parts = hostPort.Split(':');
         var host = parts[0];
         var port = parts.Length > 1 && int.TryParse(parts[1], out var p) ? p : 443;
+
+        // Check if host is configured for TLS passthrough
+        if (_config.PassthroughHosts.Count > 0 && HostMatcher.IsMatch(host, _config.PassthroughHosts))
+        {
+            await HandlePassthroughAsync(client, host, port);
+            return;
+        }
 
         // Get certificate for this host (SNI support via dynamic cert generation)
         var cert = _tlsHandler.GetCertificate(host);
@@ -231,6 +240,62 @@ public class ProxyServer : IDisposable
 
             // Read decrypted HTTP requests and intercept them
             await HandleTunnelRequestsAsync(sslStream, host, port);
+        }
+    }
+
+    /// <summary>
+    /// Handles a CONNECT request by tunneling raw TCP bytes without TLS termination.
+    /// This preserves the client's original TLS fingerprint (JA3/JA4).
+    /// </summary>
+    private async Task HandlePassthroughAsync(TcpClient client, string host, int port)
+    {
+        Log(ProxyConfig.LogLevelEnum.Info, $"TLS passthrough for {host}:{port}");
+
+        // Connect to the upstream server
+        using var upstream = new TcpClient();
+        await upstream.ConnectAsync(host, port);
+
+        // Send 200 to the client so it starts the TLS handshake
+        await SendResponseAsync(client, "HTTP/1.1 200 Connection Established\r\n\r\n");
+
+        // Emit a passthrough event for inspection
+        await _interceptor.OnPassthroughAsync(host, port);
+
+        // Bidirectional raw TCP relay — no decryption
+        var clientStream = client.GetStream();
+        var upstreamStream = upstream.GetStream();
+
+        using var cts = new CancellationTokenSource(TimeSpan.FromMinutes(5));
+
+        var clientToUpstream = RelayAsync(clientStream, upstreamStream, cts.Token);
+        var upstreamToClient = RelayAsync(upstreamStream, clientStream, cts.Token);
+
+        await Task.WhenAny(clientToUpstream, upstreamToClient);
+
+        // Once one direction completes, cancel the other
+        await cts.CancelAsync();
+
+        Log(ProxyConfig.LogLevelEnum.Debug, $"TLS passthrough ended for {host}:{port}");
+    }
+
+    /// <summary>
+    /// Copies data from source to destination until either side closes or cancellation is requested.
+    /// </summary>
+    private static async Task RelayAsync(NetworkStream source, NetworkStream destination, CancellationToken ct)
+    {
+        var buffer = new byte[8192];
+        try
+        {
+            int read;
+            while ((read = await source.ReadAsync(buffer, 0, buffer.Length, ct)) > 0)
+            {
+                await destination.WriteAsync(buffer, 0, read, ct);
+                await destination.FlushAsync(ct);
+            }
+        }
+        catch (Exception) when (ct.IsCancellationRequested || true)
+        {
+            // Expected: connection closed, cancelled, or IO error
         }
     }
 
