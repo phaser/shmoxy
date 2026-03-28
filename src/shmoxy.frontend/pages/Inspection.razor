@@ -237,7 +237,7 @@
             .Where(r =>
                 !apiOnlyFilter ||
                 r.StatusCode is null ||
-                ContentTypeClassifier.IsApiResponse(r.ResponseHeaders))
+                ContentTypeClassifier.IsApiCall(r.Url, r.RequestHeaders, r.ResponseHeaders))
             .ToList();
     }
 
