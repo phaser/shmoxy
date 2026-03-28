@@ -1,5 +1,6 @@
 @inherits LayoutComponentBase
 @inject ThemeState ThemeState
+@inject FrontendSettings FrontendSettings
 @inject IJSRuntime JS
 @implements IDisposable
 
@@ -28,6 +29,13 @@
                     <FluentIcon Value="@(new Icons.Regular.Size20.Server())" />
                     <span>Proxy</span>
                 </NavLink>
+                @if (FrontendSettings.EnableCyberChef)
+                {
+                    <NavLink href="/cyberchef" Match="NavLinkMatch.Prefix" class="nav-item" title="CyberChef">
+                        <FluentIcon Value="@(new Icons.Regular.Size20.Wrench())" />
+                        <span>CyberChef</span>
+                    </NavLink>
+                }
                 <NavLink href="/settings" Match="NavLinkMatch.Prefix" class="nav-item" title="Settings">
                     <FluentIcon Value="@(new Icons.Regular.Size20.Settings())" />
                     <span>Settings</span>
@@ -52,12 +60,15 @@
     protected override void OnInitialized()
     {
         ThemeState.OnChange += OnThemeStateChanged;
+        FrontendSettings.OnChange += OnFrontendSettingsChanged;
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (firstRender)
         {
+            await FrontendSettings.LoadAsync(JS);
+            StateHasChanged();
             try
             {
                 await JS.InvokeVoidAsync("themeSync.setTheme", _mode == DesignThemeModes.Dark);
@@ -80,8 +91,14 @@
         });
     }
 
+    private void OnFrontendSettingsChanged()
+    {
+        InvokeAsync(StateHasChanged);
+    }
+
     public void Dispose()
     {
         ThemeState.OnChange -= OnThemeStateChanged;
+        FrontendSettings.OnChange -= OnFrontendSettingsChanged;
     }
 }

@@ -1,5 +1,7 @@
 @page "/settings"
 @inject ThemeState ThemeState
+@inject FrontendSettings FrontendSettings
+@inject IJSRuntime JS
 
 <h1>Settings</h1>
 
@@ -18,14 +20,43 @@
             </div>
         </div>
     </FluentCard>
+
+    <FluentCard>
+        <div class="setting-section">
+            <h3>Tools</h3>
+            <div class="setting-row">
+                <div class="setting-label">
+                    <FluentIcon Value="@(new Icons.Regular.Size20.Wrench())" />
+                    <span>Enable CyberChef</span>
+                </div>
+                <FluentSwitch Label="@(FrontendSettings.EnableCyberChef ? "On" : "Off")"
+                             Value="@FrontendSettings.EnableCyberChef"
+                             ValueChanged="OnCyberChefToggle" />
+            </div>
+        </div>
+    </FluentCard>
 </div>
 
 @code {
     private bool IsDark => ThemeState.Mode == DesignThemeModes.Dark;
 
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            await FrontendSettings.LoadAsync(JS);
+            StateHasChanged();
+        }
+    }
+
     private void OnToggle(bool value)
     {
         ThemeState.SetMode(value ? DesignThemeModes.Dark : DesignThemeModes.Light);
+    }
+
+    private async Task OnCyberChefToggle(bool value)
+    {
+        await FrontendSettings.SetEnableCyberChefAsync(JS, value);
     }
 }
 

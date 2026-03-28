@@ -1,0 +1,86 @@
+@page "/cyberchef"
+@inject FrontendSettings FrontendSettings
+@inject IJSRuntime JS
+@inject NavigationManager NavigationManager
+
+@if (!FrontendSettings.EnableCyberChef)
+{
+    <div class="cyberchef-disabled">
+        <FluentCard>
+            <div class="disabled-message">
+                <FluentIcon Value="@(new Icons.Regular.Size24.Wrench())" />
+                <h2>CyberChef is not enabled</h2>
+                <p>Enable CyberChef in <a href="/settings">Settings</a> to use this feature.</p>
+            </div>
+        </FluentCard>
+    </div>
+}
+else
+{
+    <iframe src="@IframeSrc" class="cyberchef-iframe" sandbox="allow-scripts allow-same-origin allow-popups allow-forms"></iframe>
+}
+
+@code {
+    [SupplyParameterFromQuery(Name = "input")]
+    public string? Input { get; set; }
+
+    private string IframeSrc
+    {
+        get
+        {
+            var baseUrl = FrontendSettings.CyberChefUrl;
+            if (!string.IsNullOrEmpty(Input))
+            {
+                return $"{baseUrl}#recipe=&input={Uri.EscapeDataString(Input)}";
+            }
+            return baseUrl;
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            await FrontendSettings.LoadAsync(JS);
+            StateHasChanged();
+        }
+    }
+}
+
+<style>
+.cyberchef-iframe {
+    width: 100%;
+    height: 100%;
+    border: none;
+}
+
+.cyberchef-disabled {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100%;
+    padding: 2rem;
+}
+
+.disabled-message {
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 2rem;
+}
+
+.disabled-message h2 {
+    margin: 0;
+}
+
+.disabled-message p {
+    color: var(--neutral-foreground-hint);
+    margin: 0;
+}
+
+.disabled-message a {
+    color: var(--accent-foreground-rest);
+}
+</style>
