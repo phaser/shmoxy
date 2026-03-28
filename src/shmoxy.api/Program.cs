@@ -38,6 +38,7 @@ public partial class Program
             var connectionString = config.ConnectionString ?? GetDefaultConnectionString();
             builder.Services.AddSqliteDbContext(connectionString);
             builder.Services.AddRemoteProxyRegistry();
+            builder.Services.AddSessionRepository();
         }
 
         builder.Services.AddControllers()

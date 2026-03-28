@@ -70,6 +70,12 @@ public static class ServiceCollectionExtensions
         return services;
     }
 
+    public static IServiceCollection AddSessionRepository(this IServiceCollection services)
+    {
+        services.AddScoped<ISessionRepository, SessionRepository>();
+        return services;
+    }
+
     public static IServiceCollection AddSqliteDbContext(this IServiceCollection services, string connectionString)
     {
         services.AddDbContext<ProxiesDbContext>(options =>
