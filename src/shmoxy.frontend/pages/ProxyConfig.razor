@@ -83,6 +83,63 @@
 
     <FluentCard>
         <div class="card-header">
+            <FluentIcon Value="@(new Icons.Regular.Size20.Search())" />
+            <h2>Passthrough Detectors</h2>
+        </div>
+
+        <div class="form-content">
+            <p class="description">Detectors analyze intercepted responses and suggest domains that should bypass MITM. Enable detectors to get automatic suggestions.</p>
+
+            @if (detectors.Count > 0)
+            {
+                <div class="detector-list">
+                    @foreach (var detector in detectors)
+                    {
+                        <div class="detector-item">
+                            <div class="detector-info">
+                                <strong>@detector.Name</strong>
+                                <span class="detector-id">@detector.Id</span>
+                            </div>
+                            <FluentSwitch Value="@detectorStates[detector.Id]"
+                                          ValueChanged="@((bool enabled) => OnDetectorToggled(detector.Id, enabled))" />
+                        </div>
+                    }
+                </div>
+            }
+            else
+            {
+                <p class="no-items">No detectors available. Start the proxy to load detectors.</p>
+            }
+
+            @if (suggestions.Count > 0)
+            {
+                <h3>Suggestions</h3>
+                <div class="suggestion-list">
+                    @foreach (var suggestion in suggestions)
+                    {
+                        <div class="suggestion-item">
+                            <div class="suggestion-info">
+                                <strong>@suggestion.Host</strong>
+                                <span class="suggestion-reason">@suggestion.Reason</span>
+                                <span class="suggestion-detector">by @suggestion.DetectorName</span>
+                            </div>
+                            <div class="suggestion-actions">
+                                <FluentButton Appearance="Appearance.Accent" OnClick="@(() => AcceptSuggestion(suggestion.Host))">
+                                    Add to Passthrough
+                                </FluentButton>
+                                <FluentButton Appearance="Appearance.Stealth" OnClick="@(() => DismissSuggestion(suggestion.Host))">
+                                    Dismiss
+                                </FluentButton>
+                            </div>
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+    </FluentCard>
+
+    <FluentCard>
+        <div class="card-header">
             <FluentIcon Value="@(new Icons.Regular.Size20.Status())" />
             <h2>Proxy Status</h2>
         </div>
@@ -159,11 +216,15 @@
     private bool proxyActionInProgress;
     private string? proxyActionMessage;
     private bool proxyActionSuccess;
+    private List<DetectorInfo> detectors = new();
+    private Dictionary<string, bool> detectorStates = new();
+    private List<PassthroughSuggestionDto> suggestions = new();
 
     protected override async Task OnInitializedAsync()
     {
         await LoadStatus();
         await LoadConfig();
+        await LoadDetectors();
     }
 
     private async Task LoadConfig()
@@ -176,6 +237,19 @@
         {
             saveMessage = $"Failed to load configuration: {ex.Message}";
             saveMessageType = MessageType.Error;
+        }
+    }
+
+    private async Task LoadDetectors()
+    {
+        try
+        {
+            detectors = await ApiClient.GetDetectorsAsync();
+            detectorStates = detectors.ToDictionary(d => d.Id, d => d.Enabled);
+        }
+        catch
+        {
+            // Detectors not available (proxy not running)
         }
     }
 
@@ -283,6 +357,54 @@
         if (e.Key == "Enter")
         {
             AddPassthroughHost();
+        }
+    }
+
+    private async Task OnDetectorToggled(string detectorId, bool enabled)
+    {
+        try
+        {
+            if (enabled)
+                await ApiClient.EnableDetectorAsync(detectorId);
+            else
+                await ApiClient.DisableDetectorAsync(detectorId);
+
+            detectorStates[detectorId] = enabled;
+        }
+        catch (Exception ex)
+        {
+            saveMessage = $"Failed to toggle detector: {ex.Message}";
+            saveMessageType = MessageType.Error;
+        }
+    }
+
+    private async Task AcceptSuggestion(string host)
+    {
+        try
+        {
+            await ApiClient.AcceptSuggestionAsync(host);
+            suggestions.RemoveAll(s => s.Host == host);
+            // Refresh config to show the new passthrough host
+            await LoadConfig();
+        }
+        catch (Exception ex)
+        {
+            saveMessage = $"Failed to accept suggestion: {ex.Message}";
+            saveMessageType = MessageType.Error;
+        }
+    }
+
+    private async Task DismissSuggestion(string host)
+    {
+        try
+        {
+            await ApiClient.DismissSuggestionAsync(host);
+            suggestions.RemoveAll(s => s.Host == host);
+        }
+        catch (Exception ex)
+        {
+            saveMessage = $"Failed to dismiss suggestion: {ex.Message}";
+            saveMessageType = MessageType.Error;
         }
     }
 
@@ -429,5 +551,70 @@
 .no-items {
     color: var(--neutral-foreground-hint);
     font-size: 0.875rem;
+}
+
+.detector-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.detector-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.5rem;
+    border-radius: 4px;
+    background: var(--neutral-layer-2);
+}
+
+.detector-info {
+    display: flex;
+    flex-direction: column;
+    gap: 0.125rem;
+}
+
+.detector-id {
+    font-size: 0.75rem;
+    color: var(--neutral-foreground-hint);
+    font-family: var(--font-family-monospace, monospace);
+}
+
+.suggestion-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.suggestion-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.5rem;
+    border-radius: 4px;
+    background: var(--neutral-layer-2);
+    border-left: 3px solid var(--accent-fill-rest);
+}
+
+.suggestion-info {
+    display: flex;
+    flex-direction: column;
+    gap: 0.125rem;
+}
+
+.suggestion-reason {
+    font-size: 0.8125rem;
+    color: var(--neutral-foreground-rest);
+}
+
+.suggestion-detector {
+    font-size: 0.75rem;
+    color: var(--neutral-foreground-hint);
+}
+
+.suggestion-actions {
+    display: flex;
+    gap: 0.5rem;
+    flex-shrink: 0;
 }
 </style>

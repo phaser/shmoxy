@@ -7,6 +7,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using shmoxy.ipc;
 using shmoxy.server;
+using shmoxy.server.detectors;
 using shmoxy.server.hooks;
 using shmoxy.shared.ipc;
 
@@ -61,10 +62,26 @@ public static class ShmoxyHost
         services.Configure<IpcOptions>(context.Configuration.GetSection("IpcOptions"));
 
         services.AddSingleton<InspectionHook>();
+        services.AddSingleton<PassthroughDetectorHook>(sp =>
+        {
+            var hook = new PassthroughDetectorHook();
+            hook.AddDetector(new CloudflareDetector());
+            hook.AddDetector(new WafBlockDetector());
+            hook.AddDetector(new OAuthTokenDetector());
+
+            // Enable detectors from config
+            var config = sp.GetRequiredService<IOptions<ProxyConfig>>().Value;
+            hook.EnableDetectors(config.EnabledDetectors);
+
+            return hook;
+        });
         services.AddSingleton<InterceptHookChain>(sp =>
         {
             var inspectionHook = sp.GetRequiredService<InspectionHook>();
-            return new InterceptHookChain().Add(inspectionHook);
+            var detectorHook = sp.GetRequiredService<PassthroughDetectorHook>();
+            return new InterceptHookChain()
+                .Add(inspectionHook)
+                .Add(detectorHook);
         });
 
         services.AddSingleton<ProxyServer>(sp =>
@@ -78,7 +95,8 @@ public static class ShmoxyHost
         {
             var proxy = sp.GetRequiredService<ProxyServer>();
             var inspectionHook = sp.GetRequiredService<InspectionHook>();
-            return new ProxyStateService(proxy, inspectionHook);
+            var detectorHook = sp.GetRequiredService<PassthroughDetectorHook>();
+            return new ProxyStateService(proxy, inspectionHook, detectorHook);
         });
 
         services.AddHostedService<ProxyHostedService>();

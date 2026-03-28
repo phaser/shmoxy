@@ -30,6 +30,12 @@ public class ProxyConfig
     public List<string> PassthroughHosts { get; set; } = new();
 
     /// <summary>
+    /// IDs of passthrough detectors that are enabled (e.g. "cloudflare", "waf", "oauth").
+    /// Detectors analyze intercepted responses and suggest domains for passthrough.
+    /// </summary>
+    public List<string> EnabledDetectors { get; set; } = new();
+
+    /// <summary>
     /// Logging levels.
     /// </summary>
     public enum LogLevelEnum
