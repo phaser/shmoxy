@@ -28,12 +28,12 @@ public class PassthroughDetectorHook : IInterceptHook, IDisposable
     }
 
     /// <summary>
-    /// Registers a detector. All detectors start disabled by default.
+    /// Registers a detector. All detectors start enabled by default.
     /// </summary>
     public PassthroughDetectorHook AddDetector(IPassthroughDetector detector)
     {
         _detectors.Add(detector);
-        _enabledDetectors[detector.Id] = false;
+        _enabledDetectors[detector.Id] = true;
         return this;
     }
 
