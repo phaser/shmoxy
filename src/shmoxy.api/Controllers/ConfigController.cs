@@ -14,15 +14,18 @@ public class ConfigController : ControllerBase
 {
     private readonly IProxyProcessManager _processManager;
     private readonly IRemoteProxyRegistry _registry;
+    private readonly IConfigPersistence _configPersistence;
     private readonly ILogger<ConfigController> _logger;
 
     public ConfigController(
         IProxyProcessManager processManager,
         IRemoteProxyRegistry registry,
+        IConfigPersistence configPersistence,
         ILogger<ConfigController> logger)
     {
         _processManager = processManager;
         _registry = registry;
+        _configPersistence = configPersistence;
         _logger = logger;
     }
 
@@ -127,12 +130,15 @@ public class ConfigController : ControllerBase
 
         var updatedConfig = await _processManager.GetIpcClient().UpdateConfigAsync(config, ct);
 
+        // Persist config to disk so it survives restarts
+        await _configPersistence.SaveAsync(updatedConfig, ct);
+
         if (portChanged)
         {
             _logger.LogInformation("Port changed from {OldPort} to {NewPort}, restarting proxy", currentConfig.Port, config.Port);
             await _processManager.RestartAsync(config.Port, ct);
 
-            // Re-apply config after restart since the new process starts with defaults
+            // Re-apply config after restart (persisted config will be loaded on next cold start)
             updatedConfig = await _processManager.GetIpcClient().UpdateConfigAsync(config, ct);
         }
 

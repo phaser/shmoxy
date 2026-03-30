@@ -30,6 +30,7 @@ public partial class Program
             builder.Services.AddProxyIpcClient();
         }
 
+        builder.Services.AddSingleton<IConfigPersistence, JsonConfigPersistence>();
         builder.Services.AddSingleton<IProxyProcessManager, ProxyProcessManager>();
         builder.Services.AddHostedService<ProxyHostedService>();
 
