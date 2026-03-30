@@ -73,6 +73,11 @@ public class SessionRepository : ISessionRepository
 
     public async Task UpdateSessionAsync(string sessionId, List<InspectionSessionRow> rows, CancellationToken ct = default)
     {
+        await UpdateSessionAsync(sessionId, rows, new List<InspectionSessionLogEntry>(), ct);
+    }
+
+    public async Task UpdateSessionAsync(string sessionId, List<InspectionSessionRow> rows, List<InspectionSessionLogEntry> logEntries, CancellationToken ct = default)
+    {
         var session = await _dbContext.InspectionSessions.FindAsync([sessionId], ct)
             ?? throw new KeyNotFoundException($"Session '{sessionId}' not found");
 
@@ -88,6 +93,14 @@ public class SessionRepository : ISessionRepository
         }
 
         _dbContext.InspectionSessionRows.AddRange(rows);
+
+        if (logEntries.Count > 0)
+        {
+            foreach (var entry in logEntries)
+                entry.SessionId = sessionId;
+
+            _dbContext.InspectionSessionLogEntries.AddRange(logEntries);
+        }
 
         session.RowCount = rows.Count;
         session.UpdatedAt = DateTime.UtcNow;

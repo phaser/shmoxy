@@ -7,7 +7,6 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using shmoxy.ipc;
 using shmoxy.server;
-using shmoxy.server.detectors;
 using shmoxy.server.hooks;
 using shmoxy.shared.ipc;
 
@@ -70,46 +69,23 @@ public static class ShmoxyHost
         services.AddSingleton<TemporaryPassthroughService>(sp =>
         {
             var config = sp.GetRequiredService<IOptions<ProxyConfig>>().Value;
-            return new TemporaryPassthroughService(
+            var logBuffer = sp.GetRequiredService<SessionLogBuffer>();
+            var service = new TemporaryPassthroughService(
                 config.TempPassthroughMaxConnections,
                 TimeSpan.FromSeconds(config.TempPassthroughTimeoutSeconds));
-        });
-        services.AddSingleton<PassthroughDetectorHook>(sp =>
-        {
-            var hook = new PassthroughDetectorHook();
-            hook.AddDetector(new CloudflareDetector());
-            hook.AddDetector(new WafBlockDetector());
-            hook.AddDetector(new OAuthTokenDetector());
 
-            // Enable detectors from config
-            var config = sp.GetRequiredService<IOptions<ProxyConfig>>().Value;
-            hook.EnableDetectors(config.EnabledDetectors);
-
-            // Wire detector triggers to temporary passthrough
-            var tempService = sp.GetRequiredService<TemporaryPassthroughService>();
-            var logBuffer = sp.GetRequiredService<SessionLogBuffer>();
-            hook.OnDetectorTriggered = (host, detectorId, reason) =>
+            service.OnExpired += host =>
             {
-                tempService.Activate(host, detectorId, reason);
-                logBuffer.Info("Detector", $"Detector '{detectorId}' triggered for {host}: {reason}");
-            };
-
-            // Wire expiration back to clear the dedup set so re-detection can occur
-            tempService.OnExpired += host =>
-            {
-                hook.ClearSuggestedHost(host);
                 logBuffer.Info("Passthrough", $"Temporary passthrough expired for {host}");
             };
 
-            return hook;
+            return service;
         });
         services.AddSingleton<InterceptHookChain>(sp =>
         {
             var inspectionHook = sp.GetRequiredService<InspectionHook>();
-            var detectorHook = sp.GetRequiredService<PassthroughDetectorHook>();
             return new InterceptHookChain()
-                .Add(inspectionHook)
-                .Add(detectorHook);
+                .Add(inspectionHook);
         });
 
         services.AddSingleton<ProxyServer>(sp =>
@@ -124,10 +100,9 @@ public static class ShmoxyHost
         {
             var proxy = sp.GetRequiredService<ProxyServer>();
             var inspectionHook = sp.GetRequiredService<InspectionHook>();
-            var detectorHook = sp.GetRequiredService<PassthroughDetectorHook>();
             var tempPassthrough = sp.GetRequiredService<TemporaryPassthroughService>();
             var logBuffer = sp.GetRequiredService<SessionLogBuffer>();
-            return new ProxyStateService(proxy, inspectionHook, detectorHook, tempPassthrough, logBuffer);
+            return new ProxyStateService(proxy, inspectionHook, tempPassthrough, logBuffer);
         });
 
         services.AddHostedService<ProxyHostedService>();

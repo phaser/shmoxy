@@ -21,13 +21,6 @@ public interface IProxyIpcClient
     Task<byte[]> GetRootCertDerAsync(CancellationToken ct = default);
     Task<byte[]> GetRootCertPfxAsync(CancellationToken ct = default);
     Task<bool> IsHealthyAsync(CancellationToken ct = default);
-    Task<IReadOnlyList<DetectorDescriptor>> GetDetectorsAsync(CancellationToken ct = default);
-    Task EnableDetectorAsync(string id, CancellationToken ct = default);
-    Task DisableDetectorAsync(string id, CancellationToken ct = default);
-    Task<IReadOnlyList<PassthroughSuggestion>> GetSuggestionsAsync(CancellationToken ct = default);
-    Task AcceptSuggestionAsync(string host, CancellationToken ct = default);
-    Task DismissSuggestionAsync(string host, CancellationToken ct = default);
-    IAsyncEnumerable<PassthroughSuggestion> GetSuggestionStreamAsync(CancellationToken ct = default);
     Task<IReadOnlyList<TemporaryPassthroughEntry>> GetTempPassthroughAsync(CancellationToken ct = default);
     Task<IReadOnlyList<SessionLogEntry>> DrainSessionLogAsync(CancellationToken ct = default);
 }

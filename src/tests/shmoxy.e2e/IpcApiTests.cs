@@ -142,7 +142,6 @@ public class IpcApiTests : IAsyncLifetime
             logLevel = 2, // Warn
             maxConcurrentConnections = 42,
             passthroughHosts = new[] { "example.com", "*.test.com" },
-            enabledDetectors = new[] { "cloudflare" },
             tempPassthroughMaxConnections = 5,
             tempPassthroughTimeoutSeconds = 60
         };
@@ -164,9 +163,6 @@ public class IpcApiTests : IAsyncLifetime
         var hosts = updated.GetProperty("passthroughHosts").EnumerateArray().Select(e => e.GetString()).ToList();
         Assert.Contains("example.com", hosts);
         Assert.Contains("*.test.com", hosts);
-
-        var detectors = updated.GetProperty("enabledDetectors").EnumerateArray().Select(e => e.GetString()).ToList();
-        Assert.Contains("cloudflare", detectors);
     }
 
     [Fact]

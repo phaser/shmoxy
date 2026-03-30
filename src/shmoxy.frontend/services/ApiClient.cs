@@ -103,51 +103,9 @@ public class ApiClient(HttpClient httpClient)
             : body);
     }
 
-    public async Task<List<DetectorInfo>> GetDetectorsAsync()
-    {
-        var response = await _httpClient.GetAsync("/api/proxies/local/detectors");
-        if (!response.IsSuccessStatusCode)
-            return [];
-
-        return await response.Content.ReadFromJsonAsync<List<DetectorInfo>>() ?? [];
-    }
-
-    public async Task EnableDetectorAsync(string detectorId)
-    {
-        var response = await _httpClient.PostAsync($"/api/proxies/local/detectors/{detectorId}/enable", null);
-        await EnsureSuccessOrThrowWithBody(response);
-    }
-
-    public async Task DisableDetectorAsync(string detectorId)
-    {
-        var response = await _httpClient.PostAsync($"/api/proxies/local/detectors/{detectorId}/disable", null);
-        await EnsureSuccessOrThrowWithBody(response);
-    }
-
-    public async Task<List<PassthroughSuggestionDto>> GetSuggestionsAsync()
-    {
-        var response = await _httpClient.GetAsync("/api/proxies/local/detectors/suggestions");
-        if (!response.IsSuccessStatusCode)
-            return [];
-
-        return await response.Content.ReadFromJsonAsync<List<PassthroughSuggestionDto>>() ?? [];
-    }
-
-    public async Task AcceptSuggestionAsync(string host)
-    {
-        var response = await _httpClient.PostAsJsonAsync("/api/proxies/local/detectors/suggestions/accept", new { Host = host });
-        await EnsureSuccessOrThrowWithBody(response);
-    }
-
-    public async Task DismissSuggestionAsync(string host)
-    {
-        var response = await _httpClient.PostAsJsonAsync("/api/proxies/local/detectors/suggestions/dismiss", new { Host = host });
-        await EnsureSuccessOrThrowWithBody(response);
-    }
-
     public async Task<List<TemporaryPassthroughEntryDto>> GetTempPassthroughAsync()
     {
-        var response = await _httpClient.GetAsync("/api/proxies/local/detectors/temp-passthrough");
+        var response = await _httpClient.GetAsync("/api/proxies/local/temp-passthrough");
         if (!response.IsSuccessStatusCode)
             return [];
 
@@ -186,9 +144,9 @@ public class ApiClient(HttpClient httpClient)
         return await response.Content.ReadFromJsonAsync<List<SessionRowData>>() ?? [];
     }
 
-    public async Task<SessionSummary> UpdateSessionAsync(string sessionId, List<SessionRowData> rows)
+    public async Task<SessionSummary> UpdateSessionAsync(string sessionId, List<SessionRowData> rows, List<SessionLogEntryData>? logEntries = null)
     {
-        var response = await _httpClient.PutAsJsonAsync($"/api/sessions/{sessionId}", new { Rows = rows });
+        var response = await _httpClient.PutAsJsonAsync($"/api/sessions/{sessionId}", new { Rows = rows, LogEntries = logEntries });
         await EnsureSuccessOrThrowWithBody(response);
         return await response.Content.ReadFromJsonAsync<SessionSummary>()
             ?? throw new HttpRequestException("Failed to update session");

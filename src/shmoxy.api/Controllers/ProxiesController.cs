@@ -103,6 +103,29 @@ public class ProxiesController : ControllerBase
     }
 
     /// <summary>
+    /// Get active temporary passthrough entries from the proxy.
+    /// </summary>
+    [HttpGet("temp-passthrough")]
+    public async Task<ActionResult<IReadOnlyList<TemporaryPassthroughEntry>>> GetTempPassthrough(CancellationToken ct)
+    {
+        var state = await _processManager.GetStateAsync();
+        if (state?.State != ProxyProcessState.Running)
+            return Ok(Array.Empty<TemporaryPassthroughEntry>());
+
+        try
+        {
+            var client = _processManager.GetIpcClient();
+            var entries = await client.GetTempPassthroughAsync(ct);
+            return Ok(entries);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to get temp passthrough entries from proxy");
+            return Ok(Array.Empty<TemporaryPassthroughEntry>());
+        }
+    }
+
+    /// <summary>
     /// Drain the session log buffer from the proxy. Returns all buffered entries and clears the buffer.
     /// </summary>
     [HttpPost("session-log/drain")]

@@ -11,5 +11,6 @@ public interface ISessionRepository
     Task<List<InspectionSessionLogEntry>> LoadLogEntriesAsync(string sessionId, CancellationToken ct = default);
     Task<InspectionSession?> GetSessionAsync(string sessionId, CancellationToken ct = default);
     Task UpdateSessionAsync(string sessionId, List<InspectionSessionRow> rows, CancellationToken ct = default);
+    Task UpdateSessionAsync(string sessionId, List<InspectionSessionRow> rows, List<InspectionSessionLogEntry> logEntries, CancellationToken ct = default);
     Task DeleteSessionAsync(string sessionId, CancellationToken ct = default);
 }

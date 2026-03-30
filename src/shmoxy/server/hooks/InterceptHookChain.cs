@@ -58,6 +58,18 @@ public class InterceptHookChain : IInterceptHook, IDisposable
         return response;
     }
 
+    /// <summary>
+    /// Called when a CONNECT request is tunneled via TLS passthrough.
+    /// All hooks are notified in sequence.
+    /// </summary>
+    public async Task OnPassthroughAsync(string host, int port)
+    {
+        foreach (var hook in _hooks)
+        {
+            await hook.OnPassthroughAsync(host, port);
+        }
+    }
+
     public void Dispose()
     {
         if (_disposed) return;

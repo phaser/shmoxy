@@ -63,7 +63,8 @@ public class SessionsController : ControllerBase
             return NotFound(new { Message = $"Session '{id}' not found" });
 
         var rows = request.Rows.Select(ToEntity).ToList();
-        await _sessionRepository.UpdateSessionAsync(id, rows, ct);
+        var logEntries = request.LogEntries?.Select(ToLogEntity).ToList() ?? new List<InspectionSessionLogEntry>();
+        await _sessionRepository.UpdateSessionAsync(id, rows, logEntries, ct);
 
         var updated = await _sessionRepository.GetSessionAsync(id, ct);
         return Ok(ToResponse(updated!));

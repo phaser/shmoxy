@@ -365,9 +365,10 @@
                 ResponseBody = r.ResponseBody
             }).ToList();
 
-            await ApiClient.UpdateSessionAsync(InspectionService.ActiveSessionId, rowData);
+            var logEntries = await ApiClient.DrainSessionLogAsync();
+            await ApiClient.UpdateSessionAsync(InspectionService.ActiveSessionId, rowData, logEntries);
 
-            saveMessage = $"Saved \"{InspectionService.ActiveSessionName}\" ({rowData.Count} rows)";
+            saveMessage = $"Saved \"{InspectionService.ActiveSessionName}\" ({rowData.Count} rows, {logEntries.Count} log entries)";
             saveMessageIsError = false;
         }
         catch (Exception ex)
@@ -433,9 +434,10 @@
                 ResponseBody = r.ResponseBody
             }).ToList();
 
-            await ApiClient.CreateSessionAsync(sessionName.Trim(), rowData);
+            var logEntries = await ApiClient.DrainSessionLogAsync();
+            await ApiClient.CreateSessionAsync(sessionName.Trim(), rowData, logEntries);
 
-            saveMessage = $"Saved \"{sessionName.Trim()}\" ({rowData.Count} rows)";
+            saveMessage = $"Saved \"{sessionName.Trim()}\" ({rowData.Count} rows, {logEntries.Count} log entries)";
             saveMessageIsError = false;
             showSaveDialog = false;
             sessionName = "";

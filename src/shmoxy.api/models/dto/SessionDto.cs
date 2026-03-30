@@ -32,6 +32,7 @@ public class SessionRowDto
 public class UpdateSessionRequest
 {
     public List<SessionRowDto> Rows { get; set; } = new();
+    public List<SessionLogEntryDto>? LogEntries { get; set; }
 }
 
 public class SessionLogEntryDto

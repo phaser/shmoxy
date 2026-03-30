@@ -61,16 +61,6 @@ public static class ProxyControlApi
             if (stateService.SessionLogBuffer != null)
                 stateService.SessionLogBuffer.Enabled = config.SessionLoggingEnabled;
 
-            // Sync enabled detectors
-            config.EnabledDetectors = newConfig.EnabledDetectors;
-            if (stateService.DetectorHook != null)
-            {
-                // Disable all first, then enable from config
-                foreach (var d in stateService.DetectorHook.GetDetectors())
-                    stateService.DetectorHook.SetDetectorEnabled(d.Id, false);
-                stateService.DetectorHook.EnableDetectors(config.EnabledDetectors);
-            }
-
             return Results.Json(config);
         });
 
@@ -187,111 +177,12 @@ public static class ProxyControlApi
             }
         });
 
-        endpoints.MapGet("/ipc/detectors", () =>
-        {
-            if (stateService.DetectorHook == null)
-                return Results.Json(Array.Empty<DetectorDescriptor>());
-
-            return Results.Json(stateService.DetectorHook.GetDetectors());
-        });
-
-        endpoints.MapPost("/ipc/detectors/{id}/enable", (string id) =>
-        {
-            if (stateService.DetectorHook == null)
-                return Results.Json(new { Success = false, Message = "Detectors not available" });
-
-            var success = stateService.DetectorHook.SetDetectorEnabled(id, true);
-            if (success && !config.EnabledDetectors.Contains(id))
-                config.EnabledDetectors.Add(id);
-
-            return Results.Json(new { Success = success, Message = success ? "Detector enabled" : $"Unknown detector: {id}" });
-        });
-
-        endpoints.MapPost("/ipc/detectors/{id}/disable", (string id) =>
-        {
-            if (stateService.DetectorHook == null)
-                return Results.Json(new { Success = false, Message = "Detectors not available" });
-
-            var success = stateService.DetectorHook.SetDetectorEnabled(id, false);
-            if (success)
-                config.EnabledDetectors.Remove(id);
-
-            return Results.Json(new { Success = success, Message = success ? "Detector disabled" : $"Unknown detector: {id}" });
-        });
-
-        endpoints.MapGet("/ipc/detectors/suggestions", () =>
-        {
-            if (stateService.DetectorHook == null)
-                return Results.Json(Array.Empty<PassthroughSuggestion>());
-
-            return Results.Json(stateService.DetectorHook.GetSuggestions());
-        });
-
-        endpoints.MapGet("/ipc/detectors/suggestions/stream", async (HttpResponse response) =>
-        {
-            if (stateService.DetectorHook == null)
-            {
-                response.StatusCode = 400;
-                await response.WriteAsync("Detectors not available");
-                return;
-            }
-
-            response.Headers.ContentType = "text/event-stream";
-
-            var reader = stateService.DetectorHook.GetSuggestionReader();
-            var cts = new CancellationTokenSource();
-
-            try
-            {
-                while (!cts.Token.IsCancellationRequested)
-                {
-                    var hasData = await reader.WaitToReadAsync(cts.Token);
-                    if (!hasData) break;
-
-                    while (reader.TryRead(out var suggestion))
-                    {
-                        var json = JsonSerializer.Serialize(suggestion);
-                        await response.WriteAsync($"data: {json}\n\n", cts.Token);
-                        await response.Body.FlushAsync(cts.Token);
-                    }
-                }
-            }
-            catch (OperationCanceledException)
-            {
-                // Expected on disconnect
-            }
-        });
-
-        endpoints.MapGet("/ipc/detectors/temp-passthrough", () =>
+        endpoints.MapGet("/ipc/temp-passthrough", () =>
         {
             if (stateService.TempPassthrough == null)
                 return Results.Json(Array.Empty<TemporaryPassthroughEntry>());
 
             return Results.Json(stateService.TempPassthrough.GetActiveEntries());
-        });
-
-        endpoints.MapPost("/ipc/detectors/suggestions/dismiss", (DismissSuggestionRequest req) =>
-        {
-            if (stateService.DetectorHook == null)
-                return Results.Json(new { Success = false, Message = "Detectors not available" });
-
-            stateService.DetectorHook.DismissSuggestion(req.Host);
-            return Results.Json(new { Success = true, Message = $"Dismissed suggestions for {req.Host}" });
-        });
-
-        endpoints.MapPost("/ipc/detectors/suggestions/accept", (AcceptSuggestionRequest req) =>
-        {
-            if (stateService.DetectorHook == null)
-                return Results.Json(new { Success = false, Message = "Detectors not available" });
-
-            // Add to passthrough hosts
-            if (!config.PassthroughHosts.Contains(req.Host))
-                config.PassthroughHosts.Add(req.Host);
-
-            // Dismiss so it doesn't re-suggest
-            stateService.DetectorHook.DismissSuggestion(req.Host);
-
-            return Results.Json(new { Success = true, Message = $"Added {req.Host} to passthrough list" });
         });
 
         endpoints.MapPost("/ipc/inspect/enable", () =>

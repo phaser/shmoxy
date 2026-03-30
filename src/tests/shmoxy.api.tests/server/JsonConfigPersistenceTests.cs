@@ -40,7 +40,6 @@ public class JsonConfigPersistenceTests : IDisposable
             LogLevel = ProxyConfig.LogLevelEnum.Warn,
             MaxConcurrentConnections = 42,
             PassthroughHosts = ["example.com", "*.test.com"],
-            EnabledDetectors = ["cloudflare"],
             TempPassthroughMaxConnections = 5,
             TempPassthroughTimeoutSeconds = 60
         };
@@ -53,7 +52,6 @@ public class JsonConfigPersistenceTests : IDisposable
         Assert.Equal(ProxyConfig.LogLevelEnum.Warn, loaded.LogLevel);
         Assert.Equal(42, loaded.MaxConcurrentConnections);
         Assert.Equal(["example.com", "*.test.com"], loaded.PassthroughHosts);
-        Assert.Equal(["cloudflare"], loaded.EnabledDetectors);
         Assert.Equal(5, loaded.TempPassthroughMaxConnections);
         Assert.Equal(60, loaded.TempPassthroughTimeoutSeconds);
     }

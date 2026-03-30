@@ -1,4 +1,5 @@
 using System.Net.Sockets;
+using System.Security.Authentication;
 using System.Security.Cryptography.X509Certificates;
 using System.Text;
 using shmoxy.models.dto;
@@ -717,98 +718,115 @@ public class ProxyServer : IDisposable
             var result = await _interceptor.OnRequestAsync(interceptedRequest);
             if (result == null || result.Cancel) break;
 
-            // Forward to upstream
-            using var targetClient = new TcpClient();
-            targetClient.ReceiveTimeout = UpstreamReadTimeoutMs;
-            await targetClient.ConnectAsync(host, port);
-
-            Stream targetStream;
-            if (port == 443)
+            // Forward to upstream — activate temporary passthrough directly if the connection fails.
+            try
             {
-                var sslTarget = new global::System.Net.Security.SslStream(
-                    targetClient.GetStream(),
-                    false,
-                    (_, _, _, _) => true);
-                await sslTarget.AuthenticateAsClientAsync(host);
-                targetStream = sslTarget;
-            }
-            else
-            {
-                targetStream = targetClient.GetStream();
-            }
+                using var targetClient = new TcpClient();
+                targetClient.ReceiveTimeout = UpstreamReadTimeoutMs;
+                await targetClient.ConnectAsync(host, port);
 
-            using (targetStream)
-            {
-                // Build outgoing request
-                var outgoing = new StringBuilder();
-                outgoing.Append($"{result.Method} {result.Path} HTTP/1.1\r\n");
-                outgoing.Append($"Host: {host}\r\n");
-
-                foreach (var header in result.Headers
-                    .Where(h => !h.Key.Equals("Host", StringComparison.OrdinalIgnoreCase)
-                             && !h.Key.Equals("Proxy-Connection", StringComparison.OrdinalIgnoreCase)))
+                Stream targetStream;
+                if (port == 443)
                 {
-                    outgoing.Append($"{header.Key}: {header.Value}\r\n");
+                    var sslTarget = new global::System.Net.Security.SslStream(
+                        targetClient.GetStream(),
+                        false,
+                        (_, _, _, _) => true);
+                    await sslTarget.AuthenticateAsClientAsync(host);
+                    targetStream = sslTarget;
+                }
+                else
+                {
+                    targetStream = targetClient.GetStream();
                 }
 
-                outgoing.Append("Connection: close\r\n");
-
-                if (result.Body != null && result.Body.Length > 0)
-                    outgoing.Append($"Content-Length: {result.Body.Length}\r\n");
-
-                outgoing.Append("\r\n");
-
-                var requestBytes = Encoding.ASCII.GetBytes(outgoing.ToString());
-                await targetStream.WriteAsync(requestBytes, 0, requestBytes.Length);
-
-                if (result.Body != null && result.Body.Length > 0)
-                    await targetStream.WriteAsync(result.Body, 0, result.Body.Length);
-
-                await targetStream.FlushAsync();
-
-                // Read response and stream it back to the client as chunks arrive,
-                // rather than buffering the entire response in memory first.
-                using var ms = new MemoryStream();
-                var responseBuf = new byte[8192];
-                int responseRead;
-                using var readCts = new CancellationTokenSource(UpstreamReadTimeoutMs);
-                try
+                using (targetStream)
                 {
-                    while ((responseRead = await targetStream.ReadAsync(responseBuf, 0, responseBuf.Length, readCts.Token)) > 0)
-                    {
-                        await clientStream.WriteAsync(responseBuf, 0, responseRead);
-                        ms.Write(responseBuf, 0, responseRead);
+                    // Build outgoing request
+                    var outgoing = new StringBuilder();
+                    outgoing.Append($"{result.Method} {result.Path} HTTP/1.1\r\n");
+                    outgoing.Append($"Host: {host}\r\n");
 
-                        // Reset the idle timeout after each successful read
-                        readCts.CancelAfter(UpstreamReadTimeoutMs);
+                    foreach (var header in result.Headers
+                        .Where(h => !h.Key.Equals("Host", StringComparison.OrdinalIgnoreCase)
+                                 && !h.Key.Equals("Proxy-Connection", StringComparison.OrdinalIgnoreCase)))
+                    {
+                        outgoing.Append($"{header.Key}: {header.Value}\r\n");
+                    }
+
+                    outgoing.Append("Connection: close\r\n");
+
+                    if (result.Body != null && result.Body.Length > 0)
+                        outgoing.Append($"Content-Length: {result.Body.Length}\r\n");
+
+                    outgoing.Append("\r\n");
+
+                    var requestBytes = Encoding.ASCII.GetBytes(outgoing.ToString());
+                    await targetStream.WriteAsync(requestBytes, 0, requestBytes.Length);
+
+                    if (result.Body != null && result.Body.Length > 0)
+                        await targetStream.WriteAsync(result.Body, 0, result.Body.Length);
+
+                    await targetStream.FlushAsync();
+
+                    // Read response and stream it back to the client as chunks arrive,
+                    // rather than buffering the entire response in memory first.
+                    using var ms = new MemoryStream();
+                    var responseBuf = new byte[8192];
+                    int responseRead;
+                    using var readCts = new CancellationTokenSource(UpstreamReadTimeoutMs);
+                    try
+                    {
+                        while ((responseRead = await targetStream.ReadAsync(responseBuf, 0, responseBuf.Length, readCts.Token)) > 0)
+                        {
+                            await clientStream.WriteAsync(responseBuf, 0, responseRead);
+                            ms.Write(responseBuf, 0, responseRead);
+
+                            // Reset the idle timeout after each successful read
+                            readCts.CancelAfter(UpstreamReadTimeoutMs);
+                        }
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        Log(ProxyConfig.LogLevelEnum.Debug, $"Upstream read timed out for {host}:{port}{result.Path}");
+                    }
+                    catch (IOException)
+                    {
+                        // Connection closed by server — expected with Connection: close
+                    }
+
+                    await clientStream.FlushAsync();
+
+                    // Parse status code, headers, and body for intercept hook
+                    var responseBytes = ms.ToArray();
+                    if (responseBytes.Length > 0)
+                    {
+                        var (respStatusCode, respHeaders, respBody) = ParseRawHttpResponse(responseBytes);
+
+                        var interceptedResponse = new InterceptedResponse
+                        {
+                            StatusCode = respStatusCode,
+                            Headers = respHeaders,
+                            Body = respBody,
+                            CorrelationId = correlationId
+                        };
+                        await _interceptor.OnResponseAsync(interceptedResponse);
+                    }
+                    else
+                    {
+                        // Upstream returned no data — activate temporary passthrough
+                        ActivatePassthroughOnFailure(host, "Upstream returned empty response");
                     }
                 }
-                catch (OperationCanceledException)
-                {
-                    Log(ProxyConfig.LogLevelEnum.Debug, $"Upstream read timed out for {host}:{port}{result.Path}");
-                }
-                catch (IOException)
-                {
-                    // Connection closed by server — expected with Connection: close
-                }
+            }
+            catch (Exception ex) when (ex is IOException or SocketException
+                or AuthenticationException)
+            {
+                Log(ProxyConfig.LogLevelEnum.Warn,
+                    $"Upstream connection failed for {host}:{port}{result.Path}: {ex.GetType().Name}: {ex.Message}");
 
-                await clientStream.FlushAsync();
-
-                // Parse status code, headers, and body for intercept hook
-                var responseBytes = ms.ToArray();
-                if (responseBytes.Length > 0)
-                {
-                    var (respStatusCode, respHeaders, respBody) = ParseRawHttpResponse(responseBytes);
-
-                    var interceptedResponse = new InterceptedResponse
-                    {
-                        StatusCode = respStatusCode,
-                        Headers = respHeaders,
-                        Body = respBody,
-                        CorrelationId = correlationId
-                    };
-                    await _interceptor.OnResponseAsync(interceptedResponse);
-                }
+                ActivatePassthroughOnFailure(host,
+                    $"Upstream connection failed: {ex.GetType().Name}: {ex.Message}");
             }
 
             // Connection: close means we're done after one request
@@ -825,6 +843,18 @@ public class ProxyServer : IDisposable
         var stream = client.GetStream();
         await stream.WriteAsync(bytes, 0, bytes.Length);
         await stream.FlushAsync();
+    }
+
+    /// <summary>
+    /// Activates temporary passthrough for a host when the upstream connection fails.
+    /// </summary>
+    private void ActivatePassthroughOnFailure(string host, string reason)
+    {
+        if (_tempPassthrough == null)
+            return;
+
+        Log(ProxyConfig.LogLevelEnum.Info, $"Activating temporary passthrough for {host}: {reason}");
+        _tempPassthrough.Activate(host, "auto", reason);
     }
 
     /// <summary>
