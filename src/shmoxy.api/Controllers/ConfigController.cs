@@ -122,7 +122,21 @@ public class ConfigController : ControllerBase
             throw new InvalidOperationException("Local proxy must be running to update configuration");
         }
 
-        return await _processManager.GetIpcClient().UpdateConfigAsync(config, ct);
+        var currentConfig = await _processManager.GetIpcClient().GetConfigAsync(ct);
+        var portChanged = config.Port != currentConfig.Port;
+
+        var updatedConfig = await _processManager.GetIpcClient().UpdateConfigAsync(config, ct);
+
+        if (portChanged)
+        {
+            _logger.LogInformation("Port changed from {OldPort} to {NewPort}, restarting proxy", currentConfig.Port, config.Port);
+            await _processManager.RestartAsync(config.Port, ct);
+
+            // Re-apply config after restart since the new process starts with defaults
+            updatedConfig = await _processManager.GetIpcClient().UpdateConfigAsync(config, ct);
+        }
+
+        return updatedConfig;
     }
 
     private async Task<ProxyConfig> UpdateRemoteConfigAsync(string proxyId, ProxyConfig config, CancellationToken ct)
