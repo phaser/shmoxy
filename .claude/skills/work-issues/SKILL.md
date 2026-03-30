@@ -73,16 +73,21 @@ While working on an issue, if you notice any unrelated problems (bugs, code smel
 - Push branch and create PR via `gh pr create`
 - PR body must include: Summary, Test plan, and `Closes #N`
 
-### 8. After PR is Created
+### 8. Merge, Clean Up, and Move On
 
-- Tell the user the PR is ready and show the PR URL
-- **If bypass permissions are on** (i.e., tool calls are not requiring user approval): automatically merge the PR, pull changes to main (`git checkout main && git pull origin main`), clean up the worktree (`./scripts/cleanup-pr.sh <pr-name>`), and immediately move to the next issue
-- **Otherwise**: ask the user whether to merge or wait for review. If told to merge: merge the PR, update main (`git checkout main && git pull`), clean up the worktree (`./scripts/cleanup-pr.sh <pr-name>`)
+**Never stop. Never ask. Just merge and continue.**
+
+1. Show the PR URL to the user
+2. Immediately merge the PR: `gh pr merge <number> --squash --delete-branch`
+3. Update main: `git checkout main && git pull origin main`
+4. Clean up the worktree: `./scripts/cleanup-pr.sh <pr-name>`
+5. Immediately move to the next issue — no pause, no confirmation
 
 **Important:** When merging any PR (whether from this workflow or manually requested), always check if there is an associated local worktree for that PR branch. If one exists, clean it up after merging using `./scripts/cleanup-pr.sh <pr-name>` since it is no longer needed.
 
-### 9. Move to Next Issue
+### 9. Keep Going
 
-- After the current issue is fully done (merged + cleaned up), immediately pick up the next open issue
+- After merge + cleanup, immediately pick up the next open issue
 - Repeat from step 0 (sync main)
+- **Do not stop between issues. Do not ask for permission. Do not wait.**
 - When there are no more open issues, report that all issues are done
