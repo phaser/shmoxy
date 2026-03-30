@@ -2,6 +2,8 @@ using System.Net.Sockets;
 using System.Security.Authentication;
 using System.Security.Cryptography.X509Certificates;
 using System.Text;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using shmoxy.models.dto;
 using shmoxy.server.helpers;
 using shmoxy.server.hooks;
@@ -19,7 +21,7 @@ public class ProxyServer : IDisposable
     private readonly TlsHandler _tlsHandler;
     private readonly IInterceptHook _interceptor;
     private readonly ProxyConfig _config;
-    private readonly object _lock = new();
+    private readonly ILogger<ProxyServer> _logger;
     private CancellationTokenSource? _cts;
     private bool _disposed;
     private bool _isListening;
@@ -80,25 +82,29 @@ public class ProxyServer : IDisposable
     /// <summary>
     /// Creates a new proxy server with the specified configuration.
     /// </summary>
-    public ProxyServer(ProxyConfig config)
-    {
-        _config = config ?? throw new ArgumentNullException(nameof(config));
-        _listener = TcpListener.Create(config.Port);
-        _tlsHandler = new TlsHandler(config.CertStoragePath);
-        _interceptor = new NoOpInterceptHook();
-        _rootCert = _tlsHandler.GetRootCertificate();
-
-        Log(ProxyConfig.LogLevelEnum.Info, $"Proxy server initialized on port {config.Port}");
-        Log(ProxyConfig.LogLevelEnum.Info, $"Certificate storage: {config.CertStoragePath}");
-    }
+    public ProxyServer(ProxyConfig config) : this(config, new NoOpInterceptHook(), NullLogger<ProxyServer>.Instance) { }
 
     /// <summary>
     /// Creates a proxy server with custom interceptor.
     /// </summary>
-    public ProxyServer(ProxyConfig config, IInterceptHook interceptor) : this(config)
+    public ProxyServer(ProxyConfig config, IInterceptHook interceptor) : this(config, interceptor, NullLogger<ProxyServer>.Instance) { }
+
+    /// <summary>
+    /// Creates a proxy server with custom interceptor and logger.
+    /// </summary>
+    public ProxyServer(ProxyConfig config, IInterceptHook interceptor, ILogger<ProxyServer> logger)
     {
+        _config = config ?? throw new ArgumentNullException(nameof(config));
         _interceptor = interceptor ?? throw new ArgumentNullException(nameof(interceptor));
+        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        _listener = TcpListener.Create(config.Port);
+        _tlsHandler = new TlsHandler(config.CertStoragePath);
+        _rootCert = _tlsHandler.GetRootCertificate();
+
+        _logger.LogInformation("Proxy server initialized on port {Port}", config.Port);
+        _logger.LogInformation("Certificate storage: {CertStoragePath}", config.CertStoragePath);
     }
+
 
     /// <summary>
     /// Starts listening for incoming connections.
@@ -115,7 +121,7 @@ public class ProxyServer : IDisposable
         {
             _listener.Start();
             _isListening = true;
-            Log(ProxyConfig.LogLevelEnum.Info, $"Proxy server started on port {_config.Port}");
+            _logger.LogInformation($"Proxy server started on port {_config.Port}");
 
             while (!combinedCts.Token.IsCancellationRequested)
             {
@@ -132,11 +138,11 @@ public class ProxyServer : IDisposable
         }
         catch (OperationCanceledException)
         {
-            Log(ProxyConfig.LogLevelEnum.Debug, "Proxy server stopping");
+            _logger.LogDebug("Proxy server stopping");
         }
         catch (SocketException ex)
         {
-            Log(ProxyConfig.LogLevelEnum.Error, $"Failed to bind to port {_config.Port}: {ex.Message} (SocketErrorCode: {ex.SocketErrorCode})");
+            _logger.LogError($"Failed to bind to port {_config.Port}: {ex.Message} (SocketErrorCode: {ex.SocketErrorCode})");
             throw;
         }
         finally
@@ -177,7 +183,7 @@ public class ProxyServer : IDisposable
 
                 if (parts.Length < 2)
                 {
-                    Log(ProxyConfig.LogLevelEnum.Error, "Invalid request line");
+                    _logger.LogError("Invalid request line");
                     return;
                 }
 
@@ -194,7 +200,7 @@ public class ProxyServer : IDisposable
             }
             catch (Exception ex) when (ex is not OperationCanceledException and not IOException)
             {
-                Log(ProxyConfig.LogLevelEnum.Error, $"Connection error: {ex.Message}");
+                _logger.LogError($"Connection error: {ex.Message}");
             }
         }
     }
@@ -208,7 +214,7 @@ public class ProxyServer : IDisposable
         var request = Encoding.ASCII.GetString(buffer, 0, bytesRead);
         var hostPort = request.Split('\r')[0].Split(' ')[1];
 
-        Log(ProxyConfig.LogLevelEnum.Info, $"CONNECT request to {hostPort}");
+        _logger.LogInformation($"CONNECT request to {hostPort}");
 
         // Parse host and port
         var parts = hostPort.Split(':');
@@ -237,7 +243,7 @@ public class ProxyServer : IDisposable
         {
             await sslStream.AuthenticateAsServerAsync(cert);
 
-            Log(ProxyConfig.LogLevelEnum.Info, $"TLS tunnel established to {host}:{port}");
+            _logger.LogInformation($"TLS tunnel established to {host}:{port}");
 
             // Read decrypted HTTP requests and intercept them
             await HandleTunnelRequestsAsync(sslStream, host, port);
@@ -250,7 +256,7 @@ public class ProxyServer : IDisposable
     /// </summary>
     private async Task HandlePassthroughAsync(TcpClient client, string host, int port)
     {
-        Log(ProxyConfig.LogLevelEnum.Info, $"TLS passthrough for {host}:{port}");
+        _logger.LogInformation($"TLS passthrough for {host}:{port}");
 
         // Connect to the upstream server
         using var upstream = new TcpClient();
@@ -276,7 +282,7 @@ public class ProxyServer : IDisposable
         // Once one direction completes, cancel the other
         await cts.CancelAsync();
 
-        Log(ProxyConfig.LogLevelEnum.Debug, $"TLS passthrough ended for {host}:{port}");
+        _logger.LogDebug($"TLS passthrough ended for {host}:{port}");
     }
 
     /// <summary>
@@ -352,7 +358,7 @@ public class ProxyServer : IDisposable
                 }
             }
 
-            Log(ProxyConfig.LogLevelEnum.Info, $"{method} {path} to {host}:{port}");
+            _logger.LogInformation($"{method} {path} to {host}:{port}");
 
             // Serve info page when request is directed to the proxy itself
             if (IsRequestToProxyItself(host, port, path))
@@ -418,7 +424,7 @@ public class ProxyServer : IDisposable
         }
         catch (Exception ex) when (ex is not OperationCanceledException and not IOException)
         {
-            Log(ProxyConfig.LogLevelEnum.Error, $"Request handling error: {ex.Message}");
+            _logger.LogError($"Request handling error: {ex.Message}");
         }
     }
 
@@ -600,7 +606,7 @@ public class ProxyServer : IDisposable
         }
         catch (OperationCanceledException)
         {
-            Log(ProxyConfig.LogLevelEnum.Debug, $"Upstream read timed out for {host}:{port}{request.Path}");
+            _logger.LogDebug($"Upstream read timed out for {host}:{port}{request.Path}");
         }
         catch (IOException)
         {
@@ -683,7 +689,7 @@ public class ProxyServer : IDisposable
 
             var scheme = port == 443 ? "https" : "http";
 
-            Log(ProxyConfig.LogLevelEnum.Info, $"MITM {method} {scheme}://{host}{path}");
+            _logger.LogInformation($"MITM {method} {scheme}://{host}{path}");
 
             // Intercept request
             var correlationId = Guid.NewGuid().ToString();
@@ -713,7 +719,7 @@ public class ProxyServer : IDisposable
                 }
                 catch (Exception connectEx)
                 {
-                    Log(ProxyConfig.LogLevelEnum.Warn,
+                    _logger.LogWarning(
                         $"TCP connect failed for {host}:{port}: {connectEx.GetType().Name}: {connectEx.Message}");
                     throw;
                 }
@@ -731,7 +737,7 @@ public class ProxyServer : IDisposable
                     }
                     catch (Exception tlsEx)
                     {
-                        Log(ProxyConfig.LogLevelEnum.Warn,
+                        _logger.LogWarning(
                             $"TLS handshake failed for {host}:{port}: {tlsEx.GetType().Name}: {tlsEx.Message}");
                         throw;
                     }
@@ -789,7 +795,7 @@ public class ProxyServer : IDisposable
                     }
                     catch (OperationCanceledException)
                     {
-                        Log(ProxyConfig.LogLevelEnum.Debug, $"Upstream read timed out for {host}:{port}{result.Path}");
+                        _logger.LogDebug($"Upstream read timed out for {host}:{port}{result.Path}");
                     }
                     catch (IOException)
                     {
@@ -819,7 +825,7 @@ public class ProxyServer : IDisposable
                 or AuthenticationException)
             {
                 var inner = ex.InnerException != null ? $" Inner: {ex.InnerException.GetType().Name}: {ex.InnerException.Message}" : "";
-                Log(ProxyConfig.LogLevelEnum.Warn,
+                _logger.LogWarning(
                     $"Upstream connection failed for {host}:{port}{result.Path}: {ex.GetType().Name}: {ex.Message}{inner}");
             }
 
@@ -913,33 +919,6 @@ public class ProxyServer : IDisposable
     {
         // Accept all certificates - this is a proxy that terminates TLS
         return true;
-    }
-
-    /// <summary>
-    /// Logs a message if the log level permits.
-    /// </summary>
-    private void Log(ProxyConfig.LogLevelEnum level, string message)
-    {
-        lock (_lock)
-        {
-            var timestamp = DateTime.UtcNow.ToString("o");
-
-            switch (level)
-            {
-                case ProxyConfig.LogLevelEnum.Debug when _config.LogLevel <= ProxyConfig.LogLevelEnum.Debug:
-                    Console.WriteLine($"[{timestamp}] DEBUG: {message}");
-                    break;
-                case ProxyConfig.LogLevelEnum.Info when _config.LogLevel <= ProxyConfig.LogLevelEnum.Info:
-                    Console.WriteLine($"[{timestamp}] INFO: {message}");
-                    break;
-                case ProxyConfig.LogLevelEnum.Warn when _config.LogLevel <= ProxyConfig.LogLevelEnum.Warn:
-                    Console.WriteLine($"[{timestamp}] WARN: {message}");
-                    break;
-                case ProxyConfig.LogLevelEnum.Error when _config.LogLevel <= ProxyConfig.LogLevelEnum.Error:
-                    Console.WriteLine($"[{timestamp}] ERROR: {message}");
-                    break;
-            }
-        }
     }
 
     public void Dispose()

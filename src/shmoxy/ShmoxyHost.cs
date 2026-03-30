@@ -65,6 +65,8 @@ public static class ShmoxyHost
             var config = sp.GetRequiredService<IOptions<ProxyConfig>>().Value;
             return new SessionLogBuffer { Enabled = config.SessionLoggingEnabled };
         });
+        services.AddSingleton<ILoggerProvider>(sp =>
+            new SessionLogBufferProvider(sp.GetRequiredService<SessionLogBuffer>()));
         services.AddSingleton<InspectionHook>();
         services.AddSingleton<InterceptHookChain>(sp =>
         {
@@ -77,7 +79,8 @@ public static class ShmoxyHost
         {
             var config = sp.GetRequiredService<IOptions<ProxyConfig>>().Value;
             var hookChain = sp.GetRequiredService<InterceptHookChain>();
-            return new ProxyServer(config, hookChain);
+            var logger = sp.GetRequiredService<ILoggerFactory>().CreateLogger<ProxyServer>();
+            return new ProxyServer(config, hookChain, logger);
         });
 
         services.AddSingleton<ProxyStateService>(sp =>
