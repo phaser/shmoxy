@@ -190,17 +190,6 @@ public class ProxyIpcClient : IProxyIpcClient, IDisposable
         }, ct);
     }
 
-    public async Task<IReadOnlyList<TemporaryPassthroughEntry>> GetTempPassthroughAsync(CancellationToken ct = default)
-    {
-        return await RetryAsync(async () =>
-        {
-            using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-            cts.CancelAfter(IpcTimeouts.Medium);
-            return await _httpClient.GetFromJsonAsync<IReadOnlyList<TemporaryPassthroughEntry>>("/ipc/temp-passthrough", _jsonOptions, cts.Token)
-                ?? Array.Empty<TemporaryPassthroughEntry>();
-        }, ct);
-    }
-
     public async Task<IReadOnlyList<SessionLogEntry>> DrainSessionLogAsync(CancellationToken ct = default)
     {
         return await RetryAsync(async () =>

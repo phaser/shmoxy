@@ -53,8 +53,6 @@ public static class ProxyControlApi
             config.LogLevel = newConfig.LogLevel;
             config.MaxConcurrentConnections = newConfig.MaxConcurrentConnections;
             config.PassthroughHosts = newConfig.PassthroughHosts;
-            config.TempPassthroughMaxConnections = newConfig.TempPassthroughMaxConnections;
-            config.TempPassthroughTimeoutSeconds = newConfig.TempPassthroughTimeoutSeconds;
 
             // Sync session logging setting
             config.SessionLoggingEnabled = newConfig.SessionLoggingEnabled;
@@ -177,13 +175,6 @@ public static class ProxyControlApi
             }
         });
 
-        endpoints.MapGet("/ipc/temp-passthrough", () =>
-        {
-            if (stateService.TempPassthrough == null)
-                return Results.Json(Array.Empty<TemporaryPassthroughEntry>());
-
-            return Results.Json(stateService.TempPassthrough.GetActiveEntries());
-        });
 
         endpoints.MapPost("/ipc/inspect/enable", () =>
         {

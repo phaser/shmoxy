@@ -103,15 +103,6 @@ public class ApiClient(HttpClient httpClient)
             : body);
     }
 
-    public async Task<List<TemporaryPassthroughEntryDto>> GetTempPassthroughAsync()
-    {
-        var response = await _httpClient.GetAsync("/api/proxies/local/temp-passthrough");
-        if (!response.IsSuccessStatusCode)
-            return [];
-
-        return await response.Content.ReadFromJsonAsync<List<TemporaryPassthroughEntryDto>>() ?? [];
-    }
-
     public async Task<List<InspectionRequestInfo>> GetRequestHistoryAsync()
     {
         var response = await _httpClient.GetAsync("/api/inspection");

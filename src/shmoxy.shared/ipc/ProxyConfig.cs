@@ -30,16 +30,6 @@ public class ProxyConfig
     public List<string> PassthroughHosts { get; set; } = new();
 
     /// <summary>
-    /// Maximum number of CONNECT requests to pass through during a temporary passthrough window.
-    /// </summary>
-    public int TempPassthroughMaxConnections { get; set; } = 2;
-
-    /// <summary>
-    /// Timeout in seconds for temporary passthrough windows.
-    /// </summary>
-    public int TempPassthroughTimeoutSeconds { get; set; } = 30;
-
-    /// <summary>
     /// When enabled, captures internal proxy activity (hook events, detector triggers,
     /// errors) in a log buffer that is persisted alongside saved sessions.
     /// Disabled by default to avoid overhead when not needed.

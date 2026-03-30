@@ -66,21 +66,6 @@ public static class ShmoxyHost
             return new SessionLogBuffer { Enabled = config.SessionLoggingEnabled };
         });
         services.AddSingleton<InspectionHook>();
-        services.AddSingleton<TemporaryPassthroughService>(sp =>
-        {
-            var config = sp.GetRequiredService<IOptions<ProxyConfig>>().Value;
-            var logBuffer = sp.GetRequiredService<SessionLogBuffer>();
-            var service = new TemporaryPassthroughService(
-                config.TempPassthroughMaxConnections,
-                TimeSpan.FromSeconds(config.TempPassthroughTimeoutSeconds));
-
-            service.OnExpired += host =>
-            {
-                logBuffer.Info("Passthrough", $"Temporary passthrough expired for {host}");
-            };
-
-            return service;
-        });
         services.AddSingleton<InterceptHookChain>(sp =>
         {
             var inspectionHook = sp.GetRequiredService<InspectionHook>();
@@ -92,17 +77,15 @@ public static class ShmoxyHost
         {
             var config = sp.GetRequiredService<IOptions<ProxyConfig>>().Value;
             var hookChain = sp.GetRequiredService<InterceptHookChain>();
-            var tempPassthrough = sp.GetRequiredService<TemporaryPassthroughService>();
-            return new ProxyServer(config, hookChain, tempPassthrough);
+            return new ProxyServer(config, hookChain);
         });
 
         services.AddSingleton<ProxyStateService>(sp =>
         {
             var proxy = sp.GetRequiredService<ProxyServer>();
             var inspectionHook = sp.GetRequiredService<InspectionHook>();
-            var tempPassthrough = sp.GetRequiredService<TemporaryPassthroughService>();
             var logBuffer = sp.GetRequiredService<SessionLogBuffer>();
-            return new ProxyStateService(proxy, inspectionHook, tempPassthrough, logBuffer);
+            return new ProxyStateService(proxy, inspectionHook, logBuffer);
         });
 
         services.AddHostedService<ProxyHostedService>();

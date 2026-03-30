@@ -21,6 +21,5 @@ public interface IProxyIpcClient
     Task<byte[]> GetRootCertDerAsync(CancellationToken ct = default);
     Task<byte[]> GetRootCertPfxAsync(CancellationToken ct = default);
     Task<bool> IsHealthyAsync(CancellationToken ct = default);
-    Task<IReadOnlyList<TemporaryPassthroughEntry>> GetTempPassthroughAsync(CancellationToken ct = default);
     Task<IReadOnlyList<SessionLogEntry>> DrainSessionLogAsync(CancellationToken ct = default);
 }

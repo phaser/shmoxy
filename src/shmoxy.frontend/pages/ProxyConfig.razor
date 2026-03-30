@@ -94,37 +94,6 @@
 
     <FluentCard>
         <div class="card-header">
-            <FluentIcon Value="@(new Icons.Regular.Size20.Search())" />
-            <h2>Temporary Passthrough</h2>
-        </div>
-
-        <div class="form-content">
-            <p class="description">Domains that failed upstream (TLS fingerprint rejection, connection failure) are automatically passed through temporarily. These entries expire after a configurable timeout or connection count.</p>
-
-            @if (tempPassthroughEntries.Count > 0)
-            {
-                <div class="temp-passthrough-list">
-                    @foreach (var entry in tempPassthroughEntries)
-                    {
-                        <div class="temp-passthrough-item">
-                            <div class="temp-passthrough-info">
-                                <strong>@entry.Host</strong>
-                                <span class="temp-passthrough-detail">@entry.Reason</span>
-                                <span class="temp-passthrough-detail">@entry.RemainingConnections/@entry.MaxConnections connections remaining</span>
-                            </div>
-                        </div>
-                    }
-                </div>
-            }
-            else
-            {
-                <p class="no-items">No active temporary passthroughs.</p>
-            }
-        </div>
-    </FluentCard>
-
-    <FluentCard>
-        <div class="card-header">
             <FluentIcon Value="@(new Icons.Regular.Size20.Status())" />
             <h2>Proxy Status</h2>
         </div>
@@ -202,13 +171,10 @@
     private bool proxyActionInProgress;
     private string? proxyActionMessage;
     private bool proxyActionSuccess;
-    private List<TemporaryPassthroughEntryDto> tempPassthroughEntries = new();
-
     protected override async Task OnInitializedAsync()
     {
         await LoadStatus();
         await LoadConfig();
-        await LoadTempPassthrough();
     }
 
     private async Task LoadConfig()
@@ -221,18 +187,6 @@
         {
             saveMessage = $"Failed to load configuration: {ex.Message}";
             saveMessageType = MessageType.Error;
-        }
-    }
-
-    private async Task LoadTempPassthrough()
-    {
-        try
-        {
-            tempPassthroughEntries = await ApiClient.GetTempPassthroughAsync();
-        }
-        catch
-        {
-            // Proxy not running
         }
     }
 
@@ -494,29 +448,4 @@
     font-size: 0.875rem;
 }
 
-.temp-passthrough-list {
-    display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
-}
-
-.temp-passthrough-item {
-    display: flex;
-    align-items: center;
-    padding: 0.5rem;
-    border-radius: 4px;
-    background: var(--neutral-layer-2);
-    border-left: 3px solid var(--warning-fill-rest, #d97706);
-}
-
-.temp-passthrough-info {
-    display: flex;
-    flex-direction: column;
-    gap: 0.125rem;
-}
-
-.temp-passthrough-detail {
-    font-size: 0.8125rem;
-    color: var(--neutral-foreground-hint);
-}
 </style>

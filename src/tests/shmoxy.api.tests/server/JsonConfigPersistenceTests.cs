@@ -39,9 +39,7 @@ public class JsonConfigPersistenceTests : IDisposable
             Port = 9999,
             LogLevel = ProxyConfig.LogLevelEnum.Warn,
             MaxConcurrentConnections = 42,
-            PassthroughHosts = ["example.com", "*.test.com"],
-            TempPassthroughMaxConnections = 5,
-            TempPassthroughTimeoutSeconds = 60
+            PassthroughHosts = ["example.com", "*.test.com"]
         };
 
         await _persistence.SaveAsync(config);
@@ -52,8 +50,6 @@ public class JsonConfigPersistenceTests : IDisposable
         Assert.Equal(ProxyConfig.LogLevelEnum.Warn, loaded.LogLevel);
         Assert.Equal(42, loaded.MaxConcurrentConnections);
         Assert.Equal(["example.com", "*.test.com"], loaded.PassthroughHosts);
-        Assert.Equal(5, loaded.TempPassthroughMaxConnections);
-        Assert.Equal(60, loaded.TempPassthroughTimeoutSeconds);
     }
 
     [Fact]

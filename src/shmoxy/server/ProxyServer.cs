@@ -18,10 +18,8 @@ public class ProxyServer : IDisposable
     private readonly TcpListener _listener;
     private readonly TlsHandler _tlsHandler;
     private readonly IInterceptHook _interceptor;
-    private readonly TemporaryPassthroughService? _tempPassthrough;
     private readonly ProxyConfig _config;
     private readonly object _lock = new();
-    private readonly HashSet<string> _successfulMitmHosts = new();
     private CancellationTokenSource? _cts;
     private bool _disposed;
     private bool _isListening;
@@ -100,14 +98,6 @@ public class ProxyServer : IDisposable
     public ProxyServer(ProxyConfig config, IInterceptHook interceptor) : this(config)
     {
         _interceptor = interceptor ?? throw new ArgumentNullException(nameof(interceptor));
-    }
-
-    /// <summary>
-    /// Creates a proxy server with custom interceptor and temporary passthrough support.
-    /// </summary>
-    public ProxyServer(ProxyConfig config, IInterceptHook interceptor, TemporaryPassthroughService tempPassthrough) : this(config, interceptor)
-    {
-        _tempPassthrough = tempPassthrough ?? throw new ArgumentNullException(nameof(tempPassthrough));
     }
 
     /// <summary>
@@ -228,15 +218,6 @@ public class ProxyServer : IDisposable
         // Check if host is configured for TLS passthrough
         if (_config.PassthroughHosts.Count > 0 && HostMatcher.IsMatch(host, _config.PassthroughHosts))
         {
-            await HandlePassthroughAsync(client, host, port);
-            return;
-        }
-
-        // Check if host has an active temporary passthrough window
-        if (_tempPassthrough?.ShouldPassthrough(host) == true)
-        {
-            Log(ProxyConfig.LogLevelEnum.Info, $"Temporary passthrough for {host}");
-            _tempPassthrough.RecordConnection(host);
             await HandlePassthroughAsync(client, host, port);
             return;
         }
@@ -578,7 +559,9 @@ public class ProxyServer : IDisposable
 
         foreach (var header in request.Headers
             .Where(h => !h.Key.Equals("Host", StringComparison.OrdinalIgnoreCase)
-                     && !h.Key.Equals("Proxy-Connection", StringComparison.OrdinalIgnoreCase)))
+                     && !h.Key.Equals("Connection", StringComparison.OrdinalIgnoreCase)
+                     && !h.Key.Equals("Proxy-Connection", StringComparison.OrdinalIgnoreCase)
+                     && !h.Key.Equals("Content-Length", StringComparison.OrdinalIgnoreCase)))
         {
             outgoing.Append($"{header.Key}: {header.Value}\r\n");
         }
@@ -770,55 +753,11 @@ public class ProxyServer : IDisposable
 
                     await targetStream.FlushAsync();
 
-                    // Read the first chunk which contains the HTTP status line and
-                    // headers. Check for WAF/CDN blocks before forwarding to the
-                    // client. If blocked, suppress the response and close — the
-                    // client retries with a new CONNECT that goes via passthrough.
+                    // Stream the response back to the client as chunks arrive
                     using var ms = new MemoryStream();
                     var responseBuf = new byte[8192];
                     int responseRead;
                     using var readCts = new CancellationTokenSource(UpstreamReadTimeoutMs);
-
-                    // Read first chunk (contains headers)
-                    try
-                    {
-                        responseRead = await targetStream.ReadAsync(responseBuf, 0, responseBuf.Length, readCts.Token);
-                    }
-                    catch (OperationCanceledException)
-                    {
-                        responseRead = 0;
-                    }
-                    catch (IOException)
-                    {
-                        responseRead = 0;
-                    }
-
-                    if (responseRead == 0)
-                    {
-                        // Upstream returned no data — activate temporary passthrough
-                        ActivatePassthroughOnFailure(host, "Upstream returned empty response");
-                        break;
-                    }
-
-                    // Parse the first chunk to check status line and headers
-                    var firstChunkHeaders = Encoding.ASCII.GetString(responseBuf, 0, Math.Min(responseRead, 4096));
-                    var (quickStatusCode, quickHeaders) = ParseResponseStatusAndHeaders(firstChunkHeaders);
-
-                    if (LooksLikeTlsFingerprintBlock(quickStatusCode, quickHeaders, result.Headers))
-                    {
-                        ActivatePassthroughOnFailure(host,
-                            $"Response looks like TLS fingerprint block ({quickStatusCode} {GetHeaderValue(quickHeaders, "Server")} returning {GetHeaderValue(quickHeaders, "Content-Type")})");
-
-                        // Don't forward the blocked response — just close
-                        Log(ProxyConfig.LogLevelEnum.Info,
-                            $"Suppressing blocked response for {host}:{port}{result.Path}, client will retry via passthrough");
-                        break;
-                    }
-
-                    // Not blocked — forward the first chunk and stream the rest
-                    await clientStream.WriteAsync(responseBuf, 0, responseRead);
-                    ms.Write(responseBuf, 0, responseRead);
-
                     try
                     {
                         while ((responseRead = await targetStream.ReadAsync(responseBuf, 0, responseBuf.Length, readCts.Token)) > 0)
@@ -839,7 +778,7 @@ public class ProxyServer : IDisposable
 
                     await clientStream.FlushAsync();
 
-                    // Parse full response for intercept hook
+                    // Parse response for intercept hook
                     var responseBytes = ms.ToArray();
                     if (responseBytes.Length > 0)
                     {
@@ -853,16 +792,6 @@ public class ProxyServer : IDisposable
                             CorrelationId = correlationId
                         };
                         await _interceptor.OnResponseAsync(interceptedResponse);
-
-                        // Track successful MITM hosts so we don't accidentally
-                        // push them into passthrough later
-                        if (respStatusCode is >= 200 and < 400)
-                        {
-                            lock (_lock)
-                            {
-                                _successfulMitmHosts.Add(host);
-                            }
-                        }
                     }
                 }
             }
@@ -871,9 +800,6 @@ public class ProxyServer : IDisposable
             {
                 Log(ProxyConfig.LogLevelEnum.Warn,
                     $"Upstream connection failed for {host}:{port}{result.Path}: {ex.GetType().Name}: {ex.Message}");
-
-                ActivatePassthroughOnFailure(host,
-                    $"Upstream connection failed: {ex.GetType().Name}: {ex.Message}");
             }
 
             // Connection: close means we're done after one request
@@ -890,109 +816,6 @@ public class ProxyServer : IDisposable
         var stream = client.GetStream();
         await stream.WriteAsync(bytes, 0, bytes.Length);
         await stream.FlushAsync();
-    }
-
-    /// <summary>
-    /// Detects responses that look like a WAF or CDN blocking the request due to
-    /// TLS fingerprint mismatch (e.g. Cloudflare returning HTML instead of JSON).
-    /// </summary>
-    internal static bool LooksLikeTlsFingerprintBlock(
-        int statusCode,
-        Dictionary<string, string> responseHeaders,
-        Dictionary<string, string> requestHeaders)
-    {
-        // Only check 400 and 403 — the typical WAF block status codes
-        if (statusCode is not (400 or 403))
-            return false;
-
-        var server = GetHeaderValue(responseHeaders, "Server");
-        var contentType = GetHeaderValue(responseHeaders, "Content-Type");
-
-        var isFromCdn = server.Contains("cloudflare", StringComparison.OrdinalIgnoreCase)
-            || responseHeaders.ContainsKey("CF-RAY")
-            || responseHeaders.ContainsKey("cf-ray")
-            || server.Contains("akamai", StringComparison.OrdinalIgnoreCase)
-            || server.Contains("awselb", StringComparison.OrdinalIgnoreCase);
-
-        if (!isFromCdn)
-            return false;
-
-        var responseIsHtml = contentType.Contains("text/html", StringComparison.OrdinalIgnoreCase);
-        if (!responseIsHtml)
-            return false;
-
-        // HTML from a CDN on a 400/403 is suspicious on its own,
-        // but especially when the client expected JSON
-        var accept = GetHeaderValue(requestHeaders, "Accept");
-        if (accept.Contains("application/json", StringComparison.OrdinalIgnoreCase))
-            return true;
-
-        // Also flag POST requests getting HTML back — likely API calls
-        // (the request method isn't in the headers dict, but a 403 HTML from Cloudflare
-        // is strong enough signal regardless)
-        if (statusCode == 403)
-            return true;
-
-        // 400 + HTML from Cloudflare without JSON accept — still likely a block
-        return true;
-    }
-
-    /// <summary>
-    /// Quickly parses the status code and headers from the first chunk of an HTTP response.
-    /// Does not parse the body.
-    /// </summary>
-    private static (int StatusCode, Dictionary<string, string> Headers) ParseResponseStatusAndHeaders(string headerText)
-    {
-        var lines = headerText.Split("\r\n");
-        if (lines.Length == 0)
-            return (0, new Dictionary<string, string>());
-
-        var statusParts = lines[0].Split(' ');
-        var statusCode = statusParts.Length >= 2 && int.TryParse(statusParts[1], out var code) ? code : 0;
-
-        var headers = new Dictionary<string, string>();
-        for (var i = 1; i < lines.Length; i++)
-        {
-            if (string.IsNullOrWhiteSpace(lines[i])) break;
-            var colonIndex = lines[i].IndexOf(':');
-            if (colonIndex > 0)
-            {
-                var key = lines[i][..colonIndex].Trim();
-                var value = lines[i][(colonIndex + 1)..].Trim();
-                headers[key] = value;
-            }
-        }
-
-        return (statusCode, headers);
-    }
-
-    private static string GetHeaderValue(Dictionary<string, string> headers, string key)
-    {
-        return headers.TryGetValue(key, out var value) ? value : string.Empty;
-    }
-
-    /// <summary>
-    /// Activates temporary passthrough for a host when the upstream connection fails.
-    /// Skips activation if the host has previously had successful MITM responses,
-    /// since that means the host works through MITM and the failure is endpoint-specific.
-    /// </summary>
-    private void ActivatePassthroughOnFailure(string host, string reason)
-    {
-        if (_tempPassthrough == null)
-            return;
-
-        lock (_lock)
-        {
-            if (_successfulMitmHosts.Contains(host))
-            {
-                Log(ProxyConfig.LogLevelEnum.Debug,
-                    $"Skipping passthrough for {host} (previously succeeded through MITM): {reason}");
-                return;
-            }
-        }
-
-        Log(ProxyConfig.LogLevelEnum.Info, $"Activating temporary passthrough for {host}: {reason}");
-        _tempPassthrough.Activate(host, "auto", reason);
     }
 
     /// <summary>
