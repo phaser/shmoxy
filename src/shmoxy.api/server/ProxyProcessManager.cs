@@ -14,6 +14,7 @@ public class ProxyProcessManager : IProxyProcessManager, IDisposable
 {
     private readonly ILogger<ProxyProcessManager> _logger;
     private readonly IOptions<ApiConfig> _config;
+    private readonly IConfigPersistence _configPersistence;
     private readonly string _socketPath;
     private readonly IProxyIpcClient? _injectedIpcClient;
 
@@ -35,10 +36,12 @@ public class ProxyProcessManager : IProxyProcessManager, IDisposable
     public ProxyProcessManager(
         ILogger<ProxyProcessManager> logger,
         IProxyIpcClient ipcClient,
-        IOptions<ApiConfig> config)
+        IOptions<ApiConfig> config,
+        IConfigPersistence configPersistence)
     {
         _logger = logger;
         _config = config;
+        _configPersistence = configPersistence;
         _socketPath = config.Value.ProxyIpcSocketPath ?? Path.Combine(Path.GetTempPath(), $"shmoxy-{Guid.NewGuid()}.sock");
         // Use the DI-injected client when a socket path is pre-configured (it's already wired to that socket).
         // When the socket path is generated dynamically, we must create our own client at runtime.
@@ -90,7 +93,10 @@ public class ProxyProcessManager : IProxyProcessManager, IDisposable
         }
 
         var (fileName, baseArguments) = await ResolveBinaryAsync(_config.Value.ProxyBinaryPath, ct);
-        var port = _portOverride ?? _config.Value.ProxyPort;
+
+        // Load persisted config for port (and to re-apply after startup)
+        var persistedConfig = await _configPersistence.LoadAsync(ct);
+        var port = _portOverride ?? persistedConfig?.Port ?? _config.Value.ProxyPort;
 
         UpdateState(new ProxyInstanceState
         {
@@ -165,6 +171,20 @@ public class ProxyProcessManager : IProxyProcessManager, IDisposable
                     StartedAt = _currentState.StartedAt,
                     ProxyVersion = proxyVersion
                 });
+
+                // Apply persisted config to the new proxy process
+                if (persistedConfig != null)
+                {
+                    try
+                    {
+                        await GetOrCreateSocketIpcClient().UpdateConfigAsync(persistedConfig, ct);
+                        _logger.LogInformation("Applied persisted configuration to proxy");
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Failed to apply persisted configuration to proxy");
+                    }
+                }
 
                 StartHealthCheckLoop();
                 _logger.LogInformation("Proxy process is healthy and running");
