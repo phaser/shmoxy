@@ -51,7 +51,7 @@ public class ConfigController : ControllerBase
     }
 
     /// <summary>
-    /// Update proxy configuration. Changes apply immediately without restart.
+    /// Update proxy configuration. Saves to disk and restarts the proxy to apply all changes.
     /// </summary>
     /// <param name="proxyId">"local" for local proxy, or remote proxy GUID</param>
     /// <param name="config">New configuration values</param>
@@ -128,24 +128,15 @@ public class ConfigController : ControllerBase
             throw new InvalidOperationException("Local proxy must be running to update configuration");
         }
 
-        var currentConfig = await _processManager.GetIpcClient().GetConfigAsync(ct);
-        var portChanged = config.Port != currentConfig.Port;
+        // Persist config to disk first
+        await _configPersistence.SaveAsync(config, ct);
 
-        var updatedConfig = await _processManager.GetIpcClient().UpdateConfigAsync(config, ct);
+        // Restart proxy to apply all settings (port, max connections, TLS, etc.)
+        _logger.LogInformation("Configuration saved, restarting proxy to apply changes");
+        await _processManager.RestartAsync(config.Port, ct);
 
-        // Persist config to disk so it survives restarts
-        await _configPersistence.SaveAsync(updatedConfig, ct);
-
-        if (portChanged)
-        {
-            _logger.LogInformation("Port changed from {OldPort} to {NewPort}, restarting proxy", currentConfig.Port, config.Port);
-            await _processManager.RestartAsync(config.Port, ct);
-
-            // Re-apply config after restart (persisted config will be loaded on next cold start)
-            updatedConfig = await _processManager.GetIpcClient().UpdateConfigAsync(config, ct);
-        }
-
-        return updatedConfig;
+        // Persisted config is automatically loaded and applied on startup
+        return await _processManager.GetIpcClient().GetConfigAsync(ct);
     }
 
     private async Task<ProxyConfig> UpdateRemoteConfigAsync(string proxyId, ProxyConfig config, CancellationToken ct)

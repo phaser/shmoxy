@@ -31,66 +31,45 @@ public class ConfigControllerTests
     }
 
     [Fact]
-    public async Task UpdateConfig_SamePort_DoesNotRestart()
+    public async Task UpdateConfig_AlwaysRestartsProxy()
     {
-        var currentConfig = new ProxyConfig { Port = 8080, LogLevel = ProxyConfig.LogLevelEnum.Info };
         var newConfig = new ProxyConfig { Port = 8080, LogLevel = ProxyConfig.LogLevelEnum.Warn };
+        var appliedConfig = new ProxyConfig { Port = 8080, LogLevel = ProxyConfig.LogLevelEnum.Warn };
 
         _mockProcessManager.Setup(m => m.GetStateAsync())
             .ReturnsAsync(new ProxyInstanceState { State = ProxyProcessState.Running });
+        _mockProcessManager.Setup(m => m.RestartAsync(8080, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ProxyInstanceState { State = ProxyProcessState.Running, Port = 8080 });
         _mockIpcClient.Setup(m => m.GetConfigAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync(currentConfig);
-        _mockIpcClient.Setup(m => m.UpdateConfigAsync(It.IsAny<ProxyConfig>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(newConfig);
+            .ReturnsAsync(appliedConfig);
 
         var result = await _controller.UpdateConfig("local", newConfig, CancellationToken.None);
 
         var okResult = Assert.IsType<OkObjectResult>(result.Result);
         Assert.NotNull(okResult.Value);
-        _mockProcessManager.Verify(m => m.RestartAsync(It.IsAny<int?>(), It.IsAny<CancellationToken>()), Times.Never);
+        _mockProcessManager.Verify(m => m.RestartAsync(8080, It.IsAny<CancellationToken>()), Times.Once);
+        _mockConfigPersistence.Verify(m => m.SaveAsync(newConfig, It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
-    public async Task UpdateConfig_PortChanged_RestartsProxy()
+    public async Task UpdateConfig_PersistsBeforeRestart()
     {
-        var currentConfig = new ProxyConfig { Port = 8080, LogLevel = ProxyConfig.LogLevelEnum.Info };
-        var newConfig = new ProxyConfig { Port = 9999, LogLevel = ProxyConfig.LogLevelEnum.Info };
-        var restartedConfig = new ProxyConfig { Port = 9999, LogLevel = ProxyConfig.LogLevelEnum.Info };
+        var newConfig = new ProxyConfig { Port = 9999, LogLevel = ProxyConfig.LogLevelEnum.Debug };
+        var callOrder = new List<string>();
 
         _mockProcessManager.Setup(m => m.GetStateAsync())
             .ReturnsAsync(new ProxyInstanceState { State = ProxyProcessState.Running });
-        _mockIpcClient.Setup(m => m.GetConfigAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync(currentConfig);
-        _mockIpcClient.SetupSequence(m => m.UpdateConfigAsync(It.IsAny<ProxyConfig>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(newConfig)     // First call: before restart
-            .ReturnsAsync(restartedConfig); // Second call: re-apply after restart
-        _mockProcessManager.Setup(m => m.RestartAsync(9999, It.IsAny<CancellationToken>()))
+        _mockConfigPersistence.Setup(m => m.SaveAsync(It.IsAny<ProxyConfig>(), It.IsAny<CancellationToken>()))
+            .Callback(() => callOrder.Add("persist"));
+        _mockProcessManager.Setup(m => m.RestartAsync(It.IsAny<int?>(), It.IsAny<CancellationToken>()))
+            .Callback(() => callOrder.Add("restart"))
             .ReturnsAsync(new ProxyInstanceState { State = ProxyProcessState.Running, Port = 9999 });
-
-        var result = await _controller.UpdateConfig("local", newConfig, CancellationToken.None);
-
-        var okResult = Assert.IsType<OkObjectResult>(result.Result);
-        _mockProcessManager.Verify(m => m.RestartAsync(9999, It.IsAny<CancellationToken>()), Times.Once);
-        // Config should be re-applied after restart
-        _mockIpcClient.Verify(m => m.UpdateConfigAsync(It.IsAny<ProxyConfig>(), It.IsAny<CancellationToken>()), Times.Exactly(2));
-    }
-
-    [Fact]
-    public async Task UpdateConfig_PersistsConfigToDisk()
-    {
-        var currentConfig = new ProxyConfig { Port = 8080, LogLevel = ProxyConfig.LogLevelEnum.Info };
-        var newConfig = new ProxyConfig { Port = 8080, LogLevel = ProxyConfig.LogLevelEnum.Warn };
-
-        _mockProcessManager.Setup(m => m.GetStateAsync())
-            .ReturnsAsync(new ProxyInstanceState { State = ProxyProcessState.Running });
         _mockIpcClient.Setup(m => m.GetConfigAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync(currentConfig);
-        _mockIpcClient.Setup(m => m.UpdateConfigAsync(It.IsAny<ProxyConfig>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(newConfig);
 
         await _controller.UpdateConfig("local", newConfig, CancellationToken.None);
 
-        _mockConfigPersistence.Verify(m => m.SaveAsync(It.IsAny<ProxyConfig>(), It.IsAny<CancellationToken>()), Times.Once);
+        Assert.Equal(new[] { "persist", "restart" }, callOrder);
     }
 
     [Fact]

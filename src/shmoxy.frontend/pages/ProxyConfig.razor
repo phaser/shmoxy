@@ -31,7 +31,7 @@
         </div>
 
         <div class="card-footer">
-            <FluentButton Appearance="Appearance.Accent" OnClick="@SaveConfig">
+            <FluentButton Appearance="Appearance.Accent" OnClick="@SaveConfig" Disabled="@(proxyStatus is not { IsRunning: true })">
                 Save Configuration
             </FluentButton>
 
