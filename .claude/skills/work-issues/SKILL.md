@@ -58,14 +58,22 @@ All work happens in the worktree — never modify main directly.
   - `dotnet test tests/shmoxy.frontend.tests` (includes both unit tests and Playwright e2e)
 - `nix build .#shmoxy` — must succeed
 
-### 6. Commit and Create PR
+### 6. File Issues for Spotted Problems
+
+While working on an issue, if you notice any unrelated problems (bugs, code smells, missing error handling, TODOs, etc.) that are outside the scope of the current issue:
+
+- Create a new GitHub issue for each spotted problem: `gh issue create --repo phaser/shmoxy --title "<short description>" --body "<details of the problem and where it was found>"`
+- Do NOT fix these problems in the current PR — keep the PR focused on the original issue
+- Mention in the PR body that related issues were filed, with their numbers
+
+### 7. Commit and Create PR
 
 - Ensure the PR documentation file in `docs/prs/` is included in your commits (it is auto-committed by `new-pr.sh`, but update it with status/notes and stage any changes)
 - Commit with a descriptive message referencing the issue (e.g., "Closes #N")
 - Push branch and create PR via `gh pr create`
 - PR body must include: Summary, Test plan, and `Closes #N`
 
-### 7. After PR is Created
+### 8. After PR is Created
 
 - Tell the user the PR is ready and show the PR URL
 - **If bypass permissions are on** (i.e., tool calls are not requiring user approval): automatically merge the PR, pull changes to main (`git checkout main && git pull origin main`), clean up the worktree (`./scripts/cleanup-pr.sh <pr-name>`), and immediately move to the next issue
@@ -73,7 +81,7 @@ All work happens in the worktree — never modify main directly.
 
 **Important:** When merging any PR (whether from this workflow or manually requested), always check if there is an associated local worktree for that PR branch. If one exists, clean it up after merging using `./scripts/cleanup-pr.sh <pr-name>` since it is no longer needed.
 
-### 8. Move to Next Issue
+### 9. Move to Next Issue
 
 - After the current issue is fully done (merged + cleaned up), immediately pick up the next open issue
 - Repeat from step 0 (sync main)
