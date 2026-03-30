@@ -1,6 +1,7 @@
 using shmoxy.models.dto;
 using shmoxy.server.detectors;
 using shmoxy.server.hooks;
+using shmoxy.shared.ipc;
 
 namespace shmoxy.tests.server.hooks;
 
@@ -292,6 +293,44 @@ public class PassthroughDetectorHookTests
 
         // Should have one suggestion again (the cleared one was re-detected)
         Assert.Single(hook.GetSuggestions());
+    }
+
+    [Fact]
+    public void EnableDetectors_WithDefaultConfig_KeepsAllDetectorsEnabled()
+    {
+        var hook = new PassthroughDetectorHook();
+        hook.AddDetector(new CloudflareDetector());
+        hook.AddDetector(new WafBlockDetector());
+        hook.AddDetector(new OAuthTokenDetector());
+
+        // Simulate what ShmoxyHost does: enable detectors from config defaults
+        var config = new ProxyConfig();
+        hook.EnableDetectors(config.EnabledDetectors);
+
+        var detectors = hook.GetDetectors();
+        Assert.All(detectors, d => Assert.True(d.Enabled,
+            $"Detector '{d.Id}' should be enabled after applying default config"));
+    }
+
+    [Fact]
+    public void ConfigSaveFlow_WithDefaultConfig_DoesNotDisableDetectors()
+    {
+        var hook = new PassthroughDetectorHook();
+        hook.AddDetector(new CloudflareDetector());
+        hook.AddDetector(new WafBlockDetector());
+        hook.AddDetector(new OAuthTokenDetector());
+
+        // Simulate the PUT /ipc/config handler flow:
+        // 1. Disable all first
+        foreach (var d in hook.GetDetectors())
+            hook.SetDetectorEnabled(d.Id, false);
+        // 2. Enable from config (using default config which should have all detectors)
+        var config = new ProxyConfig();
+        hook.EnableDetectors(config.EnabledDetectors);
+
+        var detectors = hook.GetDetectors();
+        Assert.All(detectors, d => Assert.True(d.Enabled,
+            $"Detector '{d.Id}' should remain enabled after config save with defaults"));
     }
 
     [Fact]
