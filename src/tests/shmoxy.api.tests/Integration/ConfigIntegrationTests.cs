@@ -15,7 +15,11 @@ namespace shmoxy.api.tests.Integration;
 public class ConfigIntegrationTests : IClassFixture<WebApplicationFactory<Program>>
 {
     private readonly WebApplicationFactory<Program> _factory;
-    private static readonly JsonSerializerOptions JsonOptions = new() { PropertyNameCaseInsensitive = true };
+    private static readonly JsonSerializerOptions JsonOptions = new()
+    {
+        PropertyNameCaseInsensitive = true,
+        Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter() }
+    };
 
     public ConfigIntegrationTests(WebApplicationFactory<Program> factory)
     {
@@ -32,7 +36,7 @@ public class ConfigIntegrationTests : IClassFixture<WebApplicationFactory<Progra
     }
 
     [Fact]
-    public async Task GetConfig_ProxyNotRunning_Returns400()
+    public async Task GetConfig_ProxyNotRunning_ReturnsDefaultConfig()
     {
         // Arrange
         var client = _factory.CreateClient();
@@ -40,8 +44,11 @@ public class ConfigIntegrationTests : IClassFixture<WebApplicationFactory<Progra
         // Act
         var response = await client.GetAsync("/api/proxies/local/config");
 
-        // Assert
-        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        // Assert — returns persisted config or defaults when proxy is stopped
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var config = JsonSerializer.Deserialize<ProxyConfig>(
+            await response.Content.ReadAsStringAsync(), JsonOptions);
+        Assert.NotNull(config);
     }
 
     [Fact]
