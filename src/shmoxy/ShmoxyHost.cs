@@ -85,6 +85,9 @@ public static class ShmoxyHost
             hook.OnDetectorTriggered = (host, detectorId, reason) =>
                 tempService.Activate(host, detectorId, reason);
 
+            // Wire expiration back to clear the dedup set so re-detection can occur
+            tempService.OnExpired += hook.ClearSuggestedHost;
+
             return hook;
         });
         services.AddSingleton<InterceptHookChain>(sp =>

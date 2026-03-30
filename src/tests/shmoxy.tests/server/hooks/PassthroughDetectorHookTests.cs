@@ -1,4 +1,5 @@
 using shmoxy.models.dto;
+using shmoxy.server;
 using shmoxy.server.detectors;
 using shmoxy.server.hooks;
 using shmoxy.shared.ipc;
@@ -400,5 +401,82 @@ public class PassthroughDetectorHookTests
         // Should NOT re-trigger - host is still in the suggested set
         Assert.Equal(1, triggerCount);
         Assert.Single(hook.GetSuggestions());
+    }
+
+    [Fact]
+    public async Task TempPassthroughExpiry_ClearsSuggestedHost_AllowingReDetection()
+    {
+        // Simulate the wiring that ShmoxyHost.ConfigureServices establishes
+        var hook = new PassthroughDetectorHook();
+        hook.AddDetector(new CloudflareDetector());
+
+        using var tempService = new TemporaryPassthroughService(maxConnections: 1, timeout: TimeSpan.FromMinutes(5));
+
+        // Wire as ShmoxyHost does
+        hook.OnDetectorTriggered = (host, detectorId, reason) =>
+            tempService.Activate(host, detectorId, reason);
+        tempService.OnExpired += hook.ClearSuggestedHost;
+
+        var request = new InterceptedRequest
+        {
+            Method = "GET",
+            Host = "api.example.com",
+            Port = 443,
+            Path = "/data",
+            Headers = new() { ["Accept"] = "application/json" },
+            CorrelationId = "test-1"
+        };
+
+        var response = new InterceptedResponse
+        {
+            StatusCode = 400,
+            Headers = new()
+            {
+                ["Server"] = "cloudflare",
+                ["CF-RAY"] = "abc",
+                ["Content-Type"] = "text/html"
+            },
+            CorrelationId = "test-1"
+        };
+
+        // First detection triggers temp passthrough
+        await hook.OnRequestAsync(request);
+        await hook.OnResponseAsync(response);
+        Assert.Single(hook.GetSuggestions());
+        Assert.True(tempService.ShouldPassthrough("api.example.com"));
+
+        // Exhaust the connection limit — this expires the entry and fires OnExpired
+        tempService.RecordConnection("api.example.com");
+        Assert.False(tempService.ShouldPassthrough("api.example.com"));
+
+        // Second detection should now work because OnExpired cleared the suggested host
+        var request2 = new InterceptedRequest
+        {
+            Method = "GET",
+            Host = "api.example.com",
+            Port = 443,
+            Path = "/data",
+            Headers = new() { ["Accept"] = "application/json" },
+            CorrelationId = "test-2"
+        };
+
+        var response2 = new InterceptedResponse
+        {
+            StatusCode = 400,
+            Headers = new()
+            {
+                ["Server"] = "cloudflare",
+                ["CF-RAY"] = "def",
+                ["Content-Type"] = "text/html"
+            },
+            CorrelationId = "test-2"
+        };
+
+        await hook.OnRequestAsync(request2);
+        await hook.OnResponseAsync(response2);
+
+        // Re-detection should have succeeded
+        Assert.Single(hook.GetSuggestions());
+        Assert.True(tempService.ShouldPassthrough("api.example.com"));
     }
 }
