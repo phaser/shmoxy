@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Microsoft.Playwright;
 using Xunit;
 
@@ -24,6 +25,51 @@ public class CyberChefPageTests
             dir = dir.Parent;
         }
         return false;
+    }
+
+    private static bool EnsureCyberChefAssets()
+    {
+        if (CyberChefAssetsExist())
+            return true;
+
+        var scriptPath = FindDownloadScript();
+        if (scriptPath == null)
+            return false;
+
+        try
+        {
+            var process = Process.Start(new ProcessStartInfo
+            {
+                FileName = "bash",
+                Arguments = scriptPath,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false
+            });
+
+            if (process == null)
+                return false;
+
+            process.WaitForExit(TimeSpan.FromSeconds(120));
+            return process.ExitCode == 0 && CyberChefAssetsExist();
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static string? FindDownloadScript()
+    {
+        var dir = new DirectoryInfo(AppContext.BaseDirectory);
+        while (dir is not null)
+        {
+            var candidate = Path.Combine(dir.FullName, "scripts", "download-cyberchef.sh");
+            if (File.Exists(candidate))
+                return candidate;
+            dir = dir.Parent;
+        }
+        return null;
     }
 
     [Fact]
@@ -82,7 +128,7 @@ public class CyberChefPageTests
     [SkippableFact]
     public async Task CyberChefPage_LoadsCyberChefContent_WhenEnabled()
     {
-        Skip.If(!CyberChefAssetsExist(), "CyberChef assets not available (run scripts/download-cyberchef.sh)");
+        Skip.If(!EnsureCyberChefAssets(), "CyberChef assets could not be downloaded (network unavailable or download failed)");
 
         var page = await _fixture.CreatePageAsync();
 
