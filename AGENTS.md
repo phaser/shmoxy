@@ -96,6 +96,30 @@ Integration tests must reuse the same host initialization logic as `Program.cs` 
 * **Override via DI:** For tests that need mocks or替代 services, use the shared class and override specific services in the DI container rather than duplicating host setup.
 * **Minimal test-specific code:** Test initialization should only create test-specific resources (e.g., temp directories, sockets) and call the shared host builder.
 
+## Debugging with Saved Sessions
+
+When investigating bugs, check for saved inspection sessions in the SQLite database at `~/Library/Application Support/shmoxy-api/proxies.db`. The database contains:
+
+- **`InspectionSessions`** — session metadata (name, timestamps, row count)
+- **`InspectionSessionRows`** — captured HTTP request/response pairs (method, URL, status code, headers, body, duration)
+- **`InspectionSessionLogEntries`** — application logs associated with each session (timestamp, level, category, message)
+
+The user may reference a session by name (e.g. "check session bugnew"). Query it with:
+
+```bash
+# Find a session by name
+sqlite3 "$HOME/Library/Application Support/shmoxy-api/proxies.db" \
+  "SELECT Id, Name, RowCount, CreatedAt FROM InspectionSessions WHERE Name LIKE '%bugnew%';"
+
+# Get rows for a session (requests with no status code indicate upstream failures)
+sqlite3 "$HOME/Library/Application Support/shmoxy-api/proxies.db" \
+  "SELECT Method, Url, StatusCode, DurationMs FROM InspectionSessionRows WHERE SessionId='<id>' ORDER BY Timestamp;"
+
+# Get associated application logs
+sqlite3 "$HOME/Library/Application Support/shmoxy-api/proxies.db" \
+  "SELECT Timestamp, Level, Category, Message FROM InspectionSessionLogEntries WHERE SessionId='<id>' ORDER BY Timestamp;"
+```
+
 ## Test Verification
 
 After any code change, run all tests to verify correctness:

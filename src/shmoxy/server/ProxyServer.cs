@@ -811,6 +811,15 @@ public class ProxyServer : IDisposable
                             CorrelationId = correlationId
                         };
                         await _interceptor.OnResponseAsync(interceptedResponse);
+
+                        // Check if response looks like a WAF/CDN block (e.g. Cloudflare
+                        // returning HTML when the client expected JSON). This indicates
+                        // the host is rejecting the proxy's TLS fingerprint.
+                        if (LooksLikeTlsFingerprintBlock(respStatusCode, respHeaders, result.Headers))
+                        {
+                            ActivatePassthroughOnFailure(host,
+                                $"Response looks like TLS fingerprint block ({respStatusCode} {GetHeaderValue(respHeaders, "Server")} returning {GetHeaderValue(respHeaders, "Content-Type")})");
+                        }
                     }
                     else
                     {
@@ -843,6 +852,56 @@ public class ProxyServer : IDisposable
         var stream = client.GetStream();
         await stream.WriteAsync(bytes, 0, bytes.Length);
         await stream.FlushAsync();
+    }
+
+    /// <summary>
+    /// Detects responses that look like a WAF or CDN blocking the request due to
+    /// TLS fingerprint mismatch (e.g. Cloudflare returning HTML instead of JSON).
+    /// </summary>
+    internal static bool LooksLikeTlsFingerprintBlock(
+        int statusCode,
+        Dictionary<string, string> responseHeaders,
+        Dictionary<string, string> requestHeaders)
+    {
+        // Only check 400 and 403 — the typical WAF block status codes
+        if (statusCode is not (400 or 403))
+            return false;
+
+        var server = GetHeaderValue(responseHeaders, "Server");
+        var contentType = GetHeaderValue(responseHeaders, "Content-Type");
+
+        var isFromCdn = server.Contains("cloudflare", StringComparison.OrdinalIgnoreCase)
+            || responseHeaders.ContainsKey("CF-RAY")
+            || responseHeaders.ContainsKey("cf-ray")
+            || server.Contains("akamai", StringComparison.OrdinalIgnoreCase)
+            || server.Contains("awselb", StringComparison.OrdinalIgnoreCase);
+
+        if (!isFromCdn)
+            return false;
+
+        var responseIsHtml = contentType.Contains("text/html", StringComparison.OrdinalIgnoreCase);
+        if (!responseIsHtml)
+            return false;
+
+        // HTML from a CDN on a 400/403 is suspicious on its own,
+        // but especially when the client expected JSON
+        var accept = GetHeaderValue(requestHeaders, "Accept");
+        if (accept.Contains("application/json", StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        // Also flag POST requests getting HTML back — likely API calls
+        // (the request method isn't in the headers dict, but a 403 HTML from Cloudflare
+        // is strong enough signal regardless)
+        if (statusCode == 403)
+            return true;
+
+        // 400 + HTML from Cloudflare without JSON accept — still likely a block
+        return true;
+    }
+
+    private static string GetHeaderValue(Dictionary<string, string> headers, string key)
+    {
+        return headers.TryGetValue(key, out var value) ? value : string.Empty;
     }
 
     /// <summary>
