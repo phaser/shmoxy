@@ -35,7 +35,7 @@ public class ProxyConfigPageTests
     }
 
     [Fact]
-    public async Task ProxyConfigPage_SaveFailsWhenProxyStopped()
+    public async Task ProxyConfigPage_SaveDisabledWhenProxyStopped()
     {
         var page = await _fixture.CreatePageAsync();
         await page.GotoAsync($"{_fixture.BaseUrl}/proxy-config", new PageGotoOptions
@@ -46,14 +46,11 @@ public class ProxyConfigPageTests
 
         await page.WaitForTimeoutAsync(5000);
 
-        var saveButton = page.GetByText("Save Configuration");
-        await saveButton.ClickAsync();
-        await page.WaitForTimeoutAsync(1000);
-
-        var message = page.Locator(".message.error");
-        await message.WaitForAsync(new LocatorWaitForOptions { Timeout = 5000 });
-        var messageText = await message.InnerTextAsync();
-        Assert.Contains("Start the proxy", messageText);
+        // The Save Configuration button should be disabled when the proxy is stopped
+        var saveButton = page.Locator("fluent-button:has-text('Save Configuration')");
+        await saveButton.WaitForAsync(new LocatorWaitForOptions { Timeout = 5000 });
+        var isDisabled = await saveButton.GetAttributeAsync("disabled");
+        Assert.NotNull(isDisabled);
     }
 
     [Fact]
