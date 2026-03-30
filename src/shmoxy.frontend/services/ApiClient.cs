@@ -171,9 +171,9 @@ public class ApiClient(HttpClient httpClient)
         return await response.Content.ReadFromJsonAsync<List<SessionSummary>>() ?? [];
     }
 
-    public async Task<SessionSummary> CreateSessionAsync(string name, List<SessionRowData> rows)
+    public async Task<SessionSummary> CreateSessionAsync(string name, List<SessionRowData> rows, List<SessionLogEntryData>? logEntries = null)
     {
-        var response = await _httpClient.PostAsJsonAsync("/api/sessions", new { Name = name, Rows = rows });
+        var response = await _httpClient.PostAsJsonAsync("/api/sessions", new { Name = name, Rows = rows, LogEntries = logEntries });
         await EnsureSuccessOrThrowWithBody(response);
         return await response.Content.ReadFromJsonAsync<SessionSummary>()
             ?? throw new HttpRequestException("Failed to create session");
@@ -198,6 +198,20 @@ public class ApiClient(HttpClient httpClient)
     {
         var response = await _httpClient.DeleteAsync($"/api/sessions/{sessionId}");
         await EnsureSuccessOrThrowWithBody(response);
+    }
+
+    public async Task<List<SessionLogEntryData>> DrainSessionLogAsync()
+    {
+        var response = await _httpClient.PostAsync("/api/proxies/local/session-log/drain", null);
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<List<SessionLogEntryData>>() ?? [];
+    }
+
+    public async Task<List<SessionLogEntryData>> GetSessionLogsAsync(string sessionId)
+    {
+        var response = await _httpClient.GetAsync($"/api/sessions/{sessionId}/logs");
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<List<SessionLogEntryData>>() ?? [];
     }
 
     public async IAsyncEnumerable<InspectionEventDto> StreamInspectionEventsAsync(

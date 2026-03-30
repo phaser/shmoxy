@@ -27,7 +27,8 @@ public class SessionsController : ControllerBase
             return BadRequest(new { Message = "Session name is required" });
 
         var rows = request.Rows.Select(ToEntity).ToList();
-        var session = await _sessionRepository.CreateSessionAsync(request.Name.Trim(), rows, ct);
+        var logEntries = request.LogEntries?.Select(ToLogEntity).ToList() ?? new List<InspectionSessionLogEntry>();
+        var session = await _sessionRepository.CreateSessionAsync(request.Name.Trim(), rows, logEntries, ct);
 
         return CreatedAtAction(nameof(GetSession), new { id = session.Id }, ToResponse(session));
     }
@@ -66,6 +67,17 @@ public class SessionsController : ControllerBase
 
         var updated = await _sessionRepository.GetSessionAsync(id, ct);
         return Ok(ToResponse(updated!));
+    }
+
+    [HttpGet("{id}/logs")]
+    public async Task<ActionResult<List<SessionLogEntryDto>>> GetSessionLogs(string id, CancellationToken ct)
+    {
+        var session = await _sessionRepository.GetSessionAsync(id, ct);
+        if (session is null)
+            return NotFound(new { Message = $"Session '{id}' not found" });
+
+        var entries = await _sessionRepository.LoadLogEntriesAsync(id, ct);
+        return Ok(entries.Select(ToLogDto).ToList());
     }
 
     [HttpDelete("{id}")]
@@ -127,4 +139,20 @@ public class SessionsController : ControllerBase
             return null;
         return JsonSerializer.Deserialize<Dictionary<string, string>>(json);
     }
+
+    private static InspectionSessionLogEntry ToLogEntity(SessionLogEntryDto dto) => new()
+    {
+        Timestamp = dto.Timestamp,
+        Level = dto.Level,
+        Category = dto.Category,
+        Message = dto.Message
+    };
+
+    private static SessionLogEntryDto ToLogDto(InspectionSessionLogEntry entry) => new()
+    {
+        Timestamp = entry.Timestamp,
+        Level = entry.Level,
+        Category = entry.Category,
+        Message = entry.Message
+    };
 }

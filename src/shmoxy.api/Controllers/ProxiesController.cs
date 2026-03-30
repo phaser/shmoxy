@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
 using shmoxy.api.models;
 using shmoxy.api.server;
+using shmoxy.shared.ipc;
 
 namespace shmoxy.api.Controllers;
 
@@ -98,6 +99,29 @@ public class ProxiesController : ControllerBase
         {
             _logger.LogError(ex, "Error restarting proxy");
             return StatusCode(500, new { Message = "Failed to restart proxy", Error = ex.Message });
+        }
+    }
+
+    /// <summary>
+    /// Drain the session log buffer from the proxy. Returns all buffered entries and clears the buffer.
+    /// </summary>
+    [HttpPost("session-log/drain")]
+    public async Task<ActionResult<IReadOnlyList<SessionLogEntry>>> DrainSessionLog(CancellationToken ct)
+    {
+        var state = await _processManager.GetStateAsync();
+        if (state?.State != ProxyProcessState.Running)
+            return Ok(Array.Empty<SessionLogEntry>());
+
+        try
+        {
+            var client = _processManager.GetIpcClient();
+            var entries = await client.DrainSessionLogAsync(ct);
+            return Ok(entries);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to drain session log from proxy");
+            return Ok(Array.Empty<SessionLogEntry>());
         }
     }
 }

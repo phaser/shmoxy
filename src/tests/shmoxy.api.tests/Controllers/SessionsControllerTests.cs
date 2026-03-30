@@ -33,7 +33,7 @@ public class SessionsControllerTests
     {
         var session = new InspectionSession { Id = "abc", Name = "Test", RowCount = 1 };
         _mockRepo.Setup(r => r.CreateSessionAsync(
-            It.IsAny<string>(), It.IsAny<List<InspectionSessionRow>>(), It.IsAny<CancellationToken>()))
+            It.IsAny<string>(), It.IsAny<List<InspectionSessionRow>>(), It.IsAny<List<InspectionSessionLogEntry>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(session);
 
         var request = new CreateSessionRequest
@@ -152,14 +152,14 @@ public class SessionsControllerTests
     {
         var session = new InspectionSession { Id = "abc", Name = "Trimmed", RowCount = 0 };
         _mockRepo.Setup(r => r.CreateSessionAsync(
-            "Trimmed", It.IsAny<List<InspectionSessionRow>>(), It.IsAny<CancellationToken>()))
+            "Trimmed", It.IsAny<List<InspectionSessionRow>>(), It.IsAny<List<InspectionSessionLogEntry>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(session);
 
         var request = new CreateSessionRequest { Name = "  Trimmed  ", Rows = [] };
         var result = await _controller.CreateSession(request, CancellationToken.None);
 
         _mockRepo.Verify(r => r.CreateSessionAsync(
-            "Trimmed", It.IsAny<List<InspectionSessionRow>>(), It.IsAny<CancellationToken>()), Times.Once);
+            "Trimmed", It.IsAny<List<InspectionSessionRow>>(), It.IsAny<List<InspectionSessionLogEntry>>(), It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]

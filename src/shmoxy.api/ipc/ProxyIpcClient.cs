@@ -291,6 +291,19 @@ public class ProxyIpcClient : IProxyIpcClient, IDisposable
         }, ct);
     }
 
+    public async Task<IReadOnlyList<SessionLogEntry>> DrainSessionLogAsync(CancellationToken ct = default)
+    {
+        return await RetryAsync(async () =>
+        {
+            using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            cts.CancelAfter(IpcTimeouts.Medium);
+            var response = await _httpClient.PostAsync("/ipc/session-log/drain", null, cts.Token);
+            response.EnsureSuccessStatusCode();
+            return await response.Content.ReadFromJsonAsync<IReadOnlyList<SessionLogEntry>>(_jsonOptions, cts.Token)
+                ?? Array.Empty<SessionLogEntry>();
+        }, ct);
+    }
+
     public async Task<bool> IsHealthyAsync(CancellationToken ct = default)
     {
         try

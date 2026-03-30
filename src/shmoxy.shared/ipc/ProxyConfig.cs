@@ -46,6 +46,13 @@ public class ProxyConfig
     public int TempPassthroughTimeoutSeconds { get; set; } = 30;
 
     /// <summary>
+    /// When enabled, captures internal proxy activity (hook events, detector triggers,
+    /// errors) in a log buffer that is persisted alongside saved sessions.
+    /// Disabled by default to avoid overhead when not needed.
+    /// </summary>
+    public bool SessionLoggingEnabled { get; set; }
+
+    /// <summary>
     /// Logging levels.
     /// </summary>
     public enum LogLevelEnum

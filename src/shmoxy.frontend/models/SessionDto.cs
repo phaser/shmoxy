@@ -21,3 +21,11 @@ public class SessionRowData
     public string? RequestBody { get; set; }
     public string? ResponseBody { get; set; }
 }
+
+public class SessionLogEntryData
+{
+    public DateTime Timestamp { get; set; }
+    public string Level { get; set; } = "Info";
+    public string Category { get; set; } = string.Empty;
+    public string Message { get; set; } = string.Empty;
+}

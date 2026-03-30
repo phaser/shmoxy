@@ -28,6 +28,10 @@
             <FluentTextField Label="Certificate Path (optional)" Placeholder="/path/to/cert.pem" @bind-Value="config.CertPath" />
 
             <FluentTextField Label="Key Path (optional)" Placeholder="/path/to/key.pem" @bind-Value="config.KeyPath" />
+
+            <FluentSwitch @bind-Value="config.SessionLoggingEnabled" Label="Session Logging">
+                @(config.SessionLoggingEnabled ? "Enabled" : "Disabled")
+            </FluentSwitch>
         </div>
 
         <div class="card-footer">

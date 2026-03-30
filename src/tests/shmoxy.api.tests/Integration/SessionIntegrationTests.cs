@@ -48,7 +48,7 @@ public class SessionIntegrationTests : IClassFixture<WebApplicationFactory<Progr
         // Arrange - mock repo to return a valid session
         var mockRepo = new Mock<ISessionRepository>();
         mockRepo.Setup(r => r.CreateSessionAsync(
-            It.IsAny<string>(), It.IsAny<List<InspectionSessionRow>>(), It.IsAny<CancellationToken>()))
+            It.IsAny<string>(), It.IsAny<List<InspectionSessionRow>>(), It.IsAny<List<InspectionSessionLogEntry>>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new InspectionSession { Id = "large-1", Name = "Large Session", RowCount = 35 });
 
         var factory = CreateFactoryWithMockRepo(mockRepo);

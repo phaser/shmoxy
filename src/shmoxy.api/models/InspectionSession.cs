@@ -9,4 +9,5 @@ public class InspectionSession
     public int RowCount { get; set; }
 
     public List<InspectionSessionRow> Rows { get; set; } = new();
+    public List<InspectionSessionLogEntry> LogEntries { get; set; } = new();
 }

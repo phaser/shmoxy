@@ -4,6 +4,7 @@ public class CreateSessionRequest
 {
     public string Name { get; set; } = string.Empty;
     public List<SessionRowDto> Rows { get; set; } = new();
+    public List<SessionLogEntryDto>? LogEntries { get; set; }
 }
 
 public class SessionResponse
@@ -31,4 +32,12 @@ public class SessionRowDto
 public class UpdateSessionRequest
 {
     public List<SessionRowDto> Rows { get; set; } = new();
+}
+
+public class SessionLogEntryDto
+{
+    public DateTime Timestamp { get; set; }
+    public string Level { get; set; } = "Info";
+    public string Category { get; set; } = string.Empty;
+    public string Message { get; set; } = string.Empty;
 }
