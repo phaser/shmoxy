@@ -61,6 +61,11 @@ public static class ShmoxyHost
         services.Configure<ProxyConfig>(context.Configuration.GetSection("ProxyConfig"));
         services.Configure<IpcOptions>(context.Configuration.GetSection("IpcOptions"));
 
+        services.AddSingleton<SessionLogBuffer>(sp =>
+        {
+            var config = sp.GetRequiredService<IOptions<ProxyConfig>>().Value;
+            return new SessionLogBuffer { Enabled = config.SessionLoggingEnabled };
+        });
         services.AddSingleton<InspectionHook>();
         services.AddSingleton<TemporaryPassthroughService>(sp =>
         {
@@ -82,11 +87,19 @@ public static class ShmoxyHost
 
             // Wire detector triggers to temporary passthrough
             var tempService = sp.GetRequiredService<TemporaryPassthroughService>();
+            var logBuffer = sp.GetRequiredService<SessionLogBuffer>();
             hook.OnDetectorTriggered = (host, detectorId, reason) =>
+            {
                 tempService.Activate(host, detectorId, reason);
+                logBuffer.Info("Detector", $"Detector '{detectorId}' triggered for {host}: {reason}");
+            };
 
             // Wire expiration back to clear the dedup set so re-detection can occur
-            tempService.OnExpired += hook.ClearSuggestedHost;
+            tempService.OnExpired += host =>
+            {
+                hook.ClearSuggestedHost(host);
+                logBuffer.Info("Passthrough", $"Temporary passthrough expired for {host}");
+            };
 
             return hook;
         });
@@ -113,7 +126,8 @@ public static class ShmoxyHost
             var inspectionHook = sp.GetRequiredService<InspectionHook>();
             var detectorHook = sp.GetRequiredService<PassthroughDetectorHook>();
             var tempPassthrough = sp.GetRequiredService<TemporaryPassthroughService>();
-            return new ProxyStateService(proxy, inspectionHook, detectorHook, tempPassthrough);
+            var logBuffer = sp.GetRequiredService<SessionLogBuffer>();
+            return new ProxyStateService(proxy, inspectionHook, detectorHook, tempPassthrough, logBuffer);
         });
 
         services.AddHostedService<ProxyHostedService>();

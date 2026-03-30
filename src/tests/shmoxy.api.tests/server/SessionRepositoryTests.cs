@@ -181,6 +181,84 @@ public class SessionRepositoryTests : IDisposable
         // No exception thrown
     }
 
+    [Fact]
+    public async Task CreateSessionAsync_WithLogEntries_PersistsLogs()
+    {
+        var rows = new List<InspectionSessionRow>
+        {
+            new() { Method = "GET", Url = "https://example.com", Timestamp = DateTime.UtcNow }
+        };
+        var logEntries = new List<InspectionSessionLogEntry>
+        {
+            new() { Timestamp = DateTime.UtcNow, Level = "Info", Category = "Detector", Message = "Triggered for example.com" },
+            new() { Timestamp = DateTime.UtcNow, Level = "Warn", Category = "Passthrough", Message = "Expired" }
+        };
+
+        var session = await _repository.CreateSessionAsync("With Logs", rows, logEntries);
+
+        var loaded = await _repository.LoadLogEntriesAsync(session.Id);
+        Assert.Equal(2, loaded.Count);
+        Assert.Equal("Detector", loaded[0].Category);
+        Assert.Equal("Passthrough", loaded[1].Category);
+        Assert.All(loaded, e => Assert.Equal(session.Id, e.SessionId));
+    }
+
+    [Fact]
+    public async Task LoadLogEntriesAsync_ReturnsOrderedByTimestamp()
+    {
+        var session = new InspectionSession { Name = "Log Test" };
+        var later = new InspectionSessionLogEntry
+        {
+            SessionId = session.Id,
+            Timestamp = DateTime.UtcNow.AddSeconds(1),
+            Level = "Info",
+            Category = "Test",
+            Message = "Second"
+        };
+        var earlier = new InspectionSessionLogEntry
+        {
+            SessionId = session.Id,
+            Timestamp = DateTime.UtcNow,
+            Level = "Info",
+            Category = "Test",
+            Message = "First"
+        };
+
+        _dbContext.InspectionSessions.Add(session);
+        _dbContext.InspectionSessionLogEntries.AddRange(later, earlier);
+        await _dbContext.SaveChangesAsync();
+
+        var entries = await _repository.LoadLogEntriesAsync(session.Id);
+        Assert.Equal(2, entries.Count);
+        Assert.Equal("First", entries[0].Message);
+        Assert.Equal("Second", entries[1].Message);
+    }
+
+    [Fact]
+    public async Task LoadLogEntriesAsync_ReturnsEmptyForMissingSession()
+    {
+        var entries = await _repository.LoadLogEntriesAsync("nonexistent");
+        Assert.Empty(entries);
+    }
+
+    [Fact]
+    public async Task DeleteSessionAsync_AlsoDeletesLogEntries()
+    {
+        var rows = new List<InspectionSessionRow>
+        {
+            new() { Method = "GET", Url = "https://example.com", Timestamp = DateTime.UtcNow }
+        };
+        var logEntries = new List<InspectionSessionLogEntry>
+        {
+            new() { Timestamp = DateTime.UtcNow, Level = "Info", Category = "Test", Message = "Entry" }
+        };
+
+        var session = await _repository.CreateSessionAsync("To Delete", rows, logEntries);
+        await _repository.DeleteSessionAsync(session.Id);
+
+        Assert.Equal(0, await _dbContext.InspectionSessionLogEntries.CountAsync());
+    }
+
     public void Dispose()
     {
         _dbContext.Dispose();

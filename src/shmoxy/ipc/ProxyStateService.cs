@@ -12,18 +12,21 @@ public class ProxyStateService
     private readonly InspectionHook? _inspectionHook;
     private readonly PassthroughDetectorHook? _detectorHook;
     private readonly TemporaryPassthroughService? _tempPassthrough;
+    private readonly SessionLogBuffer? _sessionLogBuffer;
     private readonly DateTime _startTime;
 
     public ProxyStateService(
         ProxyServer proxy,
         InspectionHook? inspectionHook = null,
         PassthroughDetectorHook? detectorHook = null,
-        TemporaryPassthroughService? tempPassthrough = null)
+        TemporaryPassthroughService? tempPassthrough = null,
+        SessionLogBuffer? sessionLogBuffer = null)
     {
         _proxy = proxy ?? throw new ArgumentNullException(nameof(proxy));
         _inspectionHook = inspectionHook;
         _detectorHook = detectorHook;
         _tempPassthrough = tempPassthrough;
+        _sessionLogBuffer = sessionLogBuffer;
         _startTime = DateTime.UtcNow;
     }
 
@@ -35,6 +38,7 @@ public class ProxyStateService
     public InspectionHook? InspectionHook => _inspectionHook;
     public PassthroughDetectorHook? DetectorHook => _detectorHook;
     public TemporaryPassthroughService? TempPassthrough => _tempPassthrough;
+    public SessionLogBuffer? SessionLogBuffer => _sessionLogBuffer;
 
     public bool EnableInspection()
     {

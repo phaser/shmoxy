@@ -12,6 +12,7 @@ public class FrontendProxyConfig
     public List<string> EnabledDetectors { get; set; } = ["cloudflare", "waf", "oauth"];
     public int TempPassthroughMaxConnections { get; set; } = 2;
     public int TempPassthroughTimeoutSeconds { get; set; } = 30;
+    public bool SessionLoggingEnabled { get; set; }
 
     public static FrontendProxyConfig Default => new();
 }

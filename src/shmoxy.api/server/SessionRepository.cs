@@ -15,6 +15,11 @@ public class SessionRepository : ISessionRepository
 
     public async Task<InspectionSession> CreateSessionAsync(string name, List<InspectionSessionRow> rows, CancellationToken ct = default)
     {
+        return await CreateSessionAsync(name, rows, new List<InspectionSessionLogEntry>(), ct);
+    }
+
+    public async Task<InspectionSession> CreateSessionAsync(string name, List<InspectionSessionRow> rows, List<InspectionSessionLogEntry> logEntries, CancellationToken ct = default)
+    {
         var session = new InspectionSession
         {
             Name = name,
@@ -24,12 +29,15 @@ public class SessionRepository : ISessionRepository
         };
 
         foreach (var row in rows)
-        {
             row.SessionId = session.Id;
-        }
+
+        foreach (var entry in logEntries)
+            entry.SessionId = session.Id;
 
         _dbContext.InspectionSessions.Add(session);
         _dbContext.InspectionSessionRows.AddRange(rows);
+        if (logEntries.Count > 0)
+            _dbContext.InspectionSessionLogEntries.AddRange(logEntries);
         await _dbContext.SaveChangesAsync(ct);
 
         return session;
@@ -52,6 +60,14 @@ public class SessionRepository : ISessionRepository
         return await _dbContext.InspectionSessionRows
             .Where(r => r.SessionId == sessionId)
             .OrderBy(r => r.Timestamp)
+            .ToListAsync(ct);
+    }
+
+    public async Task<List<InspectionSessionLogEntry>> LoadLogEntriesAsync(string sessionId, CancellationToken ct = default)
+    {
+        return await _dbContext.InspectionSessionLogEntries
+            .Where(e => e.SessionId == sessionId)
+            .OrderBy(e => e.Timestamp)
             .ToListAsync(ct);
     }
 

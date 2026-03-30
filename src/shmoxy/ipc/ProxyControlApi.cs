@@ -56,6 +56,11 @@ public static class ProxyControlApi
             config.TempPassthroughMaxConnections = newConfig.TempPassthroughMaxConnections;
             config.TempPassthroughTimeoutSeconds = newConfig.TempPassthroughTimeoutSeconds;
 
+            // Sync session logging setting
+            config.SessionLoggingEnabled = newConfig.SessionLoggingEnabled;
+            if (stateService.SessionLogBuffer != null)
+                stateService.SessionLogBuffer.Enabled = config.SessionLoggingEnabled;
+
             // Sync enabled detectors
             config.EnabledDetectors = newConfig.EnabledDetectors;
             if (stateService.DetectorHook != null)
@@ -307,6 +312,22 @@ public static class ProxyControlApi
                 Success = success,
                 Message = success ? "Inspection disabled" : "Inspection not available"
             });
+        });
+
+        endpoints.MapGet("/ipc/session-log", () =>
+        {
+            if (stateService.SessionLogBuffer == null)
+                return Results.Json(Array.Empty<SessionLogEntry>());
+
+            return Results.Json(stateService.SessionLogBuffer.Snapshot());
+        });
+
+        endpoints.MapPost("/ipc/session-log/drain", () =>
+        {
+            if (stateService.SessionLogBuffer == null)
+                return Results.Json(Array.Empty<SessionLogEntry>());
+
+            return Results.Json(stateService.SessionLogBuffer.Drain());
         });
 
         return endpoints;

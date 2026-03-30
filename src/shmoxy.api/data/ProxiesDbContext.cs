@@ -13,6 +13,7 @@ public class ProxiesDbContext : DbContext
     public DbSet<RemoteProxy> RemoteProxies => Set<RemoteProxy>();
     public DbSet<InspectionSession> InspectionSessions => Set<InspectionSession>();
     public DbSet<InspectionSessionRow> InspectionSessionRows => Set<InspectionSessionRow>();
+    public DbSet<InspectionSessionLogEntry> InspectionSessionLogEntries => Set<InspectionSessionLogEntry>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -36,6 +37,10 @@ public class ProxiesDbContext : DbContext
                 .WithOne(r => r.Session)
                 .HasForeignKey(r => r.SessionId)
                 .OnDelete(DeleteBehavior.Cascade);
+            entity.HasMany(e => e.LogEntries)
+                .WithOne(l => l.Session)
+                .HasForeignKey(l => l.SessionId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.Entity<InspectionSessionRow>(entity =>
@@ -44,6 +49,15 @@ public class ProxiesDbContext : DbContext
             entity.HasIndex(e => e.SessionId);
             entity.Property(e => e.Method).IsRequired().HasMaxLength(16);
             entity.Property(e => e.Url).IsRequired();
+        });
+
+        modelBuilder.Entity<InspectionSessionLogEntry>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => e.SessionId);
+            entity.Property(e => e.Level).IsRequired().HasMaxLength(16);
+            entity.Property(e => e.Category).IsRequired().HasMaxLength(128);
+            entity.Property(e => e.Message).IsRequired();
         });
     }
 }
