@@ -13,6 +13,19 @@ public class CyberChefPageTests
         _fixture = fixture;
     }
 
+    private static bool CyberChefAssetsExist()
+    {
+        var dir = new DirectoryInfo(AppContext.BaseDirectory);
+        while (dir is not null)
+        {
+            var candidate = Path.Combine(dir.FullName, "shmoxy.frontend", "wwwroot", "cyberchef", "CyberChef.html");
+            if (File.Exists(candidate))
+                return true;
+            dir = dir.Parent;
+        }
+        return false;
+    }
+
     [Fact]
     public async Task CyberChefPage_ShowsDisabledMessage_WhenNotEnabled()
     {
@@ -66,9 +79,11 @@ public class CyberChefPageTests
         await page.EvaluateAsync("() => localStorage.removeItem('shmoxy-enable-cyberchef')");
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task CyberChefPage_LoadsCyberChefContent_WhenEnabled()
     {
+        Skip.If(!CyberChefAssetsExist(), "CyberChef assets not available (run scripts/download-cyberchef.sh)");
+
         var page = await _fixture.CreatePageAsync();
 
         // Enable CyberChef via localStorage before navigating
