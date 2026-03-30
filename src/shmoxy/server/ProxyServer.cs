@@ -770,20 +770,61 @@ public class ProxyServer : IDisposable
 
                     await targetStream.FlushAsync();
 
-                    // Read response and stream it back to the client as chunks arrive,
-                    // rather than buffering the entire response in memory first.
+                    // Read the first chunk which contains the HTTP status line and
+                    // headers. Check for WAF/CDN blocks before forwarding to the
+                    // client. If blocked, suppress the response and close — the
+                    // client retries with a new CONNECT that goes via passthrough.
                     using var ms = new MemoryStream();
                     var responseBuf = new byte[8192];
                     int responseRead;
                     using var readCts = new CancellationTokenSource(UpstreamReadTimeoutMs);
+
+                    // Read first chunk (contains headers)
+                    try
+                    {
+                        responseRead = await targetStream.ReadAsync(responseBuf, 0, responseBuf.Length, readCts.Token);
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        responseRead = 0;
+                    }
+                    catch (IOException)
+                    {
+                        responseRead = 0;
+                    }
+
+                    if (responseRead == 0)
+                    {
+                        // Upstream returned no data — activate temporary passthrough
+                        ActivatePassthroughOnFailure(host, "Upstream returned empty response");
+                        break;
+                    }
+
+                    // Parse the first chunk to check status line and headers
+                    var firstChunkHeaders = Encoding.ASCII.GetString(responseBuf, 0, Math.Min(responseRead, 4096));
+                    var (quickStatusCode, quickHeaders) = ParseResponseStatusAndHeaders(firstChunkHeaders);
+
+                    if (LooksLikeTlsFingerprintBlock(quickStatusCode, quickHeaders, result.Headers))
+                    {
+                        ActivatePassthroughOnFailure(host,
+                            $"Response looks like TLS fingerprint block ({quickStatusCode} {GetHeaderValue(quickHeaders, "Server")} returning {GetHeaderValue(quickHeaders, "Content-Type")})");
+
+                        // Don't forward the blocked response — just close
+                        Log(ProxyConfig.LogLevelEnum.Info,
+                            $"Suppressing blocked response for {host}:{port}{result.Path}, client will retry via passthrough");
+                        break;
+                    }
+
+                    // Not blocked — forward the first chunk and stream the rest
+                    await clientStream.WriteAsync(responseBuf, 0, responseRead);
+                    ms.Write(responseBuf, 0, responseRead);
+
                     try
                     {
                         while ((responseRead = await targetStream.ReadAsync(responseBuf, 0, responseBuf.Length, readCts.Token)) > 0)
                         {
                             await clientStream.WriteAsync(responseBuf, 0, responseRead);
                             ms.Write(responseBuf, 0, responseRead);
-
-                            // Reset the idle timeout after each successful read
                             readCts.CancelAfter(UpstreamReadTimeoutMs);
                         }
                     }
@@ -798,7 +839,7 @@ public class ProxyServer : IDisposable
 
                     await clientStream.FlushAsync();
 
-                    // Parse status code, headers, and body for intercept hook
+                    // Parse full response for intercept hook
                     var responseBytes = ms.ToArray();
                     if (responseBytes.Length > 0)
                     {
@@ -813,10 +854,8 @@ public class ProxyServer : IDisposable
                         };
                         await _interceptor.OnResponseAsync(interceptedResponse);
 
-                        // Track hosts that have had at least one successful MITM response.
-                        // A successful response means the host works through MITM, so a
-                        // subsequent Cloudflare block on one endpoint shouldn't push the
-                        // entire domain into passthrough.
+                        // Track successful MITM hosts so we don't accidentally
+                        // push them into passthrough later
                         if (respStatusCode is >= 200 and < 400)
                         {
                             lock (_lock)
@@ -824,21 +863,6 @@ public class ProxyServer : IDisposable
                                 _successfulMitmHosts.Add(host);
                             }
                         }
-
-                        // Check if response looks like a WAF/CDN block (e.g. Cloudflare
-                        // returning HTML when the client expected JSON). This indicates
-                        // the host is rejecting the proxy's TLS fingerprint — but only
-                        // if the host has never succeeded through MITM before.
-                        if (LooksLikeTlsFingerprintBlock(respStatusCode, respHeaders, result.Headers))
-                        {
-                            ActivatePassthroughOnFailure(host,
-                                $"Response looks like TLS fingerprint block ({respStatusCode} {GetHeaderValue(respHeaders, "Server")} returning {GetHeaderValue(respHeaders, "Content-Type")})");
-                        }
-                    }
-                    else
-                    {
-                        // Upstream returned no data — activate temporary passthrough
-                        ActivatePassthroughOnFailure(host, "Upstream returned empty response");
                     }
                 }
             }
@@ -911,6 +935,35 @@ public class ProxyServer : IDisposable
 
         // 400 + HTML from Cloudflare without JSON accept — still likely a block
         return true;
+    }
+
+    /// <summary>
+    /// Quickly parses the status code and headers from the first chunk of an HTTP response.
+    /// Does not parse the body.
+    /// </summary>
+    private static (int StatusCode, Dictionary<string, string> Headers) ParseResponseStatusAndHeaders(string headerText)
+    {
+        var lines = headerText.Split("\r\n");
+        if (lines.Length == 0)
+            return (0, new Dictionary<string, string>());
+
+        var statusParts = lines[0].Split(' ');
+        var statusCode = statusParts.Length >= 2 && int.TryParse(statusParts[1], out var code) ? code : 0;
+
+        var headers = new Dictionary<string, string>();
+        for (var i = 1; i < lines.Length; i++)
+        {
+            if (string.IsNullOrWhiteSpace(lines[i])) break;
+            var colonIndex = lines[i].IndexOf(':');
+            if (colonIndex > 0)
+            {
+                var key = lines[i][..colonIndex].Trim();
+                var value = lines[i][(colonIndex + 1)..].Trim();
+                headers[key] = value;
+            }
+        }
+
+        return (statusCode, headers);
     }
 
     private static string GetHeaderValue(Dictionary<string, string> headers, string key)
