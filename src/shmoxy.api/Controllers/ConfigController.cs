@@ -88,12 +88,13 @@ public class ConfigController : ControllerBase
     private async Task<ProxyConfig> GetLocalConfigAsync(CancellationToken ct)
     {
         var state = await _processManager.GetStateAsync();
-        if (state?.State != ProxyProcessState.Running)
+        if (state?.State == ProxyProcessState.Running)
         {
-            throw new InvalidOperationException("Local proxy must be running to get configuration");
+            return await _processManager.GetIpcClient().GetConfigAsync(ct);
         }
 
-        return await _processManager.GetIpcClient().GetConfigAsync(ct);
+        // When proxy is not running, return persisted config (or defaults)
+        return await _configPersistence.LoadAsync(ct) ?? new ProxyConfig();
     }
 
     private async Task<ProxyConfig> GetRemoteConfigAsync(string proxyId, CancellationToken ct)

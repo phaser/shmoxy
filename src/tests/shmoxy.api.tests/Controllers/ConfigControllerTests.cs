@@ -106,4 +106,37 @@ public class ConfigControllerTests
         var badRequestResult = Assert.IsType<BadRequestObjectResult>(result.Result);
         Assert.NotNull(badRequestResult.Value);
     }
+
+    [Fact]
+    public async Task GetConfig_ProxyNotRunning_ReturnsPersistedConfig()
+    {
+        var persistedConfig = new ProxyConfig { Port = 9999, LogLevel = ProxyConfig.LogLevelEnum.Warn };
+
+        _mockProcessManager.Setup(m => m.GetStateAsync())
+            .ReturnsAsync(new ProxyInstanceState { State = ProxyProcessState.Stopped });
+        _mockConfigPersistence.Setup(m => m.LoadAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(persistedConfig);
+
+        var result = await _controller.GetConfig("local", CancellationToken.None);
+
+        var okResult = Assert.IsType<OkObjectResult>(result.Result);
+        var config = Assert.IsType<ProxyConfig>(okResult.Value);
+        Assert.Equal(9999, config.Port);
+        Assert.Equal(ProxyConfig.LogLevelEnum.Warn, config.LogLevel);
+    }
+
+    [Fact]
+    public async Task GetConfig_ProxyNotRunning_NoPersistedConfig_ReturnsDefaults()
+    {
+        _mockProcessManager.Setup(m => m.GetStateAsync())
+            .ReturnsAsync(new ProxyInstanceState { State = ProxyProcessState.Stopped });
+        _mockConfigPersistence.Setup(m => m.LoadAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync((ProxyConfig?)null);
+
+        var result = await _controller.GetConfig("local", CancellationToken.None);
+
+        var okResult = Assert.IsType<OkObjectResult>(result.Result);
+        var config = Assert.IsType<ProxyConfig>(okResult.Value);
+        Assert.Equal(8080, config.Port); // default
+    }
 }
