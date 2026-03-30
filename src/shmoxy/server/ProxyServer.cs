@@ -707,9 +707,16 @@ public class ProxyServer : IDisposable
             {
                 using var targetClient = new TcpClient();
                 targetClient.ReceiveTimeout = UpstreamReadTimeoutMs;
-                Log(ProxyConfig.LogLevelEnum.Debug, $"Connecting to upstream {host}:{port}");
-                await targetClient.ConnectAsync(host, port);
-                Log(ProxyConfig.LogLevelEnum.Debug, $"TCP connected to {host}:{port}, starting TLS");
+                try
+                {
+                    await targetClient.ConnectAsync(host, port);
+                }
+                catch (Exception connectEx)
+                {
+                    Log(ProxyConfig.LogLevelEnum.Warn,
+                        $"TCP connect failed for {host}:{port}: {connectEx.GetType().Name}: {connectEx.Message}");
+                    throw;
+                }
 
                 Stream targetStream;
                 if (port == 443)
@@ -718,8 +725,16 @@ public class ProxyServer : IDisposable
                         targetClient.GetStream(),
                         false,
                         (_, _, _, _) => true);
-                    await sslTarget.AuthenticateAsClientAsync(host);
-                    Log(ProxyConfig.LogLevelEnum.Debug, $"TLS established to {host}:{port}");
+                    try
+                    {
+                        await sslTarget.AuthenticateAsClientAsync(host);
+                    }
+                    catch (Exception tlsEx)
+                    {
+                        Log(ProxyConfig.LogLevelEnum.Warn,
+                            $"TLS handshake failed for {host}:{port}: {tlsEx.GetType().Name}: {tlsEx.Message}");
+                        throw;
+                    }
                     targetStream = sslTarget;
                 }
                 else
