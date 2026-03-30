@@ -33,7 +33,7 @@ public class ProxyConfig
     /// IDs of passthrough detectors that are enabled (e.g. "cloudflare", "waf", "oauth").
     /// Detectors analyze intercepted responses and suggest domains for passthrough.
     /// </summary>
-    public List<string> EnabledDetectors { get; set; } = new();
+    public List<string> EnabledDetectors { get; set; } = ["cloudflare", "waf", "oauth"];
 
     /// <summary>
     /// Maximum number of CONNECT requests to pass through during a temporary passthrough window.
