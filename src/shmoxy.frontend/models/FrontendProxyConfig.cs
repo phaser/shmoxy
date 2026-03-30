@@ -10,6 +10,8 @@ public class FrontendProxyConfig
     public string CertStoragePath { get; set; } = "";
     public List<string> PassthroughHosts { get; set; } = new();
     public List<string> EnabledDetectors { get; set; } = new();
+    public int TempPassthroughMaxConnections { get; set; } = 2;
+    public int TempPassthroughTimeoutSeconds { get; set; } = 30;
 
     public static FrontendProxyConfig Default => new();
 }

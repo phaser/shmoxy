@@ -23,7 +23,7 @@ public class ApiClient(HttpClient httpClient)
     public async Task SaveProxyConfigAsync(FrontendProxyConfig config)
     {
         var response = await _httpClient.PutAsJsonAsync("/api/proxies/local/config", config);
-        response.EnsureSuccessStatusCode();
+        await EnsureSuccessOrThrowWithBody(response);
     }
 
     public async Task<FrontendProxyStatus> GetProxyStatusAsync()

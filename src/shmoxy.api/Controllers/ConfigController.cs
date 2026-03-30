@@ -63,6 +63,8 @@ public class ConfigController : ControllerBase
     {
         if (!ValidateConfig(config, out var errorMessage))
         {
+            _logger.LogWarning("Config validation failed for proxy {ProxyId}: {Error}. Config: Port={Port}, LogLevel={LogLevel}, MaxConcurrentConnections={MaxConn}",
+                proxyId, errorMessage, config.Port, config.LogLevel, config.MaxConcurrentConnections);
             return BadRequest(new { Message = errorMessage });
         }
 
