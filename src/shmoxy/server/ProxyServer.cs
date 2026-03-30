@@ -567,7 +567,8 @@ public class ProxyServer : IDisposable
             .Where(h => !h.Key.Equals("Host", StringComparison.OrdinalIgnoreCase)
                      && !h.Key.Equals("Connection", StringComparison.OrdinalIgnoreCase)
                      && !h.Key.Equals("Proxy-Connection", StringComparison.OrdinalIgnoreCase)
-                     && !h.Key.Equals("Content-Length", StringComparison.OrdinalIgnoreCase)))
+                     && !h.Key.Equals("Content-Length", StringComparison.OrdinalIgnoreCase)
+                             && !h.Key.Equals("Accept-Encoding", StringComparison.OrdinalIgnoreCase)))
         {
             outgoing.Append($"{header.Key}: {header.Value}\r\n");
         }
@@ -759,7 +760,8 @@ public class ProxyServer : IDisposable
                         .Where(h => !h.Key.Equals("Host", StringComparison.OrdinalIgnoreCase)
                                  && !h.Key.Equals("Connection", StringComparison.OrdinalIgnoreCase)
                                  && !h.Key.Equals("Proxy-Connection", StringComparison.OrdinalIgnoreCase)
-                                 && !h.Key.Equals("Content-Length", StringComparison.OrdinalIgnoreCase)))
+                                 && !h.Key.Equals("Content-Length", StringComparison.OrdinalIgnoreCase)
+                             && !h.Key.Equals("Accept-Encoding", StringComparison.OrdinalIgnoreCase)))
                     {
                         outgoing.Append($"{header.Key}: {header.Value}\r\n");
                     }
