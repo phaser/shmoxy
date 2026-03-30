@@ -733,7 +733,9 @@ public class ProxyServer : IDisposable
 
                     foreach (var header in result.Headers
                         .Where(h => !h.Key.Equals("Host", StringComparison.OrdinalIgnoreCase)
-                                 && !h.Key.Equals("Proxy-Connection", StringComparison.OrdinalIgnoreCase)))
+                                 && !h.Key.Equals("Connection", StringComparison.OrdinalIgnoreCase)
+                                 && !h.Key.Equals("Proxy-Connection", StringComparison.OrdinalIgnoreCase)
+                                 && !h.Key.Equals("Content-Length", StringComparison.OrdinalIgnoreCase)))
                     {
                         outgoing.Append($"{header.Key}: {header.Value}\r\n");
                     }
