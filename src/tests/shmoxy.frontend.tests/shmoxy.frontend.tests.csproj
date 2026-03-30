@@ -21,6 +21,7 @@
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
+    <PackageReference Include="Xunit.SkippableFact" Version="1.5.61" />
   </ItemGroup>
 
   <ItemGroup>
@@ -37,9 +38,7 @@
     <ItemGroup>
       <ProxyFiles Include="../../shmoxy/bin/$(Configuration)/$(TargetFramework)/**/*" />
     </ItemGroup>
-    <Copy SourceFiles="@(ProxyFiles)"
-          DestinationFiles="@(ProxyFiles->'$(OutputPath)%(RecursiveDir)%(Filename)%(Extension)')"
-          SkipUnchangedFiles="true" />
+    <Copy SourceFiles="@(ProxyFiles)" DestinationFiles="@(ProxyFiles->'$(OutputPath)%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" />
   </Target>
 
 </Project>
