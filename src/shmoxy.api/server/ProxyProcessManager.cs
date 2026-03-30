@@ -24,6 +24,7 @@ public class ProxyProcessManager : IProxyProcessManager, IDisposable
     private Task? _healthCheckTask;
     private ProxyIpcClient? _socketIpcClient;
     private HttpClient? _socketHttpClient;
+    private int? _portOverride;
 
     private const int HealthCheckIntervalMs = 100;
     private const int HealthCheckTimeoutMs = 15000;
@@ -89,19 +90,20 @@ public class ProxyProcessManager : IProxyProcessManager, IDisposable
         }
 
         var (fileName, baseArguments) = await ResolveBinaryAsync(_config.Value.ProxyBinaryPath, ct);
+        var port = _portOverride ?? _config.Value.ProxyPort;
 
         UpdateState(new ProxyInstanceState
         {
             Id = _currentState.Id,
             State = ProxyProcessState.Starting,
             SocketPath = _socketPath,
-            Port = _config.Value.ProxyPort,
+            Port = port,
             StartedAt = DateTime.UtcNow
         });
 
         try
         {
-            var proxyArgs = $"-p {_config.Value.ProxyPort} --ipc-socket {_socketPath}";
+            var proxyArgs = $"-p {port} --ipc-socket {_socketPath}";
             var startInfo = new ProcessStartInfo
             {
                 FileName = fileName,
@@ -134,7 +136,7 @@ public class ProxyProcessManager : IProxyProcessManager, IDisposable
                 State = ProxyProcessState.Starting,
                 ProcessId = _process.Id,
                 SocketPath = _socketPath,
-                Port = _config.Value.ProxyPort,
+                Port = port,
                 StartedAt = _currentState.StartedAt
             });
 
@@ -159,7 +161,7 @@ public class ProxyProcessManager : IProxyProcessManager, IDisposable
                     State = ProxyProcessState.Running,
                     ProcessId = _process.Id,
                     SocketPath = _socketPath,
-                    Port = _config.Value.ProxyPort,
+                    Port = port,
                     StartedAt = _currentState.StartedAt,
                     ProxyVersion = proxyVersion
                 });
@@ -180,7 +182,7 @@ public class ProxyProcessManager : IProxyProcessManager, IDisposable
                 Id = _currentState.Id,
                 State = ProxyProcessState.Crashed,
                 SocketPath = _socketPath,
-                Port = _config.Value.ProxyPort,
+                Port = port,
                 StartedAt = _currentState.StartedAt,
                 StoppedAt = DateTime.UtcNow,
                 ExitReason = ex.Message
@@ -285,6 +287,17 @@ public class ProxyProcessManager : IProxyProcessManager, IDisposable
         });
 
         _logger.LogInformation("Proxy process stopped (source: {ShutdownSource}, reason: {ExitReason})", source, exitReason);
+    }
+
+    public async Task<ProxyInstanceState> RestartAsync(int? portOverride = null, CancellationToken ct = default)
+    {
+        _logger.LogInformation("Restarting proxy{PortInfo}", portOverride.HasValue ? $" on port {portOverride.Value}" : "");
+
+        if (portOverride.HasValue)
+            _portOverride = portOverride.Value;
+
+        await StopAsync(ShutdownSource.System, ct);
+        return await StartAsync(ct);
     }
 
     public Task<ProxyInstanceState?> GetStateAsync()

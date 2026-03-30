@@ -46,12 +46,15 @@ public static class ProxyControlApi
 
         endpoints.MapPut("/ipc/config", (ProxyConfig newConfig) =>
         {
-            // Update runtime config (log level, passthrough hosts, detectors, etc.)
-            if (newConfig.LogLevel != config.LogLevel)
-            {
-                config.LogLevel = newConfig.LogLevel;
-            }
+            // Update all config fields
+            config.Port = newConfig.Port;
+            config.CertPath = newConfig.CertPath;
+            config.KeyPath = newConfig.KeyPath;
+            config.LogLevel = newConfig.LogLevel;
+            config.MaxConcurrentConnections = newConfig.MaxConcurrentConnections;
             config.PassthroughHosts = newConfig.PassthroughHosts;
+            config.TempPassthroughMaxConnections = newConfig.TempPassthroughMaxConnections;
+            config.TempPassthroughTimeoutSeconds = newConfig.TempPassthroughTimeoutSeconds;
 
             // Sync enabled detectors
             config.EnabledDetectors = newConfig.EnabledDetectors;
