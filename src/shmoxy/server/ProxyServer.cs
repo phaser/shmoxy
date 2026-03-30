@@ -707,7 +707,9 @@ public class ProxyServer : IDisposable
             {
                 using var targetClient = new TcpClient();
                 targetClient.ReceiveTimeout = UpstreamReadTimeoutMs;
+                Log(ProxyConfig.LogLevelEnum.Debug, $"Connecting to upstream {host}:{port}");
                 await targetClient.ConnectAsync(host, port);
+                Log(ProxyConfig.LogLevelEnum.Debug, $"TCP connected to {host}:{port}, starting TLS");
 
                 Stream targetStream;
                 if (port == 443)
@@ -717,6 +719,7 @@ public class ProxyServer : IDisposable
                         false,
                         (_, _, _, _) => true);
                     await sslTarget.AuthenticateAsClientAsync(host);
+                    Log(ProxyConfig.LogLevelEnum.Debug, $"TLS established to {host}:{port}");
                     targetStream = sslTarget;
                 }
                 else
@@ -800,8 +803,9 @@ public class ProxyServer : IDisposable
             catch (Exception ex) when (ex is IOException or SocketException
                 or AuthenticationException)
             {
+                var inner = ex.InnerException != null ? $" Inner: {ex.InnerException.GetType().Name}: {ex.InnerException.Message}" : "";
                 Log(ProxyConfig.LogLevelEnum.Warn,
-                    $"Upstream connection failed for {host}:{port}{result.Path}: {ex.GetType().Name}: {ex.Message}");
+                    $"Upstream connection failed for {host}:{port}{result.Path}: {ex.GetType().Name}: {ex.Message}{inner}");
             }
 
             // Connection: close means we're done after one request
