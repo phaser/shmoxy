@@ -21,6 +21,7 @@ public class ProxyServer : IDisposable
     private readonly TemporaryPassthroughService? _tempPassthrough;
     private readonly ProxyConfig _config;
     private readonly object _lock = new();
+    private readonly HashSet<string> _successfulMitmHosts = new();
     private CancellationTokenSource? _cts;
     private bool _disposed;
     private bool _isListening;
@@ -812,9 +813,22 @@ public class ProxyServer : IDisposable
                         };
                         await _interceptor.OnResponseAsync(interceptedResponse);
 
+                        // Track hosts that have had at least one successful MITM response.
+                        // A successful response means the host works through MITM, so a
+                        // subsequent Cloudflare block on one endpoint shouldn't push the
+                        // entire domain into passthrough.
+                        if (respStatusCode is >= 200 and < 400)
+                        {
+                            lock (_lock)
+                            {
+                                _successfulMitmHosts.Add(host);
+                            }
+                        }
+
                         // Check if response looks like a WAF/CDN block (e.g. Cloudflare
                         // returning HTML when the client expected JSON). This indicates
-                        // the host is rejecting the proxy's TLS fingerprint.
+                        // the host is rejecting the proxy's TLS fingerprint — but only
+                        // if the host has never succeeded through MITM before.
                         if (LooksLikeTlsFingerprintBlock(respStatusCode, respHeaders, result.Headers))
                         {
                             ActivatePassthroughOnFailure(host,
@@ -906,11 +920,23 @@ public class ProxyServer : IDisposable
 
     /// <summary>
     /// Activates temporary passthrough for a host when the upstream connection fails.
+    /// Skips activation if the host has previously had successful MITM responses,
+    /// since that means the host works through MITM and the failure is endpoint-specific.
     /// </summary>
     private void ActivatePassthroughOnFailure(string host, string reason)
     {
         if (_tempPassthrough == null)
             return;
+
+        lock (_lock)
+        {
+            if (_successfulMitmHosts.Contains(host))
+            {
+                Log(ProxyConfig.LogLevelEnum.Debug,
+                    $"Skipping passthrough for {host} (previously succeeded through MITM): {reason}");
+                return;
+            }
+        }
 
         Log(ProxyConfig.LogLevelEnum.Info, $"Activating temporary passthrough for {host}: {reason}");
         _tempPassthrough.Activate(host, "auto", reason);
