@@ -34,6 +34,48 @@
             API only
         </label>
 
+        <div class="domain-filter-container">
+            <button class="domain-filter-button" @onclick="ToggleDomainDropdown" @onclick:stopPropagation="true">
+                @if (_allDomainsSelected)
+                {
+                    <span>All Domains</span>
+                }
+                else if (_selectedDomains.Count == 0)
+                {
+                    <span>No Domains</span>
+                }
+                else if (_selectedDomains.Count == 1)
+                {
+                    <span>@_selectedDomains.First()</span>
+                }
+                else
+                {
+                    <span>@_selectedDomains.Count domains</span>
+                }
+                <span class="domain-filter-caret">&#9662;</span>
+            </button>
+            @if (_showDomainDropdown)
+            {
+                <div class="domain-dropdown" @onclick:stopPropagation="true">
+                    <label class="domain-checkbox-item">
+                        <input type="checkbox" checked="@_allDomainsSelected"
+                               @onchange="ToggleAllDomains" />
+                        <span class="domain-label-all">ALL DOMAINS</span>
+                    </label>
+                    @foreach (var domain in _knownDomains.OrderBy(d => d, StringComparer.OrdinalIgnoreCase))
+                    {
+                        var d = domain;
+                        <label class="domain-checkbox-item">
+                            <input type="checkbox" checked="@(_allDomainsSelected || _selectedDomains.Contains(d))"
+                                   disabled="@_allDomainsSelected"
+                                   @onchange="() => ToggleDomain(d)" />
+                            <span>@d</span>
+                        </label>
+                    }
+                </div>
+            }
+        </div>
+
         <div class="toolbar-spacer"></div>
 
         <div class="session-actions">
@@ -200,6 +242,10 @@
     private string methodFilter = "";
     private string _protocolFilter = "all";
     private bool apiOnlyFilter;
+    private HashSet<string> _knownDomains = new(StringComparer.OrdinalIgnoreCase);
+    private HashSet<string> _selectedDomains = new(StringComparer.OrdinalIgnoreCase);
+    private bool _allDomainsSelected = true;
+    private bool _showDomainDropdown;
     private bool isAtBottom = true;
     private InspectionRow? selectedRow;
     private const string ContainerId = "inspection-scroll-container";
@@ -253,6 +299,16 @@
     private void ApplyFilters()
     {
         var rows = InspectionService.GetRows();
+
+        foreach (var row in rows)
+        {
+            var host = ExtractHost(row.Url);
+            if (host is not null)
+            {
+                _knownDomains.Add(host);
+            }
+        }
+
         filteredRows = rows
             .Where(r =>
                 string.IsNullOrEmpty(searchQuery) ||
@@ -268,7 +324,19 @@
                 !apiOnlyFilter ||
                 r.StatusCode is null ||
                 ContentTypeClassifier.IsApiCall(r.Url, r.RequestHeaders, r.ResponseHeaders, r.IsWebSocket))
+            .Where(r =>
+                _allDomainsSelected ||
+                (ExtractHost(r.Url) is { } host && _selectedDomains.Contains(host)))
             .ToList();
+    }
+
+    private static string? ExtractHost(string url)
+    {
+        if (Uri.TryCreate(url, UriKind.Absolute, out var uri))
+        {
+            return uri.Host;
+        }
+        return null;
     }
 
     private void SelectRow(InspectionRow row)
@@ -284,6 +352,34 @@
     private void NavigateToRow(InspectionRow row)
     {
         selectedRow = row;
+    }
+
+    private void ToggleDomainDropdown()
+    {
+        _showDomainDropdown = !_showDomainDropdown;
+    }
+
+    private void ToggleAllDomains(ChangeEventArgs e)
+    {
+        _allDomainsSelected = e.Value is true;
+        if (_allDomainsSelected)
+        {
+            _selectedDomains.Clear();
+        }
+        ApplyFilters();
+    }
+
+    private void ToggleDomain(string domain)
+    {
+        if (_selectedDomains.Contains(domain))
+        {
+            _selectedDomains.Remove(domain);
+        }
+        else
+        {
+            _selectedDomains.Add(domain);
+        }
+        ApplyFilters();
     }
 
     private async Task ResumeAutoScroll()
@@ -638,6 +734,68 @@
     white-space: nowrap;
     color: var(--neutral-foreground-rest);
     align-self: center;
+}
+
+.domain-filter-container {
+    position: relative;
+    align-self: center;
+}
+
+.domain-filter-button {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    background: var(--neutral-layer-1);
+    border: 1px solid var(--neutral-stroke-rest);
+    border-radius: calc(var(--control-corner-radius) * 1px);
+    padding: 4px 10px;
+    font-size: 0.85rem;
+    cursor: pointer;
+    color: var(--neutral-foreground-rest);
+    white-space: nowrap;
+}
+
+.domain-filter-button:hover {
+    background: var(--neutral-layer-3);
+}
+
+.domain-filter-caret {
+    font-size: 0.65rem;
+}
+
+.domain-dropdown {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    z-index: 10;
+    background: var(--neutral-layer-2);
+    border: 1px solid var(--neutral-stroke-rest);
+    border-radius: calc(var(--control-corner-radius) * 1px);
+    padding: 0.4rem 0;
+    margin-top: 2px;
+    min-width: 200px;
+    max-height: 250px;
+    overflow-y: auto;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.domain-checkbox-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 4px 12px;
+    font-size: 0.8rem;
+    cursor: pointer;
+    white-space: nowrap;
+    color: var(--neutral-foreground-rest);
+}
+
+.domain-checkbox-item:hover {
+    background: var(--neutral-layer-3);
+}
+
+.domain-label-all {
+    font-weight: 600;
 }
 
 .toolbar-spacer {
