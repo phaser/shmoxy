@@ -37,6 +37,13 @@ public class ProxyConfig
     public bool SessionLoggingEnabled { get; set; }
 
     /// <summary>
+    /// When enabled, the proxy validates upstream TLS certificates against the system
+    /// trust store. Invalid certificates (expired, self-signed, wrong hostname) will
+    /// cause the connection to fail. Disabled by default for proxying purposes.
+    /// </summary>
+    public bool ValidateUpstreamCertificates { get; set; }
+
+    /// <summary>
     /// Logging levels.
     /// </summary>
     public enum LogLevelEnum

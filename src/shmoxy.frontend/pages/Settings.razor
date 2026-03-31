@@ -39,6 +39,21 @@
 
     <FluentCard>
         <div class="setting-section">
+            <h3>Security</h3>
+            <div class="setting-row">
+                <div class="setting-label">
+                    <FluentIcon Value="@(new Icons.Regular.Size20.ShieldKeyhole())" />
+                    <span>Validate upstream TLS certificates</span>
+                </div>
+                <FluentSwitch Label="@(_proxyConfig.ValidateUpstreamCertificates ? "On" : "Off")"
+                             Value="@_proxyConfig.ValidateUpstreamCertificates"
+                             ValueChanged="OnValidateUpstreamCertsToggle" />
+            </div>
+        </div>
+    </FluentCard>
+
+    <FluentCard>
+        <div class="setting-section">
             <h3>Session Retention</h3>
             <div class="setting-row">
                 <div class="setting-label">
@@ -83,6 +98,7 @@
 @code {
     private bool IsDark => ThemeState.Mode == DesignThemeModes.Dark;
     private RetentionPolicyDto _retentionPolicy = new();
+    private FrontendProxyConfig _proxyConfig = new();
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
@@ -92,6 +108,14 @@
             try
             {
                 _retentionPolicy = await ApiClient.GetRetentionPolicyAsync();
+            }
+            catch
+            {
+                // API may not be available yet
+            }
+            try
+            {
+                _proxyConfig = await ApiClient.GetProxyConfigAsync();
             }
             catch
             {
@@ -127,6 +151,12 @@
     {
         _retentionPolicy.MaxCount = value;
         await ApiClient.SaveRetentionPolicyAsync(_retentionPolicy);
+    }
+
+    private async Task OnValidateUpstreamCertsToggle(bool value)
+    {
+        _proxyConfig.ValidateUpstreamCertificates = value;
+        await ApiClient.SaveProxyConfigAsync(_proxyConfig);
     }
 }
 
