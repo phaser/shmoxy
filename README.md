@@ -9,7 +9,26 @@ A .NET proxy server that terminates TLS connections and forwards traffic to targ
 
 ## Quick Start
 
-### Using Nix Flakes (Recommended)
+### Try it out
+
+Build a distribution and run:
+
+```bash
+./scripts/dist.sh
+./scripts/start.sh
+```
+
+The web UI will be available at `http://localhost:5000` and the proxy listens on port `8080`.
+
+To customize ports:
+
+```bash
+./scripts/start.sh --port 3000 --proxy-port 9090
+```
+
+### Development
+
+#### Using Nix Flakes (Recommended)
 
 Enter the development shell:
 
@@ -39,17 +58,14 @@ dotnet test src/tests/shmoxy.tests/shmoxy.tests.csproj
 dotnet test --filter "FullyQualifiedName!~Integration"
 ```
 
-#### Run the proxy server
+#### Run for development
 
 ```bash
-# Default port 8080, Info logging
-dotnet run --project src/shmoxy
-
-# Custom port and log level
-dotnet run -- -p 3000 -l Debug
+# Run the API with Blazor frontend
+dotnet run --project src/shmoxy.api
 ```
 
-### Using Nix Build Directly
+#### Using Nix Build Directly
 
 Build without entering shell:
 
@@ -61,19 +77,7 @@ The executable will be at `result/bin/shmoxy`.
 
 ## Blazor Frontend
 
-The project includes a Blazor Server-based web UI for managing proxies and inspecting requests. It's served from the `shmoxy-api` project.
-
-### Running with Frontend
-
-```bash
-# From src directory (includes API + Frontend)
-cd src/shmoxy.api
-
-# Run with Blazor frontend enabled
-dotnet run
-```
-
-The web UI will be available at `https://localhost:5001`. The default theme is dark mode, but you can toggle to light mode using the sun/moon button in the top-right corner.
+The project includes a Blazor Server-based web UI for managing proxies and inspecting requests. It's served from the `shmoxy.api` project as an embedded Razor Class Library.
 
 ### Frontend Features
 
@@ -81,16 +85,6 @@ The web UI will be available at `https://localhost:5001`. The default theme is d
 - **Proxy Configuration** - Configure host, port, HTTPS interception settings
 - **Request Inspection** - View intercepted requests/responses with headers and bodies
 - **Theme Toggle** - Switch between dark and light modes (persists in localStorage)
-
-### Frontend Development
-
-```bash
-# Build the frontend project specifically
-dotnet build src/shmoxy.frontend/shmoxy.frontend.csproj
-
-# Run just for development (from shmoxy.api which hosts it)
-dotnet run --project src/shmoxy.api
-```
 
 ## Proxy Usage
 

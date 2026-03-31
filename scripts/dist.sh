@@ -28,9 +28,6 @@ log_error() {
     echo -e "${RED}[ERROR]${NC} $1"
 }
 
-# Components to publish
-COMPONENTS=("shmoxy" "shmoxy.api" "shmoxy.frontend")
-
 # Read current version from dist.yaml
 if [ ! -f "$DIST_YAML" ]; then
     log_error "dist.yaml not found at $DIST_YAML"
@@ -59,28 +56,40 @@ log_info "New version: $NEW_VERSION"
 rm -rf "$DIST_DIR"
 mkdir -p "$DIST_DIR"
 
-# Build and publish each component
 BUILD_TIMESTAMP=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
+API_DIR="$DIST_DIR/shmoxy.api"
 
-for component in "${COMPONENTS[@]}"; do
-    PROJECT_DIR="$SRC_DIR/$component"
-    OUTPUT_DIR="$DIST_DIR/$component"
+# Publish shmoxy.api (includes shmoxy.frontend assets via RCL project reference)
+log_info "Publishing shmoxy.api to $API_DIR..."
+dotnet publish "$SRC_DIR/shmoxy.api" \
+    -c Release \
+    -o "$API_DIR" \
+    /p:Version="$NEW_VERSION" \
+    --nologo \
+    -v quiet
+log_info "shmoxy.api published successfully"
 
-    if [ ! -d "$PROJECT_DIR" ]; then
-        log_error "Project directory not found: $PROJECT_DIR"
-        exit 1
+# Publish the shmoxy proxy into the API directory so ProxyProcessManager
+# can resolve shmoxy.dll next to the running API assembly
+PROXY_TEMP_DIR="$DIST_DIR/.proxy-tmp"
+log_info "Publishing shmoxy proxy..."
+dotnet publish "$SRC_DIR/shmoxy" \
+    -c Release \
+    -o "$PROXY_TEMP_DIR" \
+    /p:Version="$NEW_VERSION" \
+    --nologo \
+    -v quiet
+
+# Copy proxy files into the API directory (skip files already present from the API publish)
+log_info "Copying proxy files into shmoxy.api output..."
+for file in "$PROXY_TEMP_DIR"/*; do
+    filename=$(basename "$file")
+    if [ ! -e "$API_DIR/$filename" ]; then
+        cp -r "$file" "$API_DIR/"
     fi
-
-    log_info "Publishing $component to $OUTPUT_DIR..."
-    dotnet publish "$PROJECT_DIR" \
-        -c Release \
-        -o "$OUTPUT_DIR" \
-        /p:Version="$NEW_VERSION" \
-        --nologo \
-        -v quiet
-
-    log_info "$component published successfully"
 done
+rm -rf "$PROXY_TEMP_DIR"
+log_info "shmoxy proxy bundled into shmoxy.api"
 
 # Update dist.yaml with new version
 cat > "$DIST_YAML" << EOF
@@ -99,19 +108,12 @@ fi
 
 # Generate build manifest
 MANIFEST_FILE="$DIST_DIR/manifest.json"
-COMPONENT_JSON=""
-for i in "${!COMPONENTS[@]}"; do
-    if [ $i -gt 0 ]; then
-        COMPONENT_JSON="$COMPONENT_JSON,"
-    fi
-    COMPONENT_JSON="$COMPONENT_JSON\"${COMPONENTS[$i]}\""
-done
 
 cat > "$MANIFEST_FILE" << EOF
 {
   "version": "$NEW_VERSION",
   "timestamp": "$BUILD_TIMESTAMP",
-  "components": [$COMPONENT_JSON],
+  "components": ["shmoxy.api"],
   "git_commit": "$(git -C "$REPO_ROOT" rev-parse HEAD)",
   "git_tag": "$TAG_NAME"
 }
