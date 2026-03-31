@@ -68,11 +68,14 @@ public static class ShmoxyHost
         services.AddSingleton<ILoggerProvider>(sp =>
             new SessionLogBufferProvider(sp.GetRequiredService<SessionLogBuffer>()));
         services.AddSingleton<InspectionHook>();
+        services.AddSingleton<BreakpointHook>();
         services.AddSingleton<InterceptHookChain>(sp =>
         {
             var inspectionHook = sp.GetRequiredService<InspectionHook>();
+            var breakpointHook = sp.GetRequiredService<BreakpointHook>();
             return new InterceptHookChain()
-                .Add(inspectionHook);
+                .Add(inspectionHook)
+                .Add(breakpointHook);
         });
 
         services.AddSingleton<ProxyServer>(sp =>
@@ -87,8 +90,9 @@ public static class ShmoxyHost
         {
             var proxy = sp.GetRequiredService<ProxyServer>();
             var inspectionHook = sp.GetRequiredService<InspectionHook>();
+            var breakpointHook = sp.GetRequiredService<BreakpointHook>();
             var logBuffer = sp.GetRequiredService<SessionLogBuffer>();
-            return new ProxyStateService(proxy, inspectionHook, logBuffer);
+            return new ProxyStateService(proxy, inspectionHook, logBuffer, breakpointHook);
         });
 
         services.AddHostedService<ProxyHostedService>();

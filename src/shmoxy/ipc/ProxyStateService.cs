@@ -10,16 +10,19 @@ public class ProxyStateService
 {
     private readonly ProxyServer _proxy;
     private readonly InspectionHook? _inspectionHook;
+    private readonly BreakpointHook? _breakpointHook;
     private readonly SessionLogBuffer? _sessionLogBuffer;
     private readonly DateTime _startTime;
 
     public ProxyStateService(
         ProxyServer proxy,
         InspectionHook? inspectionHook = null,
-        SessionLogBuffer? sessionLogBuffer = null)
+        SessionLogBuffer? sessionLogBuffer = null,
+        BreakpointHook? breakpointHook = null)
     {
         _proxy = proxy ?? throw new ArgumentNullException(nameof(proxy));
         _inspectionHook = inspectionHook;
+        _breakpointHook = breakpointHook;
         _sessionLogBuffer = sessionLogBuffer;
         _startTime = DateTime.UtcNow;
     }
@@ -30,6 +33,7 @@ public class ProxyStateService
     public int ActiveConnections => 0; // TODO: track in ProxyServer
 
     public InspectionHook? InspectionHook => _inspectionHook;
+    public BreakpointHook? BreakpointHook => _breakpointHook;
     public SessionLogBuffer? SessionLogBuffer => _sessionLogBuffer;
 
     public bool EnableInspection()

@@ -212,6 +212,71 @@ public static class ProxyControlApi
             return Results.Json(stateService.SessionLogBuffer.Drain());
         });
 
+        // Breakpoint endpoints
+        endpoints.MapPost("/ipc/breakpoints/enable", () =>
+        {
+            if (stateService.BreakpointHook == null)
+                return Results.Json(new { Success = false, Message = "Breakpoints not available" });
+
+            stateService.BreakpointHook.Enabled = true;
+            return Results.Json(new { Success = true, Message = "Breakpoints enabled" });
+        });
+
+        endpoints.MapPost("/ipc/breakpoints/disable", () =>
+        {
+            if (stateService.BreakpointHook == null)
+                return Results.Json(new { Success = false, Message = "Breakpoints not available" });
+
+            stateService.BreakpointHook.Enabled = false;
+            return Results.Json(new { Success = true, Message = "Breakpoints disabled" });
+        });
+
+        endpoints.MapGet("/ipc/breakpoints/paused", () =>
+        {
+            if (stateService.BreakpointHook == null)
+                return Results.Json(Array.Empty<object>());
+
+            var paused = stateService.BreakpointHook.GetPausedRequests()
+                .Select(p => new
+                {
+                    p.CorrelationId,
+                    p.Request.Method,
+                    Url = p.Request.Url?.ToString(),
+                    Headers = p.Request.Headers,
+                    Body = p.Request.Body != null ? System.Text.Encoding.UTF8.GetString(p.Request.Body) : null,
+                    p.PausedAt
+                });
+
+            return Results.Json(paused);
+        });
+
+        endpoints.MapPost("/ipc/breakpoints/{correlationId}/release", async (string correlationId, HttpRequest request) =>
+        {
+            if (stateService.BreakpointHook == null)
+                return Results.Json(new { Success = false, Message = "Breakpoints not available" });
+
+            // Check if there's a modified request in the body
+            shmoxy.models.dto.InterceptedRequest? modified = null;
+            if (request.ContentLength > 0)
+            {
+                modified = await JsonSerializer.DeserializeAsync<shmoxy.models.dto.InterceptedRequest>(
+                    request.Body,
+                    new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+            }
+
+            var success = stateService.BreakpointHook.Release(correlationId, modified);
+            return Results.Json(new { Success = success, Message = success ? "Request released" : "Request not found" });
+        });
+
+        endpoints.MapPost("/ipc/breakpoints/{correlationId}/drop", (string correlationId) =>
+        {
+            if (stateService.BreakpointHook == null)
+                return Results.Json(new { Success = false, Message = "Breakpoints not available" });
+
+            var success = stateService.BreakpointHook.Drop(correlationId);
+            return Results.Json(new { Success = success, Message = success ? "Request dropped" : "Request not found" });
+        });
+
         return endpoints;
     }
 }
