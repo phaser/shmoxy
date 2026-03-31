@@ -6,6 +6,7 @@ WORKDIR /repo
 RUN apt-get update && apt-get install -y --no-install-recommends unzip curl && rm -rf /var/lib/apt/lists/*
 
 # Copy project files and restore
+COPY src/Directory.Build.props src/Directory.Build.props
 COPY src/shmoxy.slnx src/shmoxy.slnx
 COPY src/shmoxy/shmoxy.csproj src/shmoxy/shmoxy.csproj
 COPY src/shmoxy.api/shmoxy.api.csproj src/shmoxy.api/shmoxy.api.csproj
