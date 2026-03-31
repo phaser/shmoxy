@@ -111,21 +111,45 @@ public class SessionsController : ControllerBase
         RequestHeaders = DeserializeHeaders(row.RequestHeaders),
         ResponseHeaders = DeserializeHeaders(row.ResponseHeaders),
         RequestBody = row.RequestBody,
-        ResponseBody = row.ResponseBody
+        ResponseBody = row.ResponseBody,
+        IsWebSocket = row.IsWebSocket,
+        WebSocketClosed = row.WebSocketClosed,
+        WebSocketFrames = row.WebSocketFrames.Count > 0
+            ? row.WebSocketFrames.Select(ToFrameDto).ToList()
+            : null
     };
 
-    private static InspectionSessionRow ToEntity(SessionRowDto dto) => new()
+    private static InspectionSessionRow ToEntity(SessionRowDto dto)
     {
-        Method = dto.Method,
-        Url = dto.Url,
-        StatusCode = dto.StatusCode,
-        DurationMs = dto.DurationMs,
-        Timestamp = dto.Timestamp,
-        RequestHeaders = SerializeHeaders(dto.RequestHeaders),
-        ResponseHeaders = SerializeHeaders(dto.ResponseHeaders),
-        RequestBody = dto.RequestBody,
-        ResponseBody = dto.ResponseBody
-    };
+        var row = new InspectionSessionRow
+        {
+            Method = dto.Method,
+            Url = dto.Url,
+            StatusCode = dto.StatusCode,
+            DurationMs = dto.DurationMs,
+            Timestamp = dto.Timestamp,
+            RequestHeaders = SerializeHeaders(dto.RequestHeaders),
+            ResponseHeaders = SerializeHeaders(dto.ResponseHeaders),
+            RequestBody = dto.RequestBody,
+            ResponseBody = dto.ResponseBody,
+            IsWebSocket = dto.IsWebSocket,
+            WebSocketClosed = dto.WebSocketClosed
+        };
+
+        if (dto.WebSocketFrames is { Count: > 0 })
+        {
+            row.WebSocketFrames = dto.WebSocketFrames.Select(f => new InspectionSessionWebSocketFrame
+            {
+                SessionRowId = row.Id,
+                Timestamp = f.Timestamp,
+                Direction = f.Direction,
+                FrameType = f.FrameType,
+                Payload = f.Payload
+            }).ToList();
+        }
+
+        return row;
+    }
 
     private static string? SerializeHeaders(Dictionary<string, string>? headers)
     {
@@ -140,6 +164,14 @@ public class SessionsController : ControllerBase
             return null;
         return JsonSerializer.Deserialize<Dictionary<string, string>>(json);
     }
+
+    private static WebSocketFrameDto ToFrameDto(InspectionSessionWebSocketFrame frame) => new()
+    {
+        Timestamp = frame.Timestamp,
+        Direction = frame.Direction,
+        FrameType = frame.FrameType,
+        Payload = frame.Payload
+    };
 
     private static InspectionSessionLogEntry ToLogEntity(SessionLogEntryDto dto) => new()
     {

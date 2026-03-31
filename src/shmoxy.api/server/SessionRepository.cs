@@ -58,6 +58,7 @@ public class SessionRepository : ISessionRepository
     public async Task<List<InspectionSessionRow>> LoadRowsAsync(string sessionId, CancellationToken ct = default)
     {
         return await _dbContext.InspectionSessionRows
+            .Include(r => r.WebSocketFrames)
             .Where(r => r.SessionId == sessionId)
             .OrderBy(r => r.Timestamp)
             .ToListAsync(ct);
@@ -82,6 +83,7 @@ public class SessionRepository : ISessionRepository
             ?? throw new KeyNotFoundException($"Session '{sessionId}' not found");
 
         var existingRows = await _dbContext.InspectionSessionRows
+            .Include(r => r.WebSocketFrames)
             .Where(r => r.SessionId == sessionId)
             .ToListAsync(ct);
 
