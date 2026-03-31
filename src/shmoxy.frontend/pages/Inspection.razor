@@ -117,12 +117,12 @@
         <table class="inspection-table">
             <thead>
                 <tr>
-                    <th>#</th>
-                    <th>Time</th>
-                    <th>Method</th>
+                    <th class="col-id">#</th>
+                    <th class="col-time">Time</th>
+                    <th class="col-method">Method</th>
                     <th>URL</th>
-                    <th>Status</th>
-                    <th>Duration</th>
+                    <th class="col-status">Status</th>
+                    <th class="col-duration">Duration</th>
                 </tr>
             </thead>
             <tbody>
@@ -528,7 +528,14 @@
     width: 100%;
     border-collapse: collapse;
     font-size: var(--type-ramp-minus-1-font-size);
+    table-layout: fixed;
 }
+
+.col-id { width: 3rem; }
+.col-time { width: 7.5rem; }
+.col-method { width: 6rem; }
+.col-status { width: 4rem; }
+.col-duration { width: 5rem; }
 
 .inspection-table thead {
     position: sticky;
