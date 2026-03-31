@@ -1,6 +1,8 @@
 #!/bin/bash
-# start.sh - Start shmoxy from the dist directory
-# Usage: ./scripts/start.sh [--port <api-port>] [--proxy-port <proxy-port>]
+# start.sh - Start shmoxy
+# Usage: ./scripts/start.sh [--port <api-port>] [--proxy-port <proxy-port>] [--no-docker]
+#
+# Prefers Docker if available and image exists. Use --no-docker for bare-metal.
 
 set -e
 
@@ -13,6 +15,7 @@ API_DLL="$API_DIR/shmoxy.api.dll"
 # Defaults
 API_PORT=5000
 PROXY_PORT=8080
+USE_DOCKER=auto
 
 # Parse arguments
 while [[ $# -gt 0 ]]; do
@@ -25,21 +28,45 @@ while [[ $# -gt 0 ]]; do
             PROXY_PORT="$2"
             shift 2
             ;;
+        --no-docker)
+            USE_DOCKER=false
+            shift
+            ;;
         *)
             echo "Unknown option: $1"
-            echo "Usage: $0 [--port <api-port>] [--proxy-port <proxy-port>]"
+            echo "Usage: $0 [--port <api-port>] [--proxy-port <proxy-port>] [--no-docker]"
             exit 1
             ;;
     esac
 done
 
-if [ ! -f "$API_DLL" ]; then
-    echo "Error: $API_DLL not found. Run ./scripts/dist.sh first."
-    exit 1
+# Determine whether to use Docker
+if [ "$USE_DOCKER" = "auto" ]; then
+    if command -v docker &>/dev/null && docker image inspect shmoxy:latest &>/dev/null; then
+        USE_DOCKER=true
+    else
+        USE_DOCKER=false
+    fi
 fi
 
-export ASPNETCORE_URLS="http://localhost:$API_PORT"
-export ApiConfig__ProxyPort="$PROXY_PORT"
+if [ "$USE_DOCKER" = true ]; then
+    echo "Starting shmoxy via Docker on port $API_PORT (proxy on port $PROXY_PORT)..."
+    exec docker run --rm \
+        -p "$API_PORT:5000" \
+        -p "$PROXY_PORT:8080" \
+        -v shmoxy-data:/root/.local/share/shmoxy-api \
+        -e "ASPNETCORE_URLS=http://+:5000" \
+        -e "ApiConfig__ProxyPort=8080" \
+        shmoxy:latest
+else
+    if [ ! -f "$API_DLL" ]; then
+        echo "Error: $API_DLL not found. Run ./scripts/dist.sh --no-docker first."
+        exit 1
+    fi
 
-echo "Starting shmoxy API on port $API_PORT (proxy on port $PROXY_PORT)..."
-exec dotnet "$API_DLL"
+    export ASPNETCORE_URLS="http://localhost:$API_PORT"
+    export ApiConfig__ProxyPort="$PROXY_PORT"
+
+    echo "Starting shmoxy API on port $API_PORT (proxy on port $PROXY_PORT)..."
+    exec dotnet "$API_DLL"
+fi
