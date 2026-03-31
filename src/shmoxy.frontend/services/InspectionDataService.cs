@@ -177,6 +177,60 @@ public class InspectionDataService : IDisposable
                 }
             }
         }
+        else if (string.Equals(evt.EventType, "websocket_open", StringComparison.OrdinalIgnoreCase))
+        {
+            var row = new InspectionRow
+            {
+                Id = _nextId++,
+                Method = evt.Method,
+                Url = evt.Url,
+                Timestamp = evt.Timestamp,
+                StatusCode = evt.StatusCode,
+                IsWebSocket = true,
+                RequestHeaders = evt.Headers ?? new Dictionary<string, string>()
+            };
+            _rows.Add(row);
+
+            if (!string.IsNullOrEmpty(evt.CorrelationId))
+            {
+                _pendingRequests[evt.CorrelationId] = (_rows.Count - 1, evt.Timestamp);
+            }
+
+            if (_rows.Count > MaxRows)
+                _rows.RemoveAt(0);
+        }
+        else if (string.Equals(evt.EventType, "websocket_message", StringComparison.OrdinalIgnoreCase))
+        {
+            if (!string.IsNullOrEmpty(evt.CorrelationId) &&
+                _pendingRequests.TryGetValue(evt.CorrelationId, out var pending))
+            {
+                var (rowIndex, _) = pending;
+                if (rowIndex < _rows.Count)
+                {
+                    _rows[rowIndex].WebSocketFrames.Add(new WebSocketFrameInfo
+                    {
+                        Timestamp = evt.Timestamp,
+                        Direction = evt.Direction ?? "unknown",
+                        FrameType = evt.FrameType ?? "unknown",
+                        Payload = DecodeBody(evt.Body)
+                    });
+                }
+            }
+        }
+        else if (string.Equals(evt.EventType, "websocket_close", StringComparison.OrdinalIgnoreCase))
+        {
+            if (!string.IsNullOrEmpty(evt.CorrelationId) &&
+                _pendingRequests.TryGetValue(evt.CorrelationId, out var pending))
+            {
+                var (rowIndex, requestTimestamp) = pending;
+                if (rowIndex < _rows.Count)
+                {
+                    _rows[rowIndex].WebSocketClosed = true;
+                    _rows[rowIndex].Duration = evt.Timestamp - requestTimestamp;
+                }
+                _pendingRequests.Remove(evt.CorrelationId);
+            }
+        }
     }
 
     private static string? DecodeBody(byte[]? body)
@@ -223,4 +277,7 @@ public class InspectionRow
     public string? ResponseBody { get; set; }
     public RowOrigin Origin { get; set; } = RowOrigin.Live;
     public bool IsPassthrough { get; set; }
+    public bool IsWebSocket { get; set; }
+    public List<WebSocketFrameInfo> WebSocketFrames { get; set; } = new();
+    public bool WebSocketClosed { get; set; }
 }
