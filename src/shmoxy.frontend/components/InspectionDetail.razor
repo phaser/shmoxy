@@ -1,6 +1,7 @@
 @inject IJSRuntime JS
 @inject FrontendSettings FrontendSettings
 @inject NavigationManager NavigationManager
+@inject ApiClient ApiClient
 @using shmoxy.frontend.services
 
 <div class="detail-overlay" @onclick="OnClose" @onkeydown="HandleKeyDown" tabindex="0" @ref="overlayRef">
@@ -27,6 +28,9 @@
         <div class="detail-tabs">
             <button class="tab @(activeTab == "request" ? "active" : "")" @onclick='() => SetTab("request")'>Request</button>
             <button class="tab @(activeTab == "response" ? "active" : "")" @onclick='() => SetTab("response")'>Response</button>
+            <div class="tab-actions">
+                <button class="resend-button" @onclick="OpenResendEditor">Resend</button>
+            </div>
         </div>
 
         <div id="detail-content" class="detail-body">
@@ -223,6 +227,51 @@
                 </div>
             }
         </div>
+
+        @if (_showResendEditor)
+        {
+            <div class="resend-editor">
+                <div class="resend-header">
+                    <h3>Resend Request</h3>
+                    <button class="close-button" @onclick="CloseResendEditor">&times;</button>
+                </div>
+                <div class="resend-form">
+                    <div class="resend-row">
+                        <select @bind="_resendMethod" class="resend-method">
+                            <option>GET</option>
+                            <option>POST</option>
+                            <option>PUT</option>
+                            <option>PATCH</option>
+                            <option>DELETE</option>
+                            <option>HEAD</option>
+                            <option>OPTIONS</option>
+                        </select>
+                        <input type="text" @bind="_resendUrl" class="resend-url" placeholder="URL" />
+                    </div>
+                    <div class="resend-section">
+                        <label>Headers</label>
+                        <textarea @bind="_resendHeaders" class="resend-textarea" rows="6" placeholder="Header-Name: value"></textarea>
+                    </div>
+                    <div class="resend-section">
+                        <label>Body</label>
+                        <textarea @bind="_resendBody" class="resend-textarea" rows="8" placeholder="Request body"></textarea>
+                    </div>
+                    <div class="resend-actions">
+                        <button class="resend-send-button" @onclick="SendResendRequest" disabled="@_resendSending">
+                            @(_resendSending ? "Sending..." : "Send")
+                        </button>
+                        @if (_resendError != null)
+                        {
+                            <span class="resend-error">@_resendError</span>
+                        }
+                        @if (_resendStatusCode.HasValue)
+                        {
+                            <span class="resend-status status-@GetStatusClass(_resendStatusCode.Value)">@_resendStatusCode</span>
+                        }
+                    </div>
+                </div>
+            </div>
+        }
     </div>
 </div>
 
@@ -368,6 +417,72 @@
         >= 500 => "server-error",
         _ => "unknown"
     };
+
+    // Resend editor state
+    private bool _showResendEditor;
+    private string _resendMethod = "GET";
+    private string _resendUrl = "";
+    private string _resendHeaders = "";
+    private string _resendBody = "";
+    private bool _resendSending;
+    private string? _resendError;
+    private int? _resendStatusCode;
+
+    private void OpenResendEditor()
+    {
+        _resendMethod = Row.Method;
+        _resendUrl = Row.Url;
+        _resendHeaders = string.Join("\n", Row.RequestHeaders.Select(h => $"{h.Key}: {h.Value}"));
+        _resendBody = Row.RequestBody ?? "";
+        _resendError = null;
+        _resendStatusCode = null;
+        _showResendEditor = true;
+    }
+
+    private void CloseResendEditor()
+    {
+        _showResendEditor = false;
+    }
+
+    private async Task SendResendRequest()
+    {
+        _resendSending = true;
+        _resendError = null;
+        _resendStatusCode = null;
+        StateHasChanged();
+
+        try
+        {
+            var headers = new Dictionary<string, string>();
+            foreach (var line in _resendHeaders.Split('\n', StringSplitOptions.RemoveEmptyEntries))
+            {
+                var colonIndex = line.IndexOf(':');
+                if (colonIndex > 0)
+                {
+                    headers[line[..colonIndex].Trim()] = line[(colonIndex + 1)..].Trim();
+                }
+            }
+
+            var request = new ResendRequestDto
+            {
+                Method = _resendMethod,
+                Url = _resendUrl,
+                Headers = headers,
+                Body = string.IsNullOrWhiteSpace(_resendBody) ? null : _resendBody
+            };
+
+            var response = await ApiClient.ResendRequestAsync(request);
+            _resendStatusCode = response.StatusCode;
+        }
+        catch (Exception ex)
+        {
+            _resendError = ex.Message;
+        }
+        finally
+        {
+            _resendSending = false;
+        }
+    }
 }
 
 <style>
@@ -677,5 +792,130 @@
     font-size: 0.75rem;
     word-break: break-all;
     color: var(--neutral-foreground-hint);
+}
+
+.tab-actions {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+}
+
+.resend-button {
+    background: var(--accent-fill-rest);
+    color: var(--foreground-on-accent-rest);
+    border: none;
+    border-radius: 4px;
+    padding: 4px 12px;
+    cursor: pointer;
+    font-size: 0.8rem;
+}
+
+.resend-button:hover {
+    background: var(--accent-fill-hover);
+}
+
+.resend-editor {
+    border-top: 1px solid var(--neutral-stroke-rest);
+    padding: 1rem;
+}
+
+.resend-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.75rem;
+}
+
+.resend-header h3 {
+    margin: 0;
+    font-size: 0.95rem;
+}
+
+.resend-row {
+    display: flex;
+    gap: 0.5rem;
+    margin-bottom: 0.75rem;
+}
+
+.resend-method {
+    background: var(--neutral-fill-rest);
+    color: var(--neutral-foreground-rest);
+    border: 1px solid var(--neutral-stroke-rest);
+    border-radius: 4px;
+    padding: 6px 8px;
+    font-family: monospace;
+    width: 100px;
+}
+
+.resend-url {
+    flex: 1;
+    background: var(--neutral-fill-rest);
+    color: var(--neutral-foreground-rest);
+    border: 1px solid var(--neutral-stroke-rest);
+    border-radius: 4px;
+    padding: 6px 8px;
+    font-family: monospace;
+    font-size: 0.85rem;
+}
+
+.resend-section {
+    margin-bottom: 0.75rem;
+}
+
+.resend-section label {
+    display: block;
+    font-size: 0.8rem;
+    font-weight: 600;
+    margin-bottom: 0.25rem;
+}
+
+.resend-textarea {
+    width: 100%;
+    background: var(--neutral-fill-rest);
+    color: var(--neutral-foreground-rest);
+    border: 1px solid var(--neutral-stroke-rest);
+    border-radius: 4px;
+    padding: 8px;
+    font-family: monospace;
+    font-size: 0.85rem;
+    resize: vertical;
+    box-sizing: border-box;
+}
+
+.resend-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.resend-send-button {
+    background: var(--accent-fill-rest);
+    color: var(--foreground-on-accent-rest);
+    border: none;
+    border-radius: 4px;
+    padding: 6px 20px;
+    cursor: pointer;
+    font-weight: 600;
+}
+
+.resend-send-button:hover {
+    background: var(--accent-fill-hover);
+}
+
+.resend-send-button:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.resend-error {
+    color: var(--error);
+    font-size: 0.85rem;
+}
+
+.resend-status {
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 0.85rem;
 }
 </style>
