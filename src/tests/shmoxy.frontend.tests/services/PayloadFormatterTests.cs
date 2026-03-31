@@ -157,4 +157,85 @@ public class PayloadFormatterTests
 
         Assert.Equal("json", language);
     }
+
+    [Fact]
+    public void Format_PrettyPrintsHtml()
+    {
+        var body = "<html><head><title>Test</title></head><body><p>Hello</p></body></html>";
+
+        var (content, language) = PayloadFormatter.Format(body, "text/html");
+
+        Assert.Equal("html", language);
+        Assert.Contains("\n", content);
+        Assert.Contains("<title>Test</title>", content);
+    }
+
+    [Fact]
+    public void Format_HtmlHandlesVoidElements()
+    {
+        var body = "<html><body><br><hr><img src=\"test.png\"></body></html>";
+
+        var (content, language) = PayloadFormatter.Format(body, "text/html");
+
+        Assert.Equal("html", language);
+        Assert.Contains("<br>", content);
+        Assert.Contains("<hr>", content);
+    }
+
+    [Fact]
+    public void Format_HtmlHandlesSelfClosingTags()
+    {
+        var body = "<html><body><br/><img src=\"test.png\"/></body></html>";
+
+        var (content, language) = PayloadFormatter.Format(body, "text/html");
+
+        Assert.Equal("html", language);
+        Assert.Contains("<br/>", content);
+    }
+
+    [Fact]
+    public void Format_HtmlPreservesPreBlocks()
+    {
+        var body = "<html><body><pre>  indented\n    code</pre></body></html>";
+
+        var (content, _) = PayloadFormatter.Format(body, "text/html");
+
+        Assert.Contains("<pre>  indented\n    code</pre>", content);
+    }
+
+    [Fact]
+    public void Format_HtmlHandlesInvalidGracefully()
+    {
+        var body = "<html><body><p>unclosed";
+
+        var (content, language) = PayloadFormatter.Format(body, "text/html");
+
+        Assert.Equal("html", language);
+        // Should not throw — returns something (formatted or raw fallback)
+        Assert.NotEmpty(content);
+    }
+
+    [Fact]
+    public void DetectLanguage_DetectsHtml_FromBody_WhenDoctypePresent()
+    {
+        var language = PayloadFormatter.DetectLanguage(null, "<!DOCTYPE html><html><body></body></html>");
+
+        Assert.Equal("html", language);
+    }
+
+    [Fact]
+    public void DetectLanguage_DetectsHtml_FromBody_WhenHtmlTagPresent()
+    {
+        var language = PayloadFormatter.DetectLanguage(null, "<html><body>test</body></html>");
+
+        Assert.Equal("html", language);
+    }
+
+    [Fact]
+    public void DetectLanguage_DetectsXml_FromBody_WhenNotHtml()
+    {
+        var language = PayloadFormatter.DetectLanguage(null, "<root><item>test</item></root>");
+
+        Assert.Equal("xml", language);
+    }
 }
