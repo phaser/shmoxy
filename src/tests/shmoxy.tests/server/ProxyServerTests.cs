@@ -269,6 +269,41 @@ public class ProxyServerTests : IClassFixture<ProxyTestFixture>, IDisposable
         Assert.Equal(bodyContent, System.Text.Encoding.ASCII.GetString(body));
     }
 
+    [Fact]
+    public void IsWebSocketUpgrade_ReturnsTrueForValidHeaders()
+    {
+        var headers = new Dictionary<string, string>
+        {
+            ["Upgrade"] = "websocket",
+            ["Connection"] = "Upgrade"
+        };
+
+        Assert.True(ProxyServer.IsWebSocketUpgrade(headers));
+    }
+
+    [Fact]
+    public void IsWebSocketUpgrade_ReturnsFalseWithoutUpgradeHeader()
+    {
+        var headers = new Dictionary<string, string>
+        {
+            ["Connection"] = "Upgrade"
+        };
+
+        Assert.False(ProxyServer.IsWebSocketUpgrade(headers));
+    }
+
+    [Fact]
+    public void IsWebSocketUpgrade_IsCaseInsensitive()
+    {
+        var headers = new Dictionary<string, string>
+        {
+            ["upgrade"] = "WebSocket",
+            ["connection"] = "upgrade"
+        };
+
+        Assert.True(ProxyServer.IsWebSocketUpgrade(headers));
+    }
+
     public void Dispose()
     {
         if (_disposed) return;
