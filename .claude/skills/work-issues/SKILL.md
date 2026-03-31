@@ -20,9 +20,11 @@ Before starting work on any issue, always sync main first:
 
 ```bash
 git checkout main && git pull origin main
+# Prune any stale worktree references from previous sessions
+git worktree prune
 ```
 
-This ensures the worktree branch is always created from the latest main.
+This ensures the worktree branch is always created from the latest main and cleans up any orphaned worktree references.
 
 ### 1. Understand the Issue
 
@@ -80,10 +82,18 @@ While working on an issue, if you notice any unrelated problems (bugs, code smel
 1. Show the PR URL to the user
 2. Immediately merge the PR: `gh pr merge <number> --squash --delete-branch`
 3. Update main: `git checkout main && git pull origin main`
-4. Clean up the worktree: `./scripts/cleanup-pr.sh <pr-name>`
+4. Clean up the worktree using **both** methods to ensure full cleanup:
+   ```bash
+   # Remove the git worktree (this is the critical step — ensures git stops tracking it)
+   git worktree remove --force ../shmoxy-worktrees/<pr-name> 2>/dev/null
+   # Also run the cleanup script for any additional cleanup (docs, branches)
+   ./scripts/cleanup-pr.sh <pr-name>
+   # Prune any orphaned worktree references
+   git worktree prune
+   ```
 5. Immediately move to the next issue — no pause, no confirmation
 
-**Important:** When merging any PR (whether from this workflow or manually requested), always check if there is an associated local worktree for that PR branch. If one exists, clean it up after merging using `./scripts/cleanup-pr.sh <pr-name>` since it is no longer needed.
+**Important:** When merging any PR (whether from this workflow or manually requested), always check if there is an associated local worktree for that PR branch. If one exists, clean it up after merging. The `git worktree remove --force` command is the most reliable way to remove worktrees — always run it before `cleanup-pr.sh`.
 
 ### 9. Keep Going
 
