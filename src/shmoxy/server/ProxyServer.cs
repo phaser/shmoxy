@@ -121,7 +121,7 @@ public class ProxyServer : IDisposable
         {
             _listener.Start();
             _isListening = true;
-            _logger.LogInformation($"Proxy server started on port {_config.Port}");
+            _logger.LogInformation("Proxy server started on port {Port}", _config.Port);
 
             while (!combinedCts.Token.IsCancellationRequested)
             {
@@ -142,7 +142,7 @@ public class ProxyServer : IDisposable
         }
         catch (SocketException ex)
         {
-            _logger.LogError($"Failed to bind to port {_config.Port}: {ex.Message} (SocketErrorCode: {ex.SocketErrorCode})");
+            _logger.LogError("Failed to bind to port {Port}: {ErrorMessage} (SocketErrorCode: {SocketErrorCode})", _config.Port, ex.Message, ex.SocketErrorCode);
             throw;
         }
         finally
@@ -200,7 +200,7 @@ public class ProxyServer : IDisposable
             }
             catch (Exception ex) when (ex is not OperationCanceledException and not IOException)
             {
-                _logger.LogError($"Connection error: {ex.Message}");
+                _logger.LogError("Connection error: {ErrorMessage}", ex.Message);
             }
         }
     }
@@ -214,7 +214,7 @@ public class ProxyServer : IDisposable
         var request = Encoding.ASCII.GetString(buffer, 0, bytesRead);
         var hostPort = request.Split('\r')[0].Split(' ')[1];
 
-        _logger.LogInformation($"CONNECT request to {hostPort}");
+        _logger.LogInformation("CONNECT request to {HostPort}", hostPort);
 
         // Parse host and port
         var parts = hostPort.Split(':');
@@ -243,7 +243,7 @@ public class ProxyServer : IDisposable
         {
             await sslStream.AuthenticateAsServerAsync(cert);
 
-            _logger.LogInformation($"TLS tunnel established to {host}:{port}");
+            _logger.LogInformation("TLS tunnel established to {Host}:{Port}", host, port);
 
             // Read decrypted HTTP requests and intercept them
             await HandleTunnelRequestsAsync(sslStream, host, port);
@@ -256,7 +256,7 @@ public class ProxyServer : IDisposable
     /// </summary>
     private async Task HandlePassthroughAsync(TcpClient client, string host, int port)
     {
-        _logger.LogInformation($"TLS passthrough for {host}:{port}");
+        _logger.LogInformation("TLS passthrough for {Host}:{Port}", host, port);
 
         // Connect to the upstream server
         using var upstream = new TcpClient();
@@ -282,7 +282,7 @@ public class ProxyServer : IDisposable
         // Once one direction completes, cancel the other
         await cts.CancelAsync();
 
-        _logger.LogDebug($"TLS passthrough ended for {host}:{port}");
+        _logger.LogDebug("TLS passthrough ended for {Host}:{Port}", host, port);
     }
 
     /// <summary>
@@ -358,7 +358,7 @@ public class ProxyServer : IDisposable
                 }
             }
 
-            _logger.LogInformation($"{method} {path} to {host}:{port}");
+            _logger.LogInformation("{Method} {Path} to {Host}:{Port}", method, path, host, port);
 
             // Serve info page when request is directed to the proxy itself
             if (IsRequestToProxyItself(host, port, path))
@@ -424,7 +424,7 @@ public class ProxyServer : IDisposable
         }
         catch (Exception ex) when (ex is not OperationCanceledException and not IOException)
         {
-            _logger.LogError($"Request handling error: {ex.Message}");
+            _logger.LogError("Request handling error: {ErrorMessage}", ex.Message);
         }
     }
 
@@ -607,7 +607,7 @@ public class ProxyServer : IDisposable
         }
         catch (OperationCanceledException)
         {
-            _logger.LogDebug($"Upstream read timed out for {host}:{port}{request.Path}");
+            _logger.LogDebug("Upstream read timed out for {Host}:{Port}{Path}", host, port, request.Path);
         }
         catch (IOException)
         {
@@ -690,7 +690,7 @@ public class ProxyServer : IDisposable
 
             var scheme = port == 443 ? "https" : "http";
 
-            _logger.LogInformation($"MITM {method} {scheme}://{host}{path}");
+            _logger.LogInformation("MITM {Method} {Scheme}://{Host}{Path}", method, scheme, host, path);
 
             // Intercept request
             var correlationId = Guid.NewGuid().ToString();
@@ -721,7 +721,7 @@ public class ProxyServer : IDisposable
                 catch (Exception connectEx)
                 {
                     _logger.LogWarning(
-                        $"TCP connect failed for {host}:{port}: {connectEx.GetType().Name}: {connectEx.Message}");
+                        "TCP connect failed for {Host}:{Port}: {ExceptionType}: {ErrorMessage}", host, port, connectEx.GetType().Name, connectEx.Message);
                     throw;
                 }
 
@@ -739,7 +739,7 @@ public class ProxyServer : IDisposable
                     catch (Exception tlsEx)
                     {
                         _logger.LogWarning(
-                            $"TLS handshake failed for {host}:{port}: {tlsEx.GetType().Name}: {tlsEx.Message}");
+                            "TLS handshake failed for {Host}:{Port}: {ExceptionType}: {ErrorMessage}", host, port, tlsEx.GetType().Name, tlsEx.Message);
                         throw;
                     }
                     targetStream = sslTarget;
@@ -797,7 +797,7 @@ public class ProxyServer : IDisposable
                     }
                     catch (OperationCanceledException)
                     {
-                        _logger.LogDebug($"Upstream read timed out for {host}:{port}{result.Path}");
+                        _logger.LogDebug("Upstream read timed out for {Host}:{Port}{Path}", host, port, result.Path);
                     }
                     catch (IOException)
                     {
@@ -828,7 +828,7 @@ public class ProxyServer : IDisposable
             {
                 var inner = ex.InnerException != null ? $" Inner: {ex.InnerException.GetType().Name}: {ex.InnerException.Message}" : "";
                 _logger.LogWarning(
-                    $"Upstream connection failed for {host}:{port}{result.Path}: {ex.GetType().Name}: {ex.Message}{inner}");
+                    "Upstream connection failed for {Host}:{Port}{Path}: {ExceptionType}: {ErrorMessage}{InnerException}", host, port, result.Path, ex.GetType().Name, ex.Message, inner);
             }
 
             // Connection: close means we're done after one request
