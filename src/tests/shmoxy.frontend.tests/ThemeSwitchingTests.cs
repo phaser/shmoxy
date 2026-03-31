@@ -40,6 +40,11 @@ public class ThemeSwitchingTests
         // Wait for Blazor SignalR circuit to connect and enable interactivity
         await page.WaitForTimeoutAsync(5000);
 
+        // Expand the Appearance accordion item to reveal the theme switch
+        var appearanceItem = page.Locator("fluent-accordion-item").First;
+        await appearanceItem.ClickAsync();
+        await page.WaitForTimeoutAsync(500);
+
         // Capture initial luminance to verify it changes after toggle
         var initialLuminance = await page.EvaluateAsync<string>(
             "() => getComputedStyle(document.documentElement).getPropertyValue('--base-layer-luminance').trim()");
