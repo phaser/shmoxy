@@ -39,6 +39,9 @@ logs/
 coverage.json
 coverage.xml
 
+# Distribution output
+dist/
+
 # Build artifacts (explicit)
 src/shmoxy/bin/
 src/shmoxy/obj/
