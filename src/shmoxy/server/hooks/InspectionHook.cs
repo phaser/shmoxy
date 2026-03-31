@@ -1,4 +1,6 @@
+using System.Text;
 using System.Threading.Channels;
+using shmoxy.models;
 using shmoxy.models.dto;
 using shmoxy.server.interfaces;
 using shmoxy.shared.ipc;
@@ -84,6 +86,70 @@ public class InspectionHook : IInterceptHook, IDisposable
             Method = "CONNECT",
             Url = $"https://{host}:{port}",
             CorrelationId = Guid.NewGuid().ToString()
+        };
+
+        _channel.Writer.TryWrite(evt);
+        return Task.CompletedTask;
+    }
+
+    private const int MaxBodyBytes = 1_048_576; // 1 MB
+
+    public Task OnWebSocketOpenAsync(string host, string path, string correlationId)
+    {
+        if (!_enabled || _disposed)
+            return Task.CompletedTask;
+
+        var evt = new InspectionEvent
+        {
+            Timestamp = DateTime.UtcNow,
+            EventType = "websocket_open",
+            Method = "GET",
+            Url = $"wss://{host}{path}",
+            StatusCode = 101,
+            CorrelationId = correlationId,
+            IsWebSocket = true
+        };
+
+        _channel.Writer.TryWrite(evt);
+        return Task.CompletedTask;
+    }
+
+    public Task OnWebSocketFrameAsync(string correlationId, WebSocketFrame frame, string direction)
+    {
+        if (!_enabled || _disposed)
+            return Task.CompletedTask;
+
+        var payload = frame.Payload.Length > MaxBodyBytes
+            ? frame.Payload[..MaxBodyBytes]
+            : frame.Payload;
+
+        var evt = new InspectionEvent
+        {
+            Timestamp = DateTime.UtcNow,
+            EventType = "websocket_message",
+            CorrelationId = correlationId,
+            Body = payload,
+            FrameType = frame.Opcode.ToString(),
+            Direction = direction,
+            IsWebSocket = true
+        };
+
+        _channel.Writer.TryWrite(evt);
+        return Task.CompletedTask;
+    }
+
+    public Task OnWebSocketCloseAsync(string correlationId, string? reason)
+    {
+        if (!_enabled || _disposed)
+            return Task.CompletedTask;
+
+        var evt = new InspectionEvent
+        {
+            Timestamp = DateTime.UtcNow,
+            EventType = "websocket_close",
+            CorrelationId = correlationId,
+            IsWebSocket = true,
+            Body = reason != null ? Encoding.UTF8.GetBytes(reason) : null
         };
 
         _channel.Writer.TryWrite(evt);

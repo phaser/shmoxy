@@ -13,4 +13,7 @@ public record InspectionEvent
     public Dictionary<string, string> Headers { get; init; } = new();
     public byte[]? Body { get; init; }
     public string? CorrelationId { get; init; }
+    public string? FrameType { get; init; }
+    public string? Direction { get; init; }
+    public bool? IsWebSocket { get; init; }
 }
