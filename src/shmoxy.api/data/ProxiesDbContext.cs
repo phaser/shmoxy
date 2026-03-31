@@ -14,6 +14,7 @@ public class ProxiesDbContext : DbContext
     public DbSet<InspectionSession> InspectionSessions => Set<InspectionSession>();
     public DbSet<InspectionSessionRow> InspectionSessionRows => Set<InspectionSessionRow>();
     public DbSet<InspectionSessionLogEntry> InspectionSessionLogEntries => Set<InspectionSessionLogEntry>();
+    public DbSet<AppSetting> AppSettings => Set<AppSetting>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -58,6 +59,13 @@ public class ProxiesDbContext : DbContext
             entity.Property(e => e.Level).IsRequired().HasMaxLength(16);
             entity.Property(e => e.Category).IsRequired().HasMaxLength(128);
             entity.Property(e => e.Message).IsRequired();
+        });
+
+        modelBuilder.Entity<AppSetting>(entity =>
+        {
+            entity.HasKey(e => e.Key);
+            entity.Property(e => e.Key).IsRequired().HasMaxLength(128);
+            entity.Property(e => e.Value).IsRequired();
         });
     }
 }

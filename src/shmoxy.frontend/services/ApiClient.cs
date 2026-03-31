@@ -163,6 +163,19 @@ public class ApiClient(HttpClient httpClient)
         return await response.Content.ReadFromJsonAsync<List<SessionLogEntryData>>() ?? [];
     }
 
+    public async Task<RetentionPolicyDto> GetRetentionPolicyAsync()
+    {
+        var response = await _httpClient.GetAsync("/api/settings/retention");
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<RetentionPolicyDto>() ?? new RetentionPolicyDto();
+    }
+
+    public async Task SaveRetentionPolicyAsync(RetentionPolicyDto policy)
+    {
+        var response = await _httpClient.PutAsJsonAsync("/api/settings/retention", policy);
+        await EnsureSuccessOrThrowWithBody(response);
+    }
+
     public async IAsyncEnumerable<InspectionEventDto> StreamInspectionEventsAsync(
         string proxyId = "local",
         [EnumeratorCancellation] CancellationToken ct = default)

@@ -1,6 +1,7 @@
 @page "/settings"
 @inject ThemeState ThemeState
 @inject FrontendSettings FrontendSettings
+@inject ApiClient ApiClient
 @inject IJSRuntime JS
 
 <h1>Settings</h1>
@@ -35,16 +36,67 @@
             </div>
         </div>
     </FluentCard>
+
+    <FluentCard>
+        <div class="setting-section">
+            <h3>Session Retention</h3>
+            <div class="setting-row">
+                <div class="setting-label">
+                    <FluentIcon Value="@(new Icons.Regular.Size20.Delete())" />
+                    <span>Keep sessions forever</span>
+                </div>
+                <FluentSwitch Label="@(_retentionPolicy.Enabled ? "Retention active" : "Forever")"
+                             Value="@(!_retentionPolicy.Enabled)"
+                             ValueChanged="OnRetentionForeverToggle" />
+            </div>
+            @if (_retentionPolicy.Enabled)
+            {
+                <div class="setting-row">
+                    <div class="setting-label">
+                        <span>Max age (days)</span>
+                    </div>
+                    <FluentNumberField TValue="int?"
+                                       Value="@_retentionPolicy.MaxAgeDays"
+                                       ValueChanged="OnMaxAgeDaysChanged"
+                                       Min="1"
+                                       Max="365"
+                                       Placeholder="No limit"
+                                       Style="width: 120px;" />
+                </div>
+                <div class="setting-row">
+                    <div class="setting-label">
+                        <span>Max session count</span>
+                    </div>
+                    <FluentNumberField TValue="int?"
+                                       Value="@_retentionPolicy.MaxCount"
+                                       ValueChanged="OnMaxCountChanged"
+                                       Min="1"
+                                       Max="10000"
+                                       Placeholder="No limit"
+                                       Style="width: 120px;" />
+                </div>
+            }
+        </div>
+    </FluentCard>
 </div>
 
 @code {
     private bool IsDark => ThemeState.Mode == DesignThemeModes.Dark;
+    private RetentionPolicyDto _retentionPolicy = new();
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (firstRender)
         {
             await FrontendSettings.LoadAsync(JS);
+            try
+            {
+                _retentionPolicy = await ApiClient.GetRetentionPolicyAsync();
+            }
+            catch
+            {
+                // API may not be available yet
+            }
             StateHasChanged();
         }
     }
@@ -57,6 +109,24 @@
     private async Task OnCyberChefToggle(bool value)
     {
         await FrontendSettings.SetEnableCyberChefAsync(JS, value);
+    }
+
+    private async Task OnRetentionForeverToggle(bool keepForever)
+    {
+        _retentionPolicy.Enabled = !keepForever;
+        await ApiClient.SaveRetentionPolicyAsync(_retentionPolicy);
+    }
+
+    private async Task OnMaxAgeDaysChanged(int? value)
+    {
+        _retentionPolicy.MaxAgeDays = value;
+        await ApiClient.SaveRetentionPolicyAsync(_retentionPolicy);
+    }
+
+    private async Task OnMaxCountChanged(int? value)
+    {
+        _retentionPolicy.MaxCount = value;
+        await ApiClient.SaveRetentionPolicyAsync(_retentionPolicy);
     }
 }
 
