@@ -1,0 +1,45 @@
+# Stage 1: Build
+FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
+WORKDIR /repo
+
+# Install tools needed by download-cyberchef.sh
+RUN apt-get update && apt-get install -y --no-install-recommends unzip curl && rm -rf /var/lib/apt/lists/*
+
+# Copy project files and restore
+COPY src/shmoxy.slnx src/shmoxy.slnx
+COPY src/shmoxy/shmoxy.csproj src/shmoxy/shmoxy.csproj
+COPY src/shmoxy.api/shmoxy.api.csproj src/shmoxy.api/shmoxy.api.csproj
+COPY src/shmoxy.frontend/shmoxy.frontend.csproj src/shmoxy.frontend/shmoxy.frontend.csproj
+COPY src/shmoxy.shared/shmoxy.shared.csproj src/shmoxy.shared/shmoxy.shared.csproj
+RUN dotnet restore src/shmoxy.api/shmoxy.api.csproj
+RUN dotnet restore src/shmoxy/shmoxy.csproj
+
+# Copy everything else
+COPY src/ src/
+COPY scripts/ scripts/
+
+# Download CyberChef assets (gitignored, must be fetched at build time)
+RUN scripts/download-cyberchef.sh
+
+# Publish API (includes frontend RCL assets)
+RUN dotnet publish src/shmoxy.api -c Release -o /app --nologo -v quiet
+
+# Publish proxy into a temp dir, then merge new files into /app
+RUN dotnet publish src/shmoxy -c Release -o /proxy-tmp --nologo -v quiet && \
+    cp -rn /proxy-tmp/* /app/ && \
+    rm -rf /proxy-tmp
+
+# Stage 2: Runtime
+FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
+WORKDIR /app
+COPY --from=build /app .
+
+# API port
+EXPOSE 5000
+# Proxy port
+EXPOSE 8080
+
+ENV ASPNETCORE_URLS=http://+:5000
+ENV ApiConfig__ProxyPort=8080
+
+ENTRYPOINT ["dotnet", "shmoxy.api.dll"]
