@@ -277,6 +277,37 @@ public static class ProxyControlApi
             return Results.Json(new { Success = success, Message = success ? "Request dropped" : "Request not found" });
         });
 
+        // Breakpoint rules
+        endpoints.MapGet("/ipc/breakpoints/rules", () =>
+        {
+            if (stateService.BreakpointHook == null)
+                return Results.Json(Array.Empty<object>());
+
+            return Results.Json(stateService.BreakpointHook.GetRules());
+        });
+
+        endpoints.MapPost("/ipc/breakpoints/rules", async (HttpRequest request) =>
+        {
+            if (stateService.BreakpointHook == null)
+                return Results.Json(new { Success = false, Message = "Breakpoints not available" });
+
+            var body = await JsonSerializer.DeserializeAsync<JsonElement>(request.Body);
+            var method = body.TryGetProperty("method", out var m) ? m.GetString() : null;
+            var urlPattern = body.TryGetProperty("urlPattern", out var u) ? u.GetString() ?? "" : "";
+
+            var rule = stateService.BreakpointHook.AddRule(method, urlPattern);
+            return Results.Json(rule);
+        });
+
+        endpoints.MapDelete("/ipc/breakpoints/rules/{id}", (string id) =>
+        {
+            if (stateService.BreakpointHook == null)
+                return Results.Json(new { Success = false });
+
+            var success = stateService.BreakpointHook.RemoveRule(id);
+            return Results.Json(new { Success = success });
+        });
+
         return endpoints;
     }
 }

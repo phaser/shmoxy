@@ -65,4 +65,34 @@ public class BreakpointsController : ControllerBase
         await client.DropRequestAsync(correlationId, ct);
         return Ok(new { Dropped = true });
     }
+
+    [HttpGet("rules")]
+    public async Task<ActionResult> GetRules(CancellationToken ct)
+    {
+        var client = _processManager.GetIpcClient();
+        var json = await client.GetBreakpointRulesAsync(ct);
+        return Content(json, "application/json");
+    }
+
+    [HttpPost("rules")]
+    public async Task<ActionResult> AddRule([FromBody] AddBreakpointRuleRequest request, CancellationToken ct)
+    {
+        var client = _processManager.GetIpcClient();
+        var json = await client.AddBreakpointRuleAsync(request.Method, request.UrlPattern, ct);
+        return Content(json, "application/json");
+    }
+
+    [HttpDelete("rules/{id}")]
+    public async Task<ActionResult> RemoveRule(string id, CancellationToken ct)
+    {
+        var client = _processManager.GetIpcClient();
+        await client.RemoveBreakpointRuleAsync(id, ct);
+        return Ok(new { Removed = true });
+    }
+}
+
+public class AddBreakpointRuleRequest
+{
+    public string? Method { get; set; }
+    public string UrlPattern { get; set; } = string.Empty;
 }

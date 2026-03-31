@@ -112,4 +112,57 @@ public class BreakpointHookTests
         Assert.Same(modified, result);
         Assert.Equal("POST", result!.Method);
     }
+
+    [Fact]
+    public async Task OnRequestAsync_SkipsNonMatchingRules()
+    {
+        var hook = new BreakpointHook { Enabled = true, TimeoutMs = 5000 };
+        hook.AddRule("GET", "/api/users");
+
+        var request = new InterceptedRequest
+        {
+            Method = "POST",
+            Url = new Uri("http://example.com/api/orders"),
+            CorrelationId = "test-6"
+        };
+
+        // Should pass through since it doesn't match the rule
+        var result = await hook.OnRequestAsync(request);
+        Assert.Same(request, result);
+    }
+
+    [Fact]
+    public async Task OnRequestAsync_PausesMatchingRule()
+    {
+        var hook = new BreakpointHook { Enabled = true, TimeoutMs = 5000 };
+        hook.AddRule("GET", "/api/users");
+
+        var request = new InterceptedRequest
+        {
+            Method = "GET",
+            Url = new Uri("http://example.com/api/users/123"),
+            CorrelationId = "test-7"
+        };
+
+        var pauseTask = hook.OnRequestAsync(request);
+        await Task.Delay(50);
+        Assert.False(pauseTask.IsCompleted);
+
+        hook.Release("test-7");
+        var result = await pauseTask;
+        Assert.Same(request, result);
+    }
+
+    [Fact]
+    public void AddAndRemoveRules()
+    {
+        var hook = new BreakpointHook();
+        var rule = hook.AddRule("GET", "/api/test");
+
+        Assert.Single(hook.GetRules());
+        Assert.True(hook.Enabled); // Auto-enabled
+
+        hook.RemoveRule(rule.Id);
+        Assert.Empty(hook.GetRules());
+    }
 }

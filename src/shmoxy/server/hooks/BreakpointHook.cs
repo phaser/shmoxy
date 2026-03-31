@@ -11,6 +11,7 @@ namespace shmoxy.server.hooks;
 public class BreakpointHook : IInterceptHook
 {
     private readonly ConcurrentDictionary<string, PausedRequest> _pausedRequests = new();
+    private readonly ConcurrentDictionary<string, BreakpointRule> _rules = new();
     private volatile bool _enabled;
     private int _timeoutMs = 60_000;
 
@@ -29,9 +30,49 @@ public class BreakpointHook : IInterceptHook
     public IReadOnlyCollection<PausedRequest> GetPausedRequests() =>
         _pausedRequests.Values.ToList().AsReadOnly();
 
+    public IReadOnlyCollection<BreakpointRule> GetRules() =>
+        _rules.Values.ToList().AsReadOnly();
+
+    public BreakpointRule AddRule(string? method, string urlPattern)
+    {
+        var rule = new BreakpointRule
+        {
+            Id = Guid.NewGuid().ToString(),
+            Method = method,
+            UrlPattern = urlPattern
+        };
+        _rules[rule.Id] = rule;
+        // Auto-enable when a rule is added
+        _enabled = true;
+        return rule;
+    }
+
+    public bool RemoveRule(string id) => _rules.TryRemove(id, out _);
+
+    private bool MatchesAnyRule(InterceptedRequest request)
+    {
+        if (_rules.IsEmpty)
+            return true; // No rules = break on all (legacy behavior)
+
+        var url = request.Url?.ToString() ?? "";
+        foreach (var rule in _rules.Values)
+        {
+            if (rule.Method != null &&
+                !rule.Method.Equals(request.Method, StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            if (url.Contains(rule.UrlPattern, StringComparison.OrdinalIgnoreCase))
+                return true;
+        }
+        return false;
+    }
+
     public async Task<InterceptedRequest?> OnRequestAsync(InterceptedRequest request)
     {
         if (!_enabled || string.IsNullOrEmpty(request.CorrelationId))
+            return request;
+
+        if (!MatchesAnyRule(request))
             return request;
 
         var paused = new PausedRequest
@@ -89,5 +130,12 @@ public class BreakpointHook : IInterceptHook
         public InterceptedRequest Request { get; init; } = new();
         public DateTime PausedAt { get; init; }
         internal TaskCompletionSource<InterceptedRequest?> Completion { get; init; } = new();
+    }
+
+    public class BreakpointRule
+    {
+        public string Id { get; init; } = string.Empty;
+        public string? Method { get; init; }
+        public string UrlPattern { get; init; } = string.Empty;
     }
 }
