@@ -49,6 +49,9 @@ public partial class Program
                 options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter());
             });
 
+        builder.Services.AddEndpointsApiExplorer();
+        builder.Services.AddSwaggerGen();
+
         // Add Blazor frontend (from shmoxy.frontend)
         builder.Services.AddBlazorFrontend();
 
@@ -59,6 +62,9 @@ public partial class Program
             var dbContext = scope.ServiceProvider.GetRequiredService<ProxiesDbContext>();
             EnsureSchemaCreated(dbContext);
         }
+
+        app.UseSwagger();
+        app.UseSwaggerUI();
 
         app.UseBlazorFrontendMiddleware();
         app.MapControllers();
