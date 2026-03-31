@@ -228,6 +228,47 @@ public class ProxyServerTests : IClassFixture<ProxyTestFixture>, IDisposable
         Assert.Equal(bodyBytes, body);
     }
 
+    [Fact]
+    public void ParseRawHttpResponse_DecodesChunkedTransferEncoding()
+    {
+        var jsonBody = "{\"Name\":\"TestUser\",\"Email\":\"test@example.com\"}";
+        var chunkSize = jsonBody.Length.ToString("x"); // hex chunk size
+        var chunkedBody = $"{chunkSize}\r\n{jsonBody}\r\n0\r\n\r\n";
+        var raw = System.Text.Encoding.ASCII.GetBytes(
+            $"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\nContent-Type: application/json\r\n\r\n{chunkedBody}");
+
+        var (statusCode, headers, body) = ProxyServer.ParseRawHttpResponse(raw);
+
+        Assert.Equal(200, statusCode);
+        Assert.Equal(jsonBody, System.Text.Encoding.ASCII.GetString(body));
+    }
+
+    [Fact]
+    public void ParseRawHttpResponse_DecodesMultipleChunks()
+    {
+        var chunk1 = "Hello, ";
+        var chunk2 = "World!";
+        var chunkedBody = $"{chunk1.Length:x}\r\n{chunk1}\r\n{chunk2.Length:x}\r\n{chunk2}\r\n0\r\n\r\n";
+        var raw = System.Text.Encoding.ASCII.GetBytes(
+            $"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n{chunkedBody}");
+
+        var (_, _, body) = ProxyServer.ParseRawHttpResponse(raw);
+
+        Assert.Equal("Hello, World!", System.Text.Encoding.ASCII.GetString(body));
+    }
+
+    [Fact]
+    public void ParseRawHttpResponse_NonChunkedBodyUnchanged()
+    {
+        var bodyContent = "Plain body content";
+        var raw = System.Text.Encoding.ASCII.GetBytes(
+            $"HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\n{bodyContent}");
+
+        var (_, _, body) = ProxyServer.ParseRawHttpResponse(raw);
+
+        Assert.Equal(bodyContent, System.Text.Encoding.ASCII.GetString(body));
+    }
+
     public void Dispose()
     {
         if (_disposed) return;

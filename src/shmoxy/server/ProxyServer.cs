@@ -889,7 +889,65 @@ public class ProxyServer : IDisposable
             body = Array.Empty<byte>();
         }
 
+        // Decode chunked transfer encoding if present
+        if (headers.TryGetValue("Transfer-Encoding", out var te) &&
+            te.Contains("chunked", StringComparison.OrdinalIgnoreCase) &&
+            body.Length > 0)
+        {
+            body = DecodeChunkedBody(body);
+        }
+
         return (statusCode, headers, body);
+    }
+
+    /// <summary>
+    /// Decodes a chunked transfer-encoded body by stripping chunk-size lines and the terminating chunk.
+    /// </summary>
+    internal static byte[] DecodeChunkedBody(byte[] chunkedData)
+    {
+        using var output = new MemoryStream();
+        var offset = 0;
+
+        while (offset < chunkedData.Length)
+        {
+            // Find the end of the chunk-size line (\r\n)
+            var lineEnd = FindCrLf(chunkedData, offset);
+            if (lineEnd < 0)
+                break;
+
+            // Parse chunk size (hex)
+            var sizeLine = Encoding.ASCII.GetString(chunkedData, offset, lineEnd - offset).Trim();
+            // Chunk extensions (after ';') are allowed by RFC but rare — strip them
+            var semiColon = sizeLine.IndexOf(';');
+            if (semiColon >= 0)
+                sizeLine = sizeLine[..semiColon].Trim();
+
+            if (!int.TryParse(sizeLine, System.Globalization.NumberStyles.HexNumber, null, out var chunkSize) ||
+                chunkSize == 0)
+                break;
+
+            // Move past the \r\n after the size line
+            var dataStart = lineEnd + 2;
+            if (dataStart + chunkSize > chunkedData.Length)
+                break;
+
+            output.Write(chunkedData, dataStart, chunkSize);
+
+            // Skip past chunk data + trailing \r\n
+            offset = dataStart + chunkSize + 2;
+        }
+
+        return output.ToArray();
+    }
+
+    private static int FindCrLf(byte[] data, int offset)
+    {
+        for (var i = offset; i < data.Length - 1; i++)
+        {
+            if (data[i] == (byte)'\r' && data[i + 1] == (byte)'\n')
+                return i;
+        }
+        return -1;
     }
 
     private static Dictionary<string, string> ParseHeaders(IEnumerable<string> lines)
