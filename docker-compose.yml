@@ -1,0 +1,14 @@
+services:
+  shmoxy:
+    build: .
+    ports:
+      - "5000:5000"   # API / UI
+      - "8080:8080"   # Proxy
+    volumes:
+      - shmoxy-data:/root/.local/share/shmoxy-api
+    environment:
+      - ASPNETCORE_URLS=http://+:5000
+      - ApiConfig__ProxyPort=8080
+
+volumes:
+  shmoxy-data:

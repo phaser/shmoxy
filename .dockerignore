@@ -1,0 +1,10 @@
+bin/
+obj/
+dist/
+.git/
+worktrees/
+**/node_modules/
+src/shmoxy.frontend/wwwroot/cyberchef/
+src/tests/
+*.md
+!README.md
