@@ -1,0 +1,66 @@
+@{
+    var parts = ParseUrl(Url);
+}
+<span class="colorized-url" title="@Url">@if (parts.Scheme != null)
+{<span class="url-scheme @(parts.Scheme.StartsWith("https") ? "url-scheme-secure" : "url-scheme-insecure")">@parts.Scheme</span>}@if (parts.Host != null)
+{<span class="url-host">@parts.Host</span>}@if (parts.Path != null)
+{<span class="url-path">@parts.Path</span>}@if (parts.Query != null)
+{<span class="url-query">@parts.Query</span>}</span>
+
+@code {
+    [Parameter, EditorRequired]
+    public string Url { get; set; } = string.Empty;
+
+    private record UrlParts(string? Scheme, string? Host, string? Path, string? Query);
+
+    private static UrlParts ParseUrl(string url)
+    {
+        if (string.IsNullOrEmpty(url))
+            return new UrlParts(null, null, null, null);
+
+        try
+        {
+            var uri = new Uri(url);
+            var scheme = uri.Scheme + "://";
+            var host = uri.Host + (uri.IsDefaultPort ? "" : $":{uri.Port}");
+            var path = uri.AbsolutePath == "/" ? null : uri.AbsolutePath;
+            var query = string.IsNullOrEmpty(uri.Query) ? null : uri.Query;
+            return new UrlParts(scheme, host, path, query);
+        }
+        catch
+        {
+            return new UrlParts(null, url, null, null);
+        }
+    }
+}
+
+<style>
+.colorized-url {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: inline-block;
+    max-width: 100%;
+}
+
+.url-scheme-secure {
+    color: var(--url-scheme-secure, #89b4fa);
+}
+
+.url-scheme-insecure {
+    color: var(--url-scheme-insecure, #f38ba8);
+}
+
+.url-host {
+    color: var(--url-host, var(--neutral-foreground-rest));
+}
+
+.url-path {
+    color: var(--url-path, #a6e3a1);
+}
+
+.url-query {
+    color: var(--url-query, #89b4fa);
+    opacity: 0.8;
+}
+</style>
