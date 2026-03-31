@@ -263,6 +263,35 @@ public class ProxyIpcClient : IProxyIpcClient, IDisposable
         response.EnsureSuccessStatusCode();
     }
 
+    public async Task<string> GetBreakpointRulesAsync(CancellationToken ct = default)
+    {
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        cts.CancelAfter(IpcTimeouts.Small);
+        var response = await _httpClient.GetAsync("/ipc/breakpoints/rules", cts.Token);
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadAsStringAsync(cts.Token);
+    }
+
+    public async Task<string> AddBreakpointRuleAsync(string? method, string urlPattern, CancellationToken ct = default)
+    {
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        cts.CancelAfter(IpcTimeouts.Small);
+        var body = new StringContent(
+            System.Text.Json.JsonSerializer.Serialize(new { method, urlPattern }),
+            System.Text.Encoding.UTF8, "application/json");
+        var response = await _httpClient.PostAsync("/ipc/breakpoints/rules", body, cts.Token);
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadAsStringAsync(cts.Token);
+    }
+
+    public async Task RemoveBreakpointRuleAsync(string id, CancellationToken ct = default)
+    {
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        cts.CancelAfter(IpcTimeouts.Small);
+        var response = await _httpClient.DeleteAsync($"/ipc/breakpoints/rules/{id}", cts.Token);
+        response.EnsureSuccessStatusCode();
+    }
+
     private async Task<T> RetryAsync<T>(Func<Task<T>> action, CancellationToken ct)
     {
         var delay = BaseDelay;

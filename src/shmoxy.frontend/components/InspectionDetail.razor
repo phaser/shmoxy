@@ -30,6 +30,9 @@
             <button class="tab @(activeTab == "response" ? "active" : "")" @onclick='() => SetTab("response")'>Response</button>
             <div class="tab-actions">
                 <button class="resend-button" @onclick="OpenResendEditor">Resend</button>
+                <button class="break-button @(_breakConfirmed ? "active" : "")" @onclick="OnBreakClick" title="Break on requests matching this URL">
+                    @(_breakConfirmed ? "Breaking" : "Break")
+                </button>
             </div>
         </div>
 
@@ -483,6 +486,28 @@
             _resendSending = false;
         }
     }
+
+    // Quick-break state
+    private bool _breakConfirmed;
+
+    private async Task OnBreakClick()
+    {
+        if (_breakConfirmed) return;
+
+        try
+        {
+            // Extract URL path pattern (ignore query string for matching)
+            var uri = new Uri(Row.Url);
+            var urlPattern = uri.AbsolutePath;
+
+            await ApiClient.AddBreakpointRuleAsync(Row.Method, urlPattern);
+            _breakConfirmed = true;
+        }
+        catch
+        {
+            // Silently fail — UI won't show active state
+        }
+    }
 }
 
 <style>
@@ -812,6 +837,28 @@
 
 .resend-button:hover {
     background: var(--accent-fill-hover);
+}
+
+.break-button {
+    background: transparent;
+    color: var(--neutral-foreground-rest);
+    border: 1px solid var(--neutral-stroke-rest);
+    border-radius: 4px;
+    padding: 4px 12px;
+    cursor: pointer;
+    font-size: 0.8rem;
+}
+
+.break-button:hover {
+    border-color: var(--error);
+    color: var(--error);
+}
+
+.break-button.active {
+    background: var(--error);
+    color: white;
+    border-color: var(--error);
+    cursor: default;
 }
 
 .resend-editor {

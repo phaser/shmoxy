@@ -27,4 +27,7 @@ public interface IProxyIpcClient
     Task<string> GetPausedRequestsAsync(CancellationToken ct = default);
     Task ReleaseRequestAsync(string correlationId, string? modifiedBody = null, CancellationToken ct = default);
     Task DropRequestAsync(string correlationId, CancellationToken ct = default);
+    Task<string> GetBreakpointRulesAsync(CancellationToken ct = default);
+    Task<string> AddBreakpointRuleAsync(string? method, string urlPattern, CancellationToken ct = default);
+    Task RemoveBreakpointRuleAsync(string id, CancellationToken ct = default);
 }

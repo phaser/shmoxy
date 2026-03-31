@@ -214,6 +214,12 @@ public class ApiClient(HttpClient httpClient)
         await EnsureSuccessOrThrowWithBody(response);
     }
 
+    public async Task AddBreakpointRuleAsync(string? method, string urlPattern)
+    {
+        var response = await _httpClient.PostAsJsonAsync("/api/breakpoints/rules", new { method, urlPattern });
+        await EnsureSuccessOrThrowWithBody(response);
+    }
+
     public async IAsyncEnumerable<InspectionEventDto> StreamInspectionEventsAsync(
         string proxyId = "local",
         [EnumeratorCancellation] CancellationToken ct = default)
