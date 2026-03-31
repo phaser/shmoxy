@@ -4,95 +4,111 @@
 @inject ApiClient ApiClient
 @inject IJSRuntime JS
 
-<h1>Settings</h1>
-
 <div class="settings-container">
-    <FluentCard>
-        <div class="setting-section">
-            <h3>Appearance</h3>
-            <div class="setting-row">
-                <div class="setting-label">
+    <FluentAccordion>
+        <FluentAccordionItem Heading="Appearance">
+            <HeadingTemplate>
+                <div class="accordion-heading">
                     <FluentIcon Value="@(new Icons.Regular.Size20.DarkTheme())" />
-                    <span>Theme</span>
+                    <span>Appearance</span>
                 </div>
-                <FluentSwitch Label="@(IsDark ? "Dark" : "Light")"
-                             Value="@IsDark"
-                             ValueChanged="OnToggle" />
-            </div>
-        </div>
-    </FluentCard>
+            </HeadingTemplate>
+            <ChildContent>
+                <div class="setting-row">
+                    <div class="setting-label">
+                        <span>Theme</span>
+                    </div>
+                    <FluentSwitch Label="@(IsDark ? "Dark" : "Light")"
+                                 Value="@IsDark"
+                                 ValueChanged="OnToggle" />
+                </div>
+            </ChildContent>
+        </FluentAccordionItem>
 
-    <FluentCard>
-        <div class="setting-section">
-            <h3>Tools</h3>
-            <div class="setting-row">
-                <div class="setting-label">
+        <FluentAccordionItem Heading="Tools">
+            <HeadingTemplate>
+                <div class="accordion-heading">
                     <FluentIcon Value="@(new Icons.Regular.Size20.Wrench())" />
-                    <span>Enable CyberChef</span>
+                    <span>Tools</span>
                 </div>
-                <FluentSwitch Label="@(FrontendSettings.EnableCyberChef ? "On" : "Off")"
-                             Value="@FrontendSettings.EnableCyberChef"
-                             ValueChanged="OnCyberChefToggle" />
-            </div>
-        </div>
-    </FluentCard>
+            </HeadingTemplate>
+            <ChildContent>
+                <div class="setting-row">
+                    <div class="setting-label">
+                        <span>Enable CyberChef</span>
+                    </div>
+                    <FluentSwitch Label="@(FrontendSettings.EnableCyberChef ? "On" : "Off")"
+                                 Value="@FrontendSettings.EnableCyberChef"
+                                 ValueChanged="OnCyberChefToggle" />
+                </div>
+            </ChildContent>
+        </FluentAccordionItem>
 
-    <FluentCard>
-        <div class="setting-section">
-            <h3>Security</h3>
-            <div class="setting-row">
-                <div class="setting-label">
+        <FluentAccordionItem Heading="Security">
+            <HeadingTemplate>
+                <div class="accordion-heading">
                     <FluentIcon Value="@(new Icons.Regular.Size20.ShieldKeyhole())" />
-                    <span>Validate upstream TLS certificates</span>
+                    <span>Security</span>
                 </div>
-                <FluentSwitch Label="@(_proxyConfig.ValidateUpstreamCertificates ? "On" : "Off")"
-                             Value="@_proxyConfig.ValidateUpstreamCertificates"
-                             ValueChanged="OnValidateUpstreamCertsToggle" />
-            </div>
-        </div>
-    </FluentCard>
+            </HeadingTemplate>
+            <ChildContent>
+                <div class="setting-row">
+                    <div class="setting-label">
+                        <span>Validate upstream TLS certificates</span>
+                    </div>
+                    <FluentSwitch Label="@(_proxyConfig.ValidateUpstreamCertificates ? "On" : "Off")"
+                                 Value="@_proxyConfig.ValidateUpstreamCertificates"
+                                 ValueChanged="OnValidateUpstreamCertsToggle" />
+                </div>
+            </ChildContent>
+        </FluentAccordionItem>
 
-    <FluentCard>
-        <div class="setting-section">
-            <h3>Session Retention</h3>
-            <div class="setting-row">
-                <div class="setting-label">
+        <FluentAccordionItem Heading="Session Retention">
+            <HeadingTemplate>
+                <div class="accordion-heading">
                     <FluentIcon Value="@(new Icons.Regular.Size20.Delete())" />
-                    <span>Keep sessions forever</span>
+                    <span>Session Retention</span>
                 </div>
-                <FluentSwitch Label="@(_retentionPolicy.Enabled ? "Retention active" : "Forever")"
-                             Value="@(!_retentionPolicy.Enabled)"
-                             ValueChanged="OnRetentionForeverToggle" />
-            </div>
-            @if (_retentionPolicy.Enabled)
-            {
+            </HeadingTemplate>
+            <ChildContent>
                 <div class="setting-row">
                     <div class="setting-label">
-                        <span>Max age (days)</span>
+                        <span>Keep sessions forever</span>
                     </div>
-                    <FluentNumberField TValue="int?"
-                                       Value="@_retentionPolicy.MaxAgeDays"
-                                       ValueChanged="OnMaxAgeDaysChanged"
-                                       Min="1"
-                                       Max="365"
-                                       Placeholder="No limit"
-                                       Style="width: 120px;" />
+                    <FluentSwitch Label="@(_retentionPolicy.Enabled ? "Retention active" : "Forever")"
+                                 Value="@(!_retentionPolicy.Enabled)"
+                                 ValueChanged="OnRetentionForeverToggle" />
                 </div>
-                <div class="setting-row">
-                    <div class="setting-label">
-                        <span>Max session count</span>
+                @if (_retentionPolicy.Enabled)
+                {
+                    <div class="setting-row">
+                        <div class="setting-label">
+                            <span>Max age (days)</span>
+                        </div>
+                        <FluentNumberField TValue="int?"
+                                           Value="@_retentionPolicy.MaxAgeDays"
+                                           ValueChanged="OnMaxAgeDaysChanged"
+                                           Min="1"
+                                           Max="365"
+                                           Placeholder="No limit"
+                                           Style="width: 120px;" />
                     </div>
-                    <FluentNumberField TValue="int?"
-                                       Value="@_retentionPolicy.MaxCount"
-                                       ValueChanged="OnMaxCountChanged"
-                                       Min="1"
-                                       Max="10000"
-                                       Placeholder="No limit"
-                                       Style="width: 120px;" />
-                </div>
-            }
-        </div>
-    </FluentCard>
+                    <div class="setting-row">
+                        <div class="setting-label">
+                            <span>Max session count</span>
+                        </div>
+                        <FluentNumberField TValue="int?"
+                                           Value="@_retentionPolicy.MaxCount"
+                                           ValueChanged="OnMaxCountChanged"
+                                           Min="1"
+                                           Max="10000"
+                                           Placeholder="No limit"
+                                           Style="width: 120px;" />
+                    </div>
+                }
+            </ChildContent>
+        </FluentAccordionItem>
+    </FluentAccordion>
 </div>
 
 @code {
@@ -165,9 +181,10 @@
     max-width: 600px;
 }
 
-.setting-section h3 {
-    margin-top: 0;
-    margin-bottom: 1rem;
+.accordion-heading {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
     font-weight: 600;
 }
 
