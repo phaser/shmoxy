@@ -27,6 +27,17 @@ public class SessionRowDto
     public Dictionary<string, string>? ResponseHeaders { get; set; }
     public string? RequestBody { get; set; }
     public string? ResponseBody { get; set; }
+    public bool IsWebSocket { get; set; }
+    public bool WebSocketClosed { get; set; }
+    public List<WebSocketFrameDto>? WebSocketFrames { get; set; }
+}
+
+public class WebSocketFrameDto
+{
+    public DateTime Timestamp { get; set; }
+    public string Direction { get; set; } = string.Empty;
+    public string FrameType { get; set; } = string.Empty;
+    public string? Payload { get; set; }
 }
 
 public class UpdateSessionRequest

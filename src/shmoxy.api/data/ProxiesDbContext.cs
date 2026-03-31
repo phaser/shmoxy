@@ -14,6 +14,7 @@ public class ProxiesDbContext : DbContext
     public DbSet<InspectionSession> InspectionSessions => Set<InspectionSession>();
     public DbSet<InspectionSessionRow> InspectionSessionRows => Set<InspectionSessionRow>();
     public DbSet<InspectionSessionLogEntry> InspectionSessionLogEntries => Set<InspectionSessionLogEntry>();
+    public DbSet<InspectionSessionWebSocketFrame> InspectionSessionWebSocketFrames => Set<InspectionSessionWebSocketFrame>();
     public DbSet<AppSetting> AppSettings => Set<AppSetting>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -50,6 +51,18 @@ public class ProxiesDbContext : DbContext
             entity.HasIndex(e => e.SessionId);
             entity.Property(e => e.Method).IsRequired().HasMaxLength(16);
             entity.Property(e => e.Url).IsRequired();
+            entity.HasMany(e => e.WebSocketFrames)
+                .WithOne(f => f.SessionRow)
+                .HasForeignKey(f => f.SessionRowId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<InspectionSessionWebSocketFrame>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => e.SessionRowId);
+            entity.Property(e => e.Direction).IsRequired().HasMaxLength(16);
+            entity.Property(e => e.FrameType).IsRequired().HasMaxLength(32);
         });
 
         modelBuilder.Entity<InspectionSessionLogEntry>(entity =>

@@ -13,6 +13,9 @@ public class InspectionSessionRow
     public string? ResponseHeaders { get; set; }
     public string? RequestBody { get; set; }
     public string? ResponseBody { get; set; }
+    public bool IsWebSocket { get; set; }
+    public bool WebSocketClosed { get; set; }
 
     public InspectionSession Session { get; set; } = null!;
+    public List<InspectionSessionWebSocketFrame> WebSocketFrames { get; set; } = new();
 }
