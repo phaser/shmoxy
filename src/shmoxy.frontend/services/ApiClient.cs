@@ -176,6 +176,13 @@ public class ApiClient(HttpClient httpClient)
         await EnsureSuccessOrThrowWithBody(response);
     }
 
+    public async Task<ResendResponseDto> ResendRequestAsync(ResendRequestDto request)
+    {
+        var response = await _httpClient.PostAsJsonAsync("/api/inspection/resend", request);
+        await EnsureSuccessOrThrowWithBody(response);
+        return await response.Content.ReadFromJsonAsync<ResendResponseDto>() ?? new ResendResponseDto();
+    }
+
     public async IAsyncEnumerable<InspectionEventDto> StreamInspectionEventsAsync(
         string proxyId = "local",
         [EnumeratorCancellation] CancellationToken ct = default)
