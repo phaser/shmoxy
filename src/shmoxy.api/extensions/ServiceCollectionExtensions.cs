@@ -73,6 +73,7 @@ public static class ServiceCollectionExtensions
     public static IServiceCollection AddSessionRepository(this IServiceCollection services)
     {
         services.AddScoped<ISessionRepository, SessionRepository>();
+        services.AddHostedService<SessionRetentionService>();
         return services;
     }
 

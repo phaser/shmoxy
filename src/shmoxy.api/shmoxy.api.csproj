@@ -11,6 +11,10 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <InternalsVisibleTo Include="shmoxy.api.tests" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="../shmoxy.shared/shmoxy.shared.csproj" />
     <ProjectReference Include="../shmoxy.frontend/shmoxy.frontend.csproj" />
     <!-- Ensure the proxy project is built before the API, but don't add a runtime reference -->
