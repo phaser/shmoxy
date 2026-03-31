@@ -59,6 +59,15 @@ mkdir -p "$DIST_DIR"
 BUILD_TIMESTAMP=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
 API_DIR="$DIST_DIR/shmoxy.api"
 
+# Download CyberChef assets (gitignored, must be fetched before publish)
+CYBERCHEF_DIR="$SRC_DIR/shmoxy.frontend/wwwroot/cyberchef"
+if [ ! -f "$CYBERCHEF_DIR/CyberChef.html" ]; then
+    log_info "Downloading CyberChef assets..."
+    "$SCRIPT_DIR/download-cyberchef.sh"
+else
+    log_info "CyberChef assets already present, skipping download"
+fi
+
 # Publish shmoxy.api (includes shmoxy.frontend assets via RCL project reference)
 log_info "Publishing shmoxy.api to $API_DIR..."
 dotnet publish "$SRC_DIR/shmoxy.api" \
