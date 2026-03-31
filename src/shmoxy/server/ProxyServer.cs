@@ -820,6 +820,14 @@ public class ProxyServer : IDisposable
                             CorrelationId = correlationId
                         };
                         await _interceptor.OnResponseAsync(interceptedResponse);
+
+                        // WebSocket upgrade: switch to frame relay
+                        if (respStatusCode == 101 && IsWebSocketUpgrade(respHeaders))
+                        {
+                            _logger.LogInformation("WebSocket upgrade for {Host}:{Port}{Path}", host, port, result.Path);
+                            await HandleWebSocketRelayAsync(clientStream, targetStream, host, port);
+                            return;
+                        }
                     }
                 }
             }
@@ -979,6 +987,56 @@ public class ProxyServer : IDisposable
     {
         // Accept all certificates - this is a proxy that terminates TLS
         return true;
+    }
+
+    internal static bool IsWebSocketUpgrade(Dictionary<string, string> headers)
+    {
+        var hasUpgrade = headers.Any(h =>
+            h.Key.Equals("Upgrade", StringComparison.OrdinalIgnoreCase) &&
+            h.Value.Contains("websocket", StringComparison.OrdinalIgnoreCase));
+        var hasConnection = headers.Any(h =>
+            h.Key.Equals("Connection", StringComparison.OrdinalIgnoreCase) &&
+            h.Value.Contains("Upgrade", StringComparison.OrdinalIgnoreCase));
+        return hasUpgrade && hasConnection;
+    }
+
+    private async Task HandleWebSocketRelayAsync(Stream clientStream, Stream serverStream, string host, int port)
+    {
+        using var cts = new CancellationTokenSource();
+
+        var clientToServer = RelayWebSocketFramesAsync(clientStream, serverStream, "client", host, port, cts);
+        var serverToClient = RelayWebSocketFramesAsync(serverStream, clientStream, "server", host, port, cts);
+
+        await Task.WhenAny(clientToServer, serverToClient);
+        await cts.CancelAsync();
+
+        _logger.LogDebug("WebSocket relay ended for {Host}:{Port}", host, port);
+    }
+
+    private async Task RelayWebSocketFramesAsync(
+        Stream source, Stream destination, string direction, string host, int port,
+        CancellationTokenSource cts)
+    {
+        try
+        {
+            while (!cts.Token.IsCancellationRequested)
+            {
+                var frame = await WebSocketFrameReader.ReadFrameAsync(source, cts.Token);
+                if (frame == null)
+                    break;
+
+                await WebSocketFrameReader.WriteFrameAsync(destination, frame, cts.Token);
+                await destination.FlushAsync(cts.Token);
+
+                if (frame.Opcode == shmoxy.models.WebSocketOpcode.Close)
+                {
+                    _logger.LogDebug("WebSocket close from {Direction} for {Host}:{Port}", direction, host, port);
+                    break;
+                }
+            }
+        }
+        catch (OperationCanceledException) { }
+        catch (IOException) { }
     }
 
     public void Dispose()
