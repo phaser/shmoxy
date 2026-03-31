@@ -1,0 +1,469 @@
+@inject IJSRuntime JS
+@inject FrontendSettings FrontendSettings
+@using shmoxy.frontend.services
+
+<div class="detail-overlay" @onclick="OnClose" @onkeydown="HandleKeyDown" tabindex="0" @ref="overlayRef">
+    <div class="detail-panel" @onclick:stopPropagation="true">
+        <div class="detail-header">
+            <div class="detail-title">
+                <span class="method-badge method-@Row.Method.ToLowerInvariant()">@Row.Method</span>
+                <span class="ws-badge">WS</span>
+                <span class="detail-url" title="@Row.Url">@Row.Url</span>
+            </div>
+            <div class="detail-meta">
+                <span class="ws-state @(Row.WebSocketClosed ? "ws-closed" : "ws-open")">
+                    @(Row.WebSocketClosed ? "Closed" : "Open")
+                </span>
+                <span class="detail-time">@Row.Timestamp.ToLocalTime().ToString("HH:mm:ss.fff")</span>
+                <span class="ws-frame-count">@Row.WebSocketFrames.Count frames</span>
+            </div>
+            <button class="close-button" @onclick="OnClose" title="Close (Esc)">&times;</button>
+        </div>
+
+        <div class="ws-headers-section">
+            <button class="ws-headers-toggle" @onclick="ToggleHeaders">
+                <span class="ws-toggle-arrow @(showHeaders ? "expanded" : "")">&#9654;</span>
+                Upgrade Request Headers (@Row.RequestHeaders.Count)
+            </button>
+            @if (showHeaders)
+            {
+                <table class="headers-table">
+                    @foreach (var header in Row.RequestHeaders)
+                    {
+                        <tr>
+                            <td class="header-name">@header.Key</td>
+                            <td class="header-value">@header.Value</td>
+                        </tr>
+                    }
+                </table>
+            }
+        </div>
+
+        <div class="ws-frames-container">
+            @if (Row.WebSocketFrames.Count == 0)
+            {
+                <p class="no-data">No frames captured yet</p>
+            }
+            else
+            {
+                @foreach (var frame in Row.WebSocketFrames)
+                {
+                    @if (frame.FrameType is "close")
+                    {
+                        <div class="ws-frame ws-frame-system">
+                            <span class="ws-frame-label">Connection closed</span>
+                            <span class="ws-frame-time">@frame.Timestamp.ToLocalTime().ToString("HH:mm:ss.fff")</span>
+                        </div>
+                    }
+                    else if (frame.FrameType is "ping" or "pong")
+                    {
+                        <div class="ws-frame ws-frame-system">
+                            <span class="ws-frame-label">@frame.FrameType</span>
+                            <span class="ws-frame-time">@frame.Timestamp.ToLocalTime().ToString("HH:mm:ss.fff")</span>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="ws-frame @(frame.Direction == "client" ? "ws-frame-client" : "ws-frame-server")">
+                            <div class="ws-frame-bubble">
+                                <div class="ws-frame-header">
+                                    <span class="ws-frame-direction">@(frame.Direction == "client" ? "Client" : "Server")</span>
+                                    <span class="ws-frame-time">@frame.Timestamp.ToLocalTime().ToString("HH:mm:ss.fff")</span>
+                                </div>
+                                <div class="ws-frame-body">
+                                    @if (frame.FrameType == "binary")
+                                    {
+                                        <span class="ws-binary-label">[binary @((frame.Payload?.Length ?? 0)) bytes]</span>
+                                    }
+                                    else
+                                    {
+                                        <pre class="ws-frame-text">@(frame.Payload ?? "")</pre>
+                                    }
+                                </div>
+                            </div>
+                        </div>
+                    }
+                }
+            }
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired]
+    public InspectionRow Row { get; set; } = default!;
+
+    [Parameter]
+    public EventCallback OnClose { get; set; }
+
+    [Parameter]
+    public IReadOnlyList<InspectionRow> FilteredRows { get; set; } = Array.Empty<InspectionRow>();
+
+    [Parameter]
+    public EventCallback<InspectionRow> OnNavigate { get; set; }
+
+    private ElementReference overlayRef;
+    private bool showHeaders;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            try
+            {
+                await overlayRef.FocusAsync();
+            }
+            catch (JSDisconnectedException) { }
+        }
+    }
+
+    private async Task HandleKeyDown(KeyboardEventArgs e)
+    {
+        switch (e.Key)
+        {
+            case "Escape":
+                await OnClose.InvokeAsync();
+                break;
+            case "ArrowDown":
+                await NavigateToAdjacentRow(1);
+                break;
+            case "ArrowUp":
+                await NavigateToAdjacentRow(-1);
+                break;
+        }
+    }
+
+    private async Task NavigateToAdjacentRow(int direction)
+    {
+        if (FilteredRows.Count == 0) return;
+
+        var currentIndex = -1;
+        for (int i = 0; i < FilteredRows.Count; i++)
+        {
+            if (FilteredRows[i].Id == Row.Id)
+            {
+                currentIndex = i;
+                break;
+            }
+        }
+
+        if (currentIndex < 0) return;
+
+        var nextIndex = currentIndex + direction;
+        if (nextIndex >= 0 && nextIndex < FilteredRows.Count)
+        {
+            await OnNavigate.InvokeAsync(FilteredRows[nextIndex]);
+        }
+    }
+
+    private void ToggleHeaders()
+    {
+        showHeaders = !showHeaders;
+    }
+}
+
+<style>
+.detail-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 100;
+    display: flex;
+    justify-content: flex-end;
+}
+
+.detail-panel {
+    width: 1050px;
+    max-width: 90vw;
+    height: 100vh;
+    background: var(--neutral-layer-1);
+    display: flex;
+    flex-direction: column;
+    box-shadow: -4px 0 20px rgba(0, 0, 0, 0.3);
+    overflow: hidden;
+}
+
+.detail-header {
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--neutral-stroke-rest);
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 12px;
+    position: relative;
+}
+
+.detail-title {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex: 1;
+    min-width: 0;
+}
+
+.detail-url {
+    font-family: monospace;
+    font-size: 0.875rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--neutral-foreground-rest);
+}
+
+.detail-meta {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-shrink: 0;
+}
+
+.detail-time {
+    font-family: monospace;
+    font-size: 0.8rem;
+    color: var(--neutral-foreground-hint);
+}
+
+.close-button {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    background: none;
+    border: none;
+    color: var(--neutral-foreground-rest);
+    font-size: 1.5rem;
+    cursor: pointer;
+    padding: 4px 8px;
+    border-radius: calc(var(--control-corner-radius) * 1px);
+    line-height: 1;
+}
+
+.close-button:hover {
+    background: var(--neutral-layer-3);
+}
+
+.method-badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: calc(var(--control-corner-radius) * 1px);
+    font-weight: 600;
+    font-size: 0.75rem;
+}
+
+.method-get { background: rgba(0, 128, 0, 0.15); color: #22863a; }
+.method-post { background: rgba(0, 100, 200, 0.15); color: #0366d6; }
+.method-put { background: rgba(200, 150, 0, 0.15); color: #b08800; }
+.method-delete { background: rgba(200, 0, 0, 0.15); color: #cb2431; }
+.method-patch { background: rgba(128, 0, 200, 0.15); color: #6f42c1; }
+
+.ws-badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: calc(var(--control-corner-radius) * 1px);
+    font-weight: 600;
+    font-size: 0.7rem;
+    background: rgba(130, 80, 220, 0.15);
+    color: #6f42c1;
+}
+
+.ws-state {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: calc(var(--control-corner-radius) * 1px);
+    font-weight: 600;
+    font-size: 0.75rem;
+}
+
+.ws-open {
+    background: rgba(0, 128, 0, 0.15);
+    color: #22863a;
+}
+
+.ws-closed {
+    background: rgba(128, 128, 128, 0.15);
+    color: #6a737d;
+}
+
+.ws-frame-count {
+    font-family: monospace;
+    font-size: 0.8rem;
+    color: var(--neutral-foreground-hint);
+}
+
+.ws-headers-section {
+    border-bottom: 1px solid var(--neutral-stroke-rest);
+    padding: 0 20px;
+}
+
+.ws-headers-toggle {
+    background: none;
+    border: none;
+    color: var(--neutral-foreground-rest);
+    font-size: 0.85rem;
+    font-weight: 600;
+    cursor: pointer;
+    padding: 10px 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    text-align: left;
+}
+
+.ws-headers-toggle:hover {
+    color: var(--accent-foreground-rest);
+}
+
+.ws-toggle-arrow {
+    font-size: 0.65rem;
+    transition: transform 0.15s;
+    display: inline-block;
+}
+
+.ws-toggle-arrow.expanded {
+    transform: rotate(90deg);
+}
+
+.headers-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.8rem;
+    margin-bottom: 10px;
+}
+
+.headers-table tr {
+    border-bottom: 1px solid var(--neutral-stroke-divider-rest);
+}
+
+.headers-table td {
+    padding: 6px 8px;
+    vertical-align: top;
+}
+
+.header-name {
+    font-weight: 600;
+    font-family: monospace;
+    white-space: nowrap;
+    color: var(--accent-foreground-rest);
+    width: 200px;
+}
+
+.header-value {
+    font-family: monospace;
+    word-break: break-all;
+    color: var(--neutral-foreground-rest);
+}
+
+.no-data {
+    color: var(--neutral-foreground-hint);
+    font-style: italic;
+    font-size: 0.875rem;
+    text-align: center;
+    padding: 2rem;
+}
+
+.ws-frames-container {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.ws-frame-client {
+    display: flex;
+    justify-content: flex-start;
+}
+
+.ws-frame-server {
+    display: flex;
+    justify-content: flex-end;
+}
+
+.ws-frame-bubble {
+    max-width: 75%;
+    min-width: 120px;
+    border-radius: 8px;
+    padding: 8px 12px;
+    font-size: 0.85rem;
+}
+
+.ws-frame-client .ws-frame-bubble {
+    background: rgba(0, 100, 200, 0.1);
+    border: 1px solid rgba(0, 100, 200, 0.2);
+}
+
+.ws-frame-server .ws-frame-bubble {
+    background: rgba(0, 128, 0, 0.1);
+    border: 1px solid rgba(0, 128, 0, 0.2);
+}
+
+.ws-frame-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 4px;
+    gap: 12px;
+}
+
+.ws-frame-direction {
+    font-weight: 600;
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--neutral-foreground-hint);
+}
+
+.ws-frame-time {
+    font-family: monospace;
+    font-size: 0.7rem;
+    color: var(--neutral-foreground-hint);
+    white-space: nowrap;
+}
+
+.ws-frame-body {
+    word-break: break-word;
+}
+
+.ws-frame-text {
+    margin: 0;
+    font-family: monospace;
+    font-size: 0.8rem;
+    white-space: pre-wrap;
+    color: var(--neutral-foreground-rest);
+    line-height: 1.4;
+}
+
+.ws-binary-label {
+    font-style: italic;
+    color: var(--neutral-foreground-hint);
+    font-size: 0.8rem;
+}
+
+.ws-frame-system {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 0;
+}
+
+.ws-frame-system .ws-frame-label {
+    font-size: 0.75rem;
+    font-style: italic;
+    color: var(--neutral-foreground-hint);
+    background: var(--neutral-layer-2);
+    padding: 2px 12px;
+    border-radius: 12px;
+    border: 1px solid var(--neutral-stroke-divider-rest);
+}
+
+.ws-frame-system .ws-frame-time {
+    font-family: monospace;
+    font-size: 0.7rem;
+    color: var(--neutral-foreground-hint);
+}
+</style>

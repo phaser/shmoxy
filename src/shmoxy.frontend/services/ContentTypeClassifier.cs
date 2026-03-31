@@ -23,8 +23,11 @@ public static class ContentTypeClassifier
         "x-goog-stored-content-length",
     };
 
-    public static bool IsApiCall(string? url, Dictionary<string, string>? requestHeaders, Dictionary<string, string>? responseHeaders)
+    public static bool IsApiCall(string? url, Dictionary<string, string>? requestHeaders, Dictionary<string, string>? responseHeaders, bool isWebSocket = false)
     {
+        if (isWebSocket)
+            return true;
+
         if (HasStaticResourceExtension(url))
             return false;
 
