@@ -731,7 +731,7 @@ public class ProxyServer : IDisposable
                     var sslTarget = new global::System.Net.Security.SslStream(
                         targetClient.GetStream(),
                         false,
-                        (_, _, _, _) => true);
+                        ValidateCertificate);
                     try
                     {
                         await sslTarget.AuthenticateAsClientAsync(host);
@@ -977,16 +977,27 @@ public class ProxyServer : IDisposable
 
     /// <summary>
     /// Validates the server certificate during TLS handshake.
-    /// Accepts all certificates for proxying purposes.
+    /// When <see cref="ProxyConfig.ValidateUpstreamCertificates"/> is disabled, accepts all
+    /// certificates. When enabled, rejects certificates that fail system trust validation.
     /// </summary>
-    private bool ValidateCertificate(
+    internal bool ValidateCertificate(
         object sender,
         System.Security.Cryptography.X509Certificates.X509Certificate? certificate,
         System.Security.Cryptography.X509Certificates.X509Chain? chain,
         System.Net.Security.SslPolicyErrors sslPolicyErrors)
     {
-        // Accept all certificates - this is a proxy that terminates TLS
-        return true;
+        if (!_config.ValidateUpstreamCertificates)
+            return true;
+
+        if (sslPolicyErrors == System.Net.Security.SslPolicyErrors.None)
+            return true;
+
+        var subject = certificate?.Subject ?? "unknown";
+        var issuer = certificate?.Issuer ?? "unknown";
+        _logger.LogWarning(
+            "Upstream certificate validation failed. Subject: {Subject}, Issuer: {Issuer}, Errors: {SslPolicyErrors}",
+            subject, issuer, sslPolicyErrors);
+        return false;
     }
 
     internal static bool IsWebSocketUpgrade(Dictionary<string, string> headers)

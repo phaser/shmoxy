@@ -10,6 +10,7 @@ public class FrontendProxyConfig
     public string CertStoragePath { get; set; } = "";
     public List<string> PassthroughHosts { get; set; } = new();
     public bool SessionLoggingEnabled { get; set; }
+    public bool ValidateUpstreamCertificates { get; set; }
 
     public static FrontendProxyConfig Default => new();
 }
