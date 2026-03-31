@@ -183,6 +183,37 @@ public class ApiClient(HttpClient httpClient)
         return await response.Content.ReadFromJsonAsync<ResendResponseDto>() ?? new ResendResponseDto();
     }
 
+    public async Task EnableBreakpointsAsync()
+    {
+        var response = await _httpClient.PostAsync("/api/breakpoints/enable", null);
+        await EnsureSuccessOrThrowWithBody(response);
+    }
+
+    public async Task DisableBreakpointsAsync()
+    {
+        var response = await _httpClient.PostAsync("/api/breakpoints/disable", null);
+        await EnsureSuccessOrThrowWithBody(response);
+    }
+
+    public async Task<List<PausedRequestDto>> GetPausedRequestsAsync()
+    {
+        var response = await _httpClient.GetAsync("/api/breakpoints/paused");
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<List<PausedRequestDto>>() ?? [];
+    }
+
+    public async Task ReleaseRequestAsync(string correlationId)
+    {
+        var response = await _httpClient.PostAsync($"/api/breakpoints/paused/{correlationId}/release", null);
+        await EnsureSuccessOrThrowWithBody(response);
+    }
+
+    public async Task DropRequestAsync(string correlationId)
+    {
+        var response = await _httpClient.PostAsync($"/api/breakpoints/paused/{correlationId}/drop", null);
+        await EnsureSuccessOrThrowWithBody(response);
+    }
+
     public async IAsyncEnumerable<InspectionEventDto> StreamInspectionEventsAsync(
         string proxyId = "local",
         [EnumeratorCancellation] CancellationToken ct = default)

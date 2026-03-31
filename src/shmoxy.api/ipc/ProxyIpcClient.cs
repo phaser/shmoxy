@@ -219,6 +219,50 @@ public class ProxyIpcClient : IProxyIpcClient, IDisposable
         }
     }
 
+    public async Task EnableBreakpointsAsync(CancellationToken ct = default)
+    {
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        cts.CancelAfter(IpcTimeouts.Small);
+        var response = await _httpClient.PostAsync("/ipc/breakpoints/enable", null, cts.Token);
+        response.EnsureSuccessStatusCode();
+    }
+
+    public async Task DisableBreakpointsAsync(CancellationToken ct = default)
+    {
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        cts.CancelAfter(IpcTimeouts.Small);
+        var response = await _httpClient.PostAsync("/ipc/breakpoints/disable", null, cts.Token);
+        response.EnsureSuccessStatusCode();
+    }
+
+    public async Task<string> GetPausedRequestsAsync(CancellationToken ct = default)
+    {
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        cts.CancelAfter(IpcTimeouts.Small);
+        var response = await _httpClient.GetAsync("/ipc/breakpoints/paused", cts.Token);
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadAsStringAsync(cts.Token);
+    }
+
+    public async Task ReleaseRequestAsync(string correlationId, string? modifiedBody = null, CancellationToken ct = default)
+    {
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        cts.CancelAfter(IpcTimeouts.Medium);
+        HttpContent? content = modifiedBody != null
+            ? new StringContent(modifiedBody, System.Text.Encoding.UTF8, "application/json")
+            : null;
+        var response = await _httpClient.PostAsync($"/ipc/breakpoints/{correlationId}/release", content, cts.Token);
+        response.EnsureSuccessStatusCode();
+    }
+
+    public async Task DropRequestAsync(string correlationId, CancellationToken ct = default)
+    {
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        cts.CancelAfter(IpcTimeouts.Small);
+        var response = await _httpClient.PostAsync($"/ipc/breakpoints/{correlationId}/drop", null, cts.Token);
+        response.EnsureSuccessStatusCode();
+    }
+
     private async Task<T> RetryAsync<T>(Func<Task<T>> action, CancellationToken ct)
     {
         var delay = BaseDelay;

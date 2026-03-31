@@ -22,4 +22,9 @@ public interface IProxyIpcClient
     Task<byte[]> GetRootCertPfxAsync(CancellationToken ct = default);
     Task<bool> IsHealthyAsync(CancellationToken ct = default);
     Task<IReadOnlyList<SessionLogEntry>> DrainSessionLogAsync(CancellationToken ct = default);
+    Task EnableBreakpointsAsync(CancellationToken ct = default);
+    Task DisableBreakpointsAsync(CancellationToken ct = default);
+    Task<string> GetPausedRequestsAsync(CancellationToken ct = default);
+    Task ReleaseRequestAsync(string correlationId, string? modifiedBody = null, CancellationToken ct = default);
+    Task DropRequestAsync(string correlationId, CancellationToken ct = default);
 }
