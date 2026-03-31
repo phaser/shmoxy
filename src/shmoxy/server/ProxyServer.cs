@@ -825,7 +825,7 @@ public class ProxyServer : IDisposable
                         if (respStatusCode == 101 && IsWebSocketUpgrade(respHeaders))
                         {
                             _logger.LogInformation("WebSocket upgrade for {Host}:{Port}{Path}", host, port, result.Path);
-                            await HandleWebSocketRelayAsync(clientStream, targetStream, host, port);
+                            await HandleWebSocketRelayAsync(clientStream, targetStream, host, port, result.Path, correlationId);
                             return;
                         }
                     }
@@ -1000,22 +1000,25 @@ public class ProxyServer : IDisposable
         return hasUpgrade && hasConnection;
     }
 
-    private async Task HandleWebSocketRelayAsync(Stream clientStream, Stream serverStream, string host, int port)
+    private async Task HandleWebSocketRelayAsync(Stream clientStream, Stream serverStream, string host, int port, string path, string correlationId)
     {
+        await _interceptor.OnWebSocketOpenAsync(host, path, correlationId);
+
         using var cts = new CancellationTokenSource();
 
-        var clientToServer = RelayWebSocketFramesAsync(clientStream, serverStream, "client", host, port, cts);
-        var serverToClient = RelayWebSocketFramesAsync(serverStream, clientStream, "server", host, port, cts);
+        var clientToServer = RelayWebSocketFramesAsync(clientStream, serverStream, "client", host, port, correlationId, cts);
+        var serverToClient = RelayWebSocketFramesAsync(serverStream, clientStream, "server", host, port, correlationId, cts);
 
         await Task.WhenAny(clientToServer, serverToClient);
         await cts.CancelAsync();
 
+        await _interceptor.OnWebSocketCloseAsync(correlationId, null);
         _logger.LogDebug("WebSocket relay ended for {Host}:{Port}", host, port);
     }
 
     private async Task RelayWebSocketFramesAsync(
         Stream source, Stream destination, string direction, string host, int port,
-        CancellationTokenSource cts)
+        string correlationId, CancellationTokenSource cts)
     {
         try
         {
@@ -1024,6 +1027,8 @@ public class ProxyServer : IDisposable
                 var frame = await WebSocketFrameReader.ReadFrameAsync(source, cts.Token);
                 if (frame == null)
                     break;
+
+                await _interceptor.OnWebSocketFrameAsync(correlationId, frame, direction);
 
                 await WebSocketFrameReader.WriteFrameAsync(destination, frame, cts.Token);
                 await destination.FlushAsync(cts.Token);

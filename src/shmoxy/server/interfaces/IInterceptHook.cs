@@ -1,3 +1,4 @@
+using shmoxy.models;
 using shmoxy.models.dto;
 
 namespace shmoxy.server.interfaces;
@@ -24,4 +25,19 @@ public interface IInterceptHook
     /// Called when a CONNECT request is tunneled via TLS passthrough (no MITM).
     /// </summary>
     Task OnPassthroughAsync(string host, int port) => Task.CompletedTask;
+
+    /// <summary>
+    /// Called when a WebSocket connection is opened after a successful 101 upgrade.
+    /// </summary>
+    Task OnWebSocketOpenAsync(string host, string path, string correlationId) => Task.CompletedTask;
+
+    /// <summary>
+    /// Called for each WebSocket frame relayed in either direction.
+    /// </summary>
+    Task OnWebSocketFrameAsync(string correlationId, WebSocketFrame frame, string direction) => Task.CompletedTask;
+
+    /// <summary>
+    /// Called when a WebSocket connection is closed.
+    /// </summary>
+    Task OnWebSocketCloseAsync(string correlationId, string? reason) => Task.CompletedTask;
 }

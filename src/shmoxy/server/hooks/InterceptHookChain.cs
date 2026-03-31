@@ -1,3 +1,4 @@
+using shmoxy.models;
 using shmoxy.models.dto;
 using shmoxy.server.interfaces;
 
@@ -68,6 +69,33 @@ public class InterceptHookChain : IInterceptHook, IDisposable
         {
             await hook.OnPassthroughAsync(host, port);
         }
+    }
+
+    /// <summary>
+    /// Called when a WebSocket connection is opened. All hooks are notified in sequence.
+    /// </summary>
+    public async Task OnWebSocketOpenAsync(string host, string path, string correlationId)
+    {
+        foreach (var hook in _hooks)
+            await hook.OnWebSocketOpenAsync(host, path, correlationId);
+    }
+
+    /// <summary>
+    /// Called for each WebSocket frame relayed. All hooks are notified in sequence.
+    /// </summary>
+    public async Task OnWebSocketFrameAsync(string correlationId, WebSocketFrame frame, string direction)
+    {
+        foreach (var hook in _hooks)
+            await hook.OnWebSocketFrameAsync(correlationId, frame, direction);
+    }
+
+    /// <summary>
+    /// Called when a WebSocket connection is closed. All hooks are notified in sequence.
+    /// </summary>
+    public async Task OnWebSocketCloseAsync(string correlationId, string? reason)
+    {
+        foreach (var hook in _hooks)
+            await hook.OnWebSocketCloseAsync(correlationId, reason);
     }
 
     public void Dispose()
