@@ -1,6 +1,8 @@
 #!/bin/bash
-# dist.sh - Build and publish all components to dist/
-# Usage: ./scripts/dist.sh
+# dist.sh - Build distribution artifacts
+# Usage: ./scripts/dist.sh [--no-docker]
+#
+# By default builds a Docker image. Use --no-docker for bare-metal dotnet publish.
 
 set -e
 
@@ -28,6 +30,22 @@ log_error() {
     echo -e "${RED}[ERROR]${NC} $1"
 }
 
+# Parse arguments
+USE_DOCKER=true
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --no-docker)
+            USE_DOCKER=false
+            shift
+            ;;
+        *)
+            echo "Unknown option: $1"
+            echo "Usage: $0 [--no-docker]"
+            exit 1
+            ;;
+    esac
+done
+
 # Read current version from dist.yaml
 if [ ! -f "$DIST_YAML" ]; then
     log_error "dist.yaml not found at $DIST_YAML"
@@ -52,53 +70,77 @@ NEW_VERSION="$MAJOR.$MINOR.$NEW_PATCH"
 
 log_info "New version: $NEW_VERSION"
 
-# Clean and create dist directory
-rm -rf "$DIST_DIR"
-mkdir -p "$DIST_DIR"
-
 BUILD_TIMESTAMP=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
-API_DIR="$DIST_DIR/shmoxy.api"
+TAG_NAME="v$NEW_VERSION"
 
-# Download CyberChef assets (gitignored, must be fetched before publish)
-CYBERCHEF_DIR="$SRC_DIR/shmoxy.frontend/wwwroot/cyberchef"
-if [ ! -f "$CYBERCHEF_DIR/CyberChef.html" ]; then
-    log_info "Downloading CyberChef assets..."
-    "$SCRIPT_DIR/download-cyberchef.sh"
+if [ "$USE_DOCKER" = true ]; then
+    # Docker build
+    log_info "Building Docker image..."
+    docker build \
+        -t "shmoxy:$NEW_VERSION" \
+        -t "shmoxy:latest" \
+        "$REPO_ROOT"
+    log_info "Docker image built: shmoxy:$NEW_VERSION"
 else
-    log_info "CyberChef assets already present, skipping download"
-fi
+    # Bare-metal dotnet publish
+    rm -rf "$DIST_DIR"
+    mkdir -p "$DIST_DIR"
 
-# Publish shmoxy.api (includes shmoxy.frontend assets via RCL project reference)
-log_info "Publishing shmoxy.api to $API_DIR..."
-dotnet publish "$SRC_DIR/shmoxy.api" \
-    -c Release \
-    -o "$API_DIR" \
-    /p:Version="$NEW_VERSION" \
-    --nologo \
-    -v quiet
-log_info "shmoxy.api published successfully"
+    API_DIR="$DIST_DIR/shmoxy.api"
 
-# Publish the shmoxy proxy into the API directory so ProxyProcessManager
-# can resolve shmoxy.dll next to the running API assembly
-PROXY_TEMP_DIR="$DIST_DIR/.proxy-tmp"
-log_info "Publishing shmoxy proxy..."
-dotnet publish "$SRC_DIR/shmoxy" \
-    -c Release \
-    -o "$PROXY_TEMP_DIR" \
-    /p:Version="$NEW_VERSION" \
-    --nologo \
-    -v quiet
-
-# Copy proxy files into the API directory (skip files already present from the API publish)
-log_info "Copying proxy files into shmoxy.api output..."
-for file in "$PROXY_TEMP_DIR"/*; do
-    filename=$(basename "$file")
-    if [ ! -e "$API_DIR/$filename" ]; then
-        cp -r "$file" "$API_DIR/"
+    # Download CyberChef assets (gitignored, must be fetched before publish)
+    CYBERCHEF_DIR="$SRC_DIR/shmoxy.frontend/wwwroot/cyberchef"
+    if [ ! -f "$CYBERCHEF_DIR/CyberChef.html" ]; then
+        log_info "Downloading CyberChef assets..."
+        "$SCRIPT_DIR/download-cyberchef.sh"
+    else
+        log_info "CyberChef assets already present, skipping download"
     fi
-done
-rm -rf "$PROXY_TEMP_DIR"
-log_info "shmoxy proxy bundled into shmoxy.api"
+
+    # Publish shmoxy.api (includes shmoxy.frontend assets via RCL project reference)
+    log_info "Publishing shmoxy.api to $API_DIR..."
+    dotnet publish "$SRC_DIR/shmoxy.api" \
+        -c Release \
+        -o "$API_DIR" \
+        /p:Version="$NEW_VERSION" \
+        --nologo \
+        -v quiet
+    log_info "shmoxy.api published successfully"
+
+    # Publish the shmoxy proxy into the API directory
+    PROXY_TEMP_DIR="$DIST_DIR/.proxy-tmp"
+    log_info "Publishing shmoxy proxy..."
+    dotnet publish "$SRC_DIR/shmoxy" \
+        -c Release \
+        -o "$PROXY_TEMP_DIR" \
+        /p:Version="$NEW_VERSION" \
+        --nologo \
+        -v quiet
+
+    # Copy proxy files into the API directory (skip files already present)
+    log_info "Copying proxy files into shmoxy.api output..."
+    for file in "$PROXY_TEMP_DIR"/*; do
+        filename=$(basename "$file")
+        if [ ! -e "$API_DIR/$filename" ]; then
+            cp -r "$file" "$API_DIR/"
+        fi
+    done
+    rm -rf "$PROXY_TEMP_DIR"
+    log_info "shmoxy proxy bundled into shmoxy.api"
+
+    # Generate build manifest
+    MANIFEST_FILE="$DIST_DIR/manifest.json"
+    cat > "$MANIFEST_FILE" << EOF
+{
+  "version": "$NEW_VERSION",
+  "timestamp": "$BUILD_TIMESTAMP",
+  "components": ["shmoxy.api"],
+  "git_commit": "$(git -C "$REPO_ROOT" rev-parse HEAD)",
+  "git_tag": "$TAG_NAME"
+}
+EOF
+    log_info "Build manifest written to $MANIFEST_FILE"
+fi
 
 # Update dist.yaml with new version
 cat > "$DIST_YAML" << EOF
@@ -108,28 +150,21 @@ EOF
 log_info "Updated dist.yaml to version $NEW_VERSION"
 
 # Create git tag
-TAG_NAME="v$NEW_VERSION"
 if git -C "$REPO_ROOT" tag "$TAG_NAME" 2>/dev/null; then
     log_info "Created git tag: $TAG_NAME"
 else
     log_warn "Git tag $TAG_NAME already exists, skipping"
 fi
 
-# Generate build manifest
-MANIFEST_FILE="$DIST_DIR/manifest.json"
-
-cat > "$MANIFEST_FILE" << EOF
-{
-  "version": "$NEW_VERSION",
-  "timestamp": "$BUILD_TIMESTAMP",
-  "components": ["shmoxy.api"],
-  "git_commit": "$(git -C "$REPO_ROOT" rev-parse HEAD)",
-  "git_tag": "$TAG_NAME"
-}
-EOF
-
-log_info "Build manifest written to $MANIFEST_FILE"
-
 echo ""
 log_info "Distribution $NEW_VERSION complete!"
-log_info "Output: $DIST_DIR"
+
+if [ "$USE_DOCKER" = true ]; then
+    log_info "Run with:"
+    echo ""
+    echo "  docker run -p 5000:5000 -p 8080:8080 -v shmoxy-data:/root/.local/share/shmoxy-api shmoxy:$NEW_VERSION"
+    echo ""
+    log_info "Then open http://localhost:5000 in your browser."
+else
+    log_info "Output: $DIST_DIR"
+fi
