@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Moq;
@@ -190,18 +191,41 @@ public class ProxyProcessManagerTests
     [Fact]
     public async Task Dispose_AfterStart_CallsShutdown()
     {
-        var manager = new ProxyProcessManager(_mockLogger.Object, _mockIpcClient.Object, _mockConfig.Object, _mockConfigPersistence.Object);
-        _mockIpcClient.Setup(c => c.IsHealthyAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync(true);
+        // Use a long-lived process so it's still running when Dispose is called.
+        // /bin/sh exits immediately with the proxy args, causing OnProcessExited to
+        // set state to Stopped before Dispose runs — skipping the shutdown path.
+        var scriptPath = Path.GetTempFileName();
+        try
+        {
+            File.WriteAllText(scriptPath, "#!/bin/sh\nexec sleep 30\n");
+            Process.Start("chmod", $"+x {scriptPath}")?.WaitForExit();
 
-        await manager.StartAsync();
-        manager.Dispose();
+            var config = new ApiConfig
+            {
+                ProxyPort = 8080,
+                ProxyIpcSocketPath = "/tmp/test-shmoxy.sock",
+                ProxyBinaryPath = scriptPath
+            };
+            var mockConfig = new Mock<IOptions<ApiConfig>>();
+            mockConfig.Setup(c => c.Value).Returns(config);
 
-        _mockIpcClient.Verify(c => c.ShutdownAsync(It.IsAny<CancellationToken>()), Times.Once);
+            var manager = new ProxyProcessManager(_mockLogger.Object, _mockIpcClient.Object, mockConfig.Object, _mockConfigPersistence.Object);
+            _mockIpcClient.Setup(c => c.IsHealthyAsync(It.IsAny<CancellationToken>()))
+                .ReturnsAsync(true);
 
-        var state = await manager.GetStateAsync();
-        Assert.NotNull(state);
-        Assert.Equal(ProxyProcessState.Stopped, state.State);
+            await manager.StartAsync();
+            manager.Dispose();
+
+            _mockIpcClient.Verify(c => c.ShutdownAsync(It.IsAny<CancellationToken>()), Times.Once);
+
+            var state = await manager.GetStateAsync();
+            Assert.NotNull(state);
+            Assert.Equal(ProxyProcessState.Stopped, state.State);
+        }
+        finally
+        {
+            File.Delete(scriptPath);
+        }
     }
 
     [Fact]
