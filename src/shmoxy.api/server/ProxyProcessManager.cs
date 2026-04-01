@@ -386,7 +386,7 @@ public class ProxyProcessManager : IProxyProcessManager, IDisposable
             return (executableName, string.Empty);
         }
 
-        // 3. Look for shmoxy.dll next to the running API assembly
+        // 3. Look for shmoxy.dll next to the running API assembly or in a proxy/ subdirectory
         var appDir = AppContext.BaseDirectory;
         var dllPath = Path.Combine(appDir, "shmoxy.dll");
         if (File.Exists(dllPath))
@@ -395,8 +395,16 @@ public class ProxyProcessManager : IProxyProcessManager, IDisposable
             return ("dotnet", dllPath);
         }
 
+        // 4. Look in proxy/ subdirectory (Docker layout where proxy is published separately)
+        var subDirDllPath = Path.Combine(appDir, "proxy", "shmoxy.dll");
+        if (File.Exists(subDirDllPath))
+        {
+            _logger.LogInformation("Resolved proxy binary to DLL: {DllPath}", subDirDllPath);
+            return ("dotnet", subDirDllPath);
+        }
+
         throw new InvalidOperationException(
-            $"Proxy binary not found. Searched for '{executableName}' on PATH and '{dllPath}'");
+            $"Proxy binary not found. Searched for '{executableName}' on PATH, '{dllPath}', and '{subDirDllPath}'");
     }
 
     private static async Task<bool> TryRunAsync(string fileName, string arguments, CancellationToken ct)
