@@ -237,6 +237,69 @@ public class WebSocketFrameReaderTests
     }
 
     [Fact]
+    public async Task WriteFrame_WithMask_SetsMaskBitAndMaskKey()
+    {
+        var payload = "Hello"u8.ToArray();
+        var frame = new WebSocketFrame
+        {
+            Fin = true,
+            Opcode = WebSocketOpcode.Text,
+            Payload = payload,
+            IsMasked = false
+        };
+
+        using var stream = new MemoryStream();
+        await WebSocketFrameReader.WriteFrameAsync(stream, frame, CancellationToken.None, mask: true);
+
+        var written = stream.ToArray();
+        // Second byte should have mask bit set (0x80)
+        Assert.True((written[1] & 0x80) != 0, "Mask bit should be set");
+        // Total length: 2 (header) + 4 (mask key) + payload
+        Assert.Equal(2 + 4 + payload.Length, written.Length);
+    }
+
+    [Fact]
+    public async Task WriteFrame_WithMask_RoundTrips()
+    {
+        var originalPayload = "Masked WebSocket frame!"u8.ToArray();
+        var frame = new WebSocketFrame
+        {
+            Fin = true,
+            Opcode = WebSocketOpcode.Text,
+            Payload = originalPayload,
+            IsMasked = false
+        };
+
+        using var stream = new MemoryStream();
+        await WebSocketFrameReader.WriteFrameAsync(stream, frame, CancellationToken.None, mask: true);
+
+        stream.Position = 0;
+        var roundTripped = await WebSocketFrameReader.ReadFrameAsync(stream, CancellationToken.None);
+
+        Assert.NotNull(roundTripped);
+        Assert.True(roundTripped.IsMasked);
+        Assert.Equal(originalPayload, roundTripped.Payload);
+    }
+
+    [Fact]
+    public async Task WriteFrame_WithoutMask_DoesNotSetMaskBit()
+    {
+        var frame = new WebSocketFrame
+        {
+            Fin = true,
+            Opcode = WebSocketOpcode.Text,
+            Payload = "test"u8.ToArray(),
+            IsMasked = false
+        };
+
+        using var stream = new MemoryStream();
+        await WebSocketFrameReader.WriteFrameAsync(stream, frame, CancellationToken.None, mask: false);
+
+        var written = stream.ToArray();
+        Assert.True((written[1] & 0x80) == 0, "Mask bit should NOT be set");
+    }
+
+    [Fact]
     public async Task WriteFrame_UsesExtendedLength_ForLargePayloads()
     {
         // Arrange: payload of 300 bytes should use 16-bit extended length
