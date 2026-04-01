@@ -22,6 +22,14 @@ public class InspectionDataService : IDisposable
     public string? ActiveSessionId { get; private set; }
     public string? ActiveSessionName { get; private set; }
 
+    // Filter state persisted across navigation (lives in the singleton, survives component disposal)
+    public string SearchQuery { get; set; } = "";
+    public string MethodFilter { get; set; } = "";
+    public string ProtocolFilter { get; set; } = "all";
+    public bool ApiOnlyFilter { get; set; }
+    public HashSet<string> SelectedDomains { get; } = new(StringComparer.OrdinalIgnoreCase);
+    public bool AllDomainsSelected { get; set; } = true;
+
     public event Action? OnRowsChanged;
 
     public InspectionDataService(ApiClient apiClient)
