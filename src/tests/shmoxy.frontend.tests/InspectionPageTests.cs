@@ -45,6 +45,50 @@ public class InspectionPageTests
     }
 
     [Fact]
+    public async Task InspectionPage_DisposeAsync_NoErrorsOnNavAway()
+    {
+        var page = await _fixture.CreatePageAsync();
+
+        // Collect console errors during the test
+        var consoleErrors = new List<string>();
+        page.Console += (_, msg) =>
+        {
+            if (msg.Type == "error")
+                consoleErrors.Add(msg.Text);
+        };
+
+        await page.GotoAsync($"{_fixture.BaseUrl}/inspection", new PageGotoOptions
+        {
+            WaitUntil = WaitUntilState.NetworkIdle,
+            Timeout = 30000
+        });
+        await page.WaitForTimeoutAsync(2000);
+
+        // Navigate away to trigger DisposeAsync
+        await page.GotoAsync($"{_fixture.BaseUrl}/", new PageGotoOptions
+        {
+            WaitUntil = WaitUntilState.NetworkIdle,
+            Timeout = 30000
+        });
+        await page.WaitForTimeoutAsync(1000);
+
+        // Navigate back to verify inspection page still works
+        await page.GotoAsync($"{_fixture.BaseUrl}/inspection", new PageGotoOptions
+        {
+            WaitUntil = WaitUntilState.NetworkIdle,
+            Timeout = 30000
+        });
+        await page.WaitForTimeoutAsync(2000);
+
+        var container = page.Locator("#inspection-scroll-container");
+        await container.WaitForAsync(new LocatorWaitForOptions { Timeout = 10000 });
+
+        // Verify no JS interop errors in the console
+        Assert.DoesNotContain(consoleErrors,
+            e => e.Contains("InvalidOperationException") || e.Contains("JavaScript interop"));
+    }
+
+    [Fact]
     public async Task InspectionPage_HasScrollableContainer()
     {
         var page = await _fixture.CreatePageAsync();

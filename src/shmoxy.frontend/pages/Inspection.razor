@@ -584,6 +584,10 @@
         {
             // Circuit already disconnected
         }
+        catch (InvalidOperationException)
+        {
+            // Component disposed during static rendering — no JS runtime available
+        }
     }
 }
 
