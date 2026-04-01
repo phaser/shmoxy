@@ -1,5 +1,6 @@
 using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using shmoxy.api.models.configuration;
@@ -51,6 +52,13 @@ public partial class Program
 
         builder.Services.AddEndpointsApiExplorer();
         builder.Services.AddSwaggerGen();
+
+        // Persist data protection keys so antiforgery tokens survive app restarts
+        var keysDir = Path.Combine(GetDefaultDataDirectory(), "keys");
+        Directory.CreateDirectory(keysDir);
+        builder.Services.AddDataProtection()
+            .SetApplicationName("shmoxy")
+            .PersistKeysToFileSystem(new DirectoryInfo(keysDir));
 
         // Add Blazor frontend (from shmoxy.frontend)
         builder.Services.AddBlazorFrontend();
@@ -105,12 +113,17 @@ public partial class Program
         }
     }
 
-    private static string GetDefaultConnectionString()
+    internal static string GetDefaultDataDirectory()
     {
         var appDataPath = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
         var shmoxyDir = Path.Combine(appDataPath, "shmoxy-api");
         Directory.CreateDirectory(shmoxyDir);
-        var dbPath = Path.Combine(shmoxyDir, "proxies.db");
+        return shmoxyDir;
+    }
+
+    private static string GetDefaultConnectionString()
+    {
+        var dbPath = Path.Combine(GetDefaultDataDirectory(), "proxies.db");
         return $"Data Source={dbPath}";
     }
 }
