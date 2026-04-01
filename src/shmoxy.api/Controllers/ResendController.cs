@@ -35,7 +35,14 @@ public class ResendController : ControllerBase
         try
         {
             var proxy = new WebProxy($"http://localhost:{proxyPort}");
-            using var handler = new HttpClientHandler { Proxy = proxy, UseProxy = true };
+            using var handler = new HttpClientHandler
+            {
+                Proxy = proxy,
+                UseProxy = true,
+                // Accept the proxy's MITM certificate so HTTPS resends go through the
+                // proxy tunnel and are captured by the inspection hooks.
+                ServerCertificateCustomValidationCallback = HttpClientHandler.DangerousAcceptAnyServerCertificateValidator
+            };
             using var client = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(30) };
 
             using var httpRequest = new HttpRequestMessage(new HttpMethod(request.Method), request.Url);
