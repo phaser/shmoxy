@@ -1,8 +1,11 @@
+using Microsoft.Extensions.Hosting;
+
 namespace shmoxy.frontend.services;
 
 public class ProxyStatusService : IDisposable
 {
     private readonly ApiClient _apiClient;
+    private readonly CancellationTokenSource _shutdownCts = new();
     private FrontendProxyStatus _currentStatus = FrontendProxyStatus.Stopped;
     private CancellationTokenSource? _cts;
     private Task? _pollTask;
@@ -14,9 +17,10 @@ public class ProxyStatusService : IDisposable
 
     public FrontendProxyStatus CurrentStatus => _currentStatus;
 
-    public ProxyStatusService(ApiClient apiClient)
+    public ProxyStatusService(ApiClient apiClient, IHostApplicationLifetime? lifetime = null)
     {
         _apiClient = apiClient;
+        lifetime?.ApplicationStopping.Register(() => _shutdownCts.Cancel());
     }
 
     public void StartPolling()
@@ -25,7 +29,7 @@ public class ProxyStatusService : IDisposable
             return;
 
         _cts?.Dispose();
-        _cts = new CancellationTokenSource();
+        _cts = CancellationTokenSource.CreateLinkedTokenSource(_shutdownCts.Token);
         _pollTask = PollAsync(_cts.Token);
     }
 
@@ -71,7 +75,9 @@ public class ProxyStatusService : IDisposable
     public void Dispose()
     {
         if (_disposed) return;
+        _shutdownCts.Cancel();
         _cts?.Cancel();
+        _shutdownCts.Dispose();
         _cts?.Dispose();
         _disposed = true;
     }

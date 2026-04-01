@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Hosting;
 using shmoxy.frontend.models;
 using shmoxy.frontend.services;
 using Xunit;
@@ -6,11 +7,11 @@ namespace shmoxy.frontend.tests.services;
 
 public class InspectionDataServiceTests
 {
-    private static InspectionDataService CreateService()
+    private static InspectionDataService CreateService(IHostApplicationLifetime? lifetime = null)
     {
         var httpClient = new HttpClient { BaseAddress = new Uri("http://localhost") };
         var apiClient = new ApiClient(httpClient);
-        return new InspectionDataService(apiClient);
+        return new InspectionDataService(apiClient, lifetime);
     }
 
     [Fact]
@@ -361,5 +362,35 @@ public class InspectionDataServiceTests
         Assert.True(service.ApiOnlyFilter);
         Assert.False(service.AllDomainsSelected);
         Assert.Contains("example.com", service.SelectedDomains);
+    }
+
+    [Fact]
+    public void ApplicationStopping_StopsCapture()
+    {
+        var lifetime = new TestHostApplicationLifetime();
+        using var service = CreateService(lifetime);
+
+        service.StartCapture();
+        Assert.True(service.IsCapturing);
+
+        lifetime.TriggerStopping();
+
+        // Give the background task a moment to observe the cancellation
+        Thread.Sleep(100);
+        Assert.False(service.IsCapturing);
+    }
+
+    private class TestHostApplicationLifetime : IHostApplicationLifetime
+    {
+        private readonly CancellationTokenSource _stoppingCts = new();
+        private readonly CancellationTokenSource _startedCts = new();
+        private readonly CancellationTokenSource _stoppedCts = new();
+
+        public CancellationToken ApplicationStarted => _startedCts.Token;
+        public CancellationToken ApplicationStopping => _stoppingCts.Token;
+        public CancellationToken ApplicationStopped => _stoppedCts.Token;
+
+        public void StopApplication() => _stoppingCts.Cancel();
+        public void TriggerStopping() => _stoppingCts.Cancel();
     }
 }
