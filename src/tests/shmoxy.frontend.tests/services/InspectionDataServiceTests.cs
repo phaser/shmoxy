@@ -329,4 +329,37 @@ public class InspectionDataServiceTests
         Assert.Equal(200, rows[0].StatusCode);
         Assert.True(rows[1].IsPassthrough);
     }
+
+    [Fact]
+    public void FilterState_HasDefaults()
+    {
+        using var service = CreateService();
+
+        Assert.Equal("", service.SearchQuery);
+        Assert.Equal("", service.MethodFilter);
+        Assert.Equal("all", service.ProtocolFilter);
+        Assert.False(service.ApiOnlyFilter);
+        Assert.True(service.AllDomainsSelected);
+        Assert.Empty(service.SelectedDomains);
+    }
+
+    [Fact]
+    public void FilterState_PersistsAcrossAccesses()
+    {
+        using var service = CreateService();
+
+        service.SearchQuery = "example";
+        service.MethodFilter = "GET";
+        service.ProtocolFilter = "http";
+        service.ApiOnlyFilter = true;
+        service.AllDomainsSelected = false;
+        service.SelectedDomains.Add("example.com");
+
+        Assert.Equal("example", service.SearchQuery);
+        Assert.Equal("GET", service.MethodFilter);
+        Assert.Equal("http", service.ProtocolFilter);
+        Assert.True(service.ApiOnlyFilter);
+        Assert.False(service.AllDomainsSelected);
+        Assert.Contains("example.com", service.SelectedDomains);
+    }
 }

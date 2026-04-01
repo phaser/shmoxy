@@ -9,10 +9,10 @@
 
 <div class="inspection-container">
     <div class="filters">
-        <FluentTextField Placeholder="Search requests..." @bind-Value="searchQuery"
+        <FluentTextField Placeholder="Search requests..." @bind-Value="InspectionService.SearchQuery"
                          @bind-Value:after="ApplyFilters" />
 
-        <FluentSelect TOption="string" @bind-Value="methodFilter"
+        <FluentSelect TOption="string" @bind-Value="InspectionService.MethodFilter"
                       @bind-Value:after="ApplyFilters" Label="Method">
             <FluentOption TOption="string" Value="@("")">All Methods</FluentOption>
             <FluentOption TOption="string" Value="GET">GET</FluentOption>
@@ -22,7 +22,7 @@
             <FluentOption TOption="string" Value="PATCH">PATCH</FluentOption>
         </FluentSelect>
 
-        <FluentSelect TOption="string" @bind-Value="_protocolFilter"
+        <FluentSelect TOption="string" @bind-Value="InspectionService.ProtocolFilter"
                       @bind-Value:after="ApplyFilters" Label="Protocol">
             <FluentOption TOption="string" Value="all">All</FluentOption>
             <FluentOption TOption="string" Value="http">HTTP</FluentOption>
@@ -30,27 +30,27 @@
         </FluentSelect>
 
         <label class="api-filter-toggle">
-            <input type="checkbox" @bind="apiOnlyFilter" @bind:after="ApplyFilters" />
+            <input type="checkbox" @bind="InspectionService.ApiOnlyFilter" @bind:after="ApplyFilters" />
             API only
         </label>
 
         <div class="domain-filter-container">
             <button class="domain-filter-button" @onclick="ToggleDomainDropdown" @onclick:stopPropagation="true">
-                @if (_allDomainsSelected)
+                @if (InspectionService.AllDomainsSelected)
                 {
                     <span>All Domains</span>
                 }
-                else if (_selectedDomains.Count == 0)
+                else if (InspectionService.SelectedDomains.Count == 0)
                 {
                     <span>No Domains</span>
                 }
-                else if (_selectedDomains.Count == 1)
+                else if (InspectionService.SelectedDomains.Count == 1)
                 {
-                    <span>@_selectedDomains.First()</span>
+                    <span>@InspectionService.SelectedDomains.First()</span>
                 }
                 else
                 {
-                    <span>@_selectedDomains.Count domains</span>
+                    <span>@InspectionService.SelectedDomains.Count domains</span>
                 }
                 <span class="domain-filter-caret">&#9662;</span>
             </button>
@@ -58,7 +58,7 @@
             {
                 <div class="domain-dropdown" @onclick:stopPropagation="true">
                     <label class="domain-checkbox-item">
-                        <input type="checkbox" checked="@_allDomainsSelected"
+                        <input type="checkbox" checked="@InspectionService.AllDomainsSelected"
                                @onchange="ToggleAllDomains" />
                         <span class="domain-label-all">ALL DOMAINS</span>
                     </label>
@@ -66,8 +66,8 @@
                     {
                         var d = domain;
                         <label class="domain-checkbox-item">
-                            <input type="checkbox" checked="@(_allDomainsSelected || _selectedDomains.Contains(d))"
-                                   disabled="@_allDomainsSelected"
+                            <input type="checkbox" checked="@(InspectionService.AllDomainsSelected || InspectionService.SelectedDomains.Contains(d))"
+                                   disabled="@InspectionService.AllDomainsSelected"
                                    @onchange="() => ToggleDomain(d)" />
                             <span>@d</span>
                         </label>
@@ -238,13 +238,7 @@
 
 @code {
     private List<InspectionRow> filteredRows = new();
-    private string searchQuery = "";
-    private string methodFilter = "";
-    private string _protocolFilter = "all";
-    private bool apiOnlyFilter;
     private HashSet<string> _knownDomains = new(StringComparer.OrdinalIgnoreCase);
-    private HashSet<string> _selectedDomains = new(StringComparer.OrdinalIgnoreCase);
-    private bool _allDomainsSelected = true;
     private bool _showDomainDropdown;
     private bool isAtBottom = true;
     private InspectionRow? selectedRow;
@@ -311,22 +305,22 @@
 
         filteredRows = rows
             .Where(r =>
-                string.IsNullOrEmpty(searchQuery) ||
-                r.Url.Contains(searchQuery, StringComparison.OrdinalIgnoreCase) ||
-                r.Method.Contains(searchQuery, StringComparison.OrdinalIgnoreCase))
+                string.IsNullOrEmpty(InspectionService.SearchQuery) ||
+                r.Url.Contains(InspectionService.SearchQuery, StringComparison.OrdinalIgnoreCase) ||
+                r.Method.Contains(InspectionService.SearchQuery, StringComparison.OrdinalIgnoreCase))
             .Where(r =>
-                string.IsNullOrEmpty(methodFilter) || r.Method == methodFilter)
+                string.IsNullOrEmpty(InspectionService.MethodFilter) || r.Method == InspectionService.MethodFilter)
             .Where(r =>
-                _protocolFilter == "all" ||
-                (_protocolFilter == "ws" && r.IsWebSocket) ||
-                (_protocolFilter == "http" && !r.IsWebSocket))
+                InspectionService.ProtocolFilter == "all" ||
+                (InspectionService.ProtocolFilter == "ws" && r.IsWebSocket) ||
+                (InspectionService.ProtocolFilter == "http" && !r.IsWebSocket))
             .Where(r =>
-                !apiOnlyFilter ||
+                !InspectionService.ApiOnlyFilter ||
                 r.StatusCode is null ||
                 ContentTypeClassifier.IsApiCall(r.Url, r.RequestHeaders, r.ResponseHeaders, r.IsWebSocket))
             .Where(r =>
-                _allDomainsSelected ||
-                (ExtractHost(r.Url) is { } host && _selectedDomains.Contains(host)))
+                InspectionService.AllDomainsSelected ||
+                (ExtractHost(r.Url) is { } host && InspectionService.SelectedDomains.Contains(host)))
             .ToList();
     }
 
@@ -361,23 +355,23 @@
 
     private void ToggleAllDomains(ChangeEventArgs e)
     {
-        _allDomainsSelected = e.Value is true;
-        if (_allDomainsSelected)
+        InspectionService.AllDomainsSelected = e.Value is true;
+        if (InspectionService.AllDomainsSelected)
         {
-            _selectedDomains.Clear();
+            InspectionService.SelectedDomains.Clear();
         }
         ApplyFilters();
     }
 
     private void ToggleDomain(string domain)
     {
-        if (_selectedDomains.Contains(domain))
+        if (InspectionService.SelectedDomains.Contains(domain))
         {
-            _selectedDomains.Remove(domain);
+            InspectionService.SelectedDomains.Remove(domain);
         }
         else
         {
-            _selectedDomains.Add(domain);
+            InspectionService.SelectedDomains.Add(domain);
         }
         ApplyFilters();
     }
