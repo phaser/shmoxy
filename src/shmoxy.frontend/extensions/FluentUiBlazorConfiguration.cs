@@ -24,7 +24,7 @@ public static class FluentUiBlazorConfiguration
             var address = addressFeature?.Addresses.FirstOrDefault();
             if (address is not null)
             {
-                client.BaseAddress = new Uri(address);
+                client.BaseAddress = new Uri(NormalizeBindAddress(address));
             }
         });
         services.AddScoped<ThemeState>();
@@ -33,6 +33,20 @@ public static class FluentUiBlazorConfiguration
         services.AddSingleton<ProxyStatusService>();
 
         return services;
+    }
+
+    /// <summary>
+    /// Replaces wildcard bind addresses (0.0.0.0, [::], +, *) with localhost
+    /// so the address can be used as an HTTP connection target.
+    /// </summary>
+    public static string NormalizeBindAddress(string address)
+    {
+        var normalized = address
+            .Replace("://+:", "://localhost:")
+            .Replace("://*:", "://localhost:")
+            .Replace("://0.0.0.0:", "://localhost:")
+            .Replace("://[::]:", "://localhost:");
+        return new Uri(normalized).ToString();
     }
 
     public static WebApplication UseBlazorFrontendMiddleware(this WebApplication app)
