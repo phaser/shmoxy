@@ -26,10 +26,8 @@ RUN scripts/download-cyberchef.sh
 # Publish API (includes frontend RCL assets)
 RUN dotnet publish src/shmoxy.api -c Release -o /app --nologo -v quiet
 
-# Publish proxy into a temp dir, then merge new files into /app
-RUN dotnet publish src/shmoxy -c Release -o /proxy-tmp --nologo -v quiet && \
-    cp -rn /proxy-tmp/* /app/ && \
-    rm -rf /proxy-tmp
+# Publish proxy into its own subdirectory to avoid DLL conflicts with the API
+RUN dotnet publish src/shmoxy -c Release -o /app/proxy --nologo -v quiet
 
 # Stage 2: Runtime
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime

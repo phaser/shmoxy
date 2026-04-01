@@ -239,6 +239,25 @@ public class ProxyProcessManagerTests
     }
 
     [Fact]
+    public async Task StartAsync_Throws_WhenNoBinaryFound_IncludesProxySubdirInMessage()
+    {
+        var config = new ApiConfig
+        {
+            ProxyPort = 8080,
+            ProxyIpcSocketPath = "/tmp/test-shmoxy.sock",
+            ProxyBinaryPath = null
+        };
+        var mockConfig = new Mock<IOptions<ApiConfig>>();
+        mockConfig.Setup(c => c.Value).Returns(config);
+
+        var manager = new ProxyProcessManager(_mockLogger.Object, _mockIpcClient.Object, mockConfig.Object, _mockConfigPersistence.Object);
+
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => manager.StartAsync());
+        Assert.Contains("proxy", ex.Message);
+        Assert.Contains("shmoxy.dll", ex.Message);
+    }
+
+    [Fact]
     public async Task StopAsync_SetsExitReasonBasedOnSource_System()
     {
         var manager = new ProxyProcessManager(_mockLogger.Object, _mockIpcClient.Object, _mockConfig.Object, _mockConfigPersistence.Object);
