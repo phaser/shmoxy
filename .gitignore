@@ -39,6 +39,9 @@ logs/
 coverage.json
 coverage.xml
 
+# Docker local cert directory (docker-compose default when SHMOXY_CERT_DIR is unset)
+.shmoxy-certs/
+
 # Distribution output
 dist/
 
