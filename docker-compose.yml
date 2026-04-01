@@ -6,6 +6,12 @@ services:
       - "8080:8080"   # Proxy
     volumes:
       - shmoxy-data:/root/.local/share/shmoxy-api
+      # Mount cert directory to share certs between host and container.
+      # To reuse your host's existing certs, set SHMOXY_CERT_DIR:
+      #   macOS:  export SHMOXY_CERT_DIR="$HOME/Library/Application Support/shmoxy"
+      #   Linux:  export SHMOXY_CERT_DIR="$HOME/.local/share/shmoxy"
+      # Without it, certs are stored in a local .shmoxy-certs/ directory.
+      - ${SHMOXY_CERT_DIR:-./.shmoxy-certs}:/root/.local/share/shmoxy
     environment:
       - ASPNETCORE_URLS=http://+:5000
       - ApiConfig__ProxyPort=8080
