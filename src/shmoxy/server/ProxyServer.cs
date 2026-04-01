@@ -1041,7 +1041,9 @@ public class ProxyServer : IDisposable
 
                 await _interceptor.OnWebSocketFrameAsync(correlationId, frame, direction);
 
-                await WebSocketFrameReader.WriteFrameAsync(destination, frame, cts.Token);
+                // RFC 6455 §5.1: client-to-server frames must be masked
+                var maskFrame = direction == "client";
+                await WebSocketFrameReader.WriteFrameAsync(destination, frame, cts.Token, mask: maskFrame);
                 await destination.FlushAsync(cts.Token);
 
                 if (frame.Opcode == shmoxy.models.WebSocketOpcode.Close)
