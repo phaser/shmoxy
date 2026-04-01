@@ -9,10 +9,13 @@ namespace shmoxy.server.hooks;
 
 /// <summary>
 /// Hook that captures intercepted requests and responses for inspection.
-/// Off by default - no performance overhead when disabled.
+/// Enabled by default so traffic is captured from application startup.
+/// Uses a bounded channel to prevent unbounded memory growth when no consumer is connected.
 /// </summary>
 public class InspectionHook : IInterceptHook, IDisposable
 {
+    public const int MaxChannelCapacity = 10_000;
+
     private readonly Channel<InspectionEvent> _channel;
     private readonly ChannelReader<InspectionEvent> _reader;
     private bool _enabled;
@@ -20,9 +23,12 @@ public class InspectionHook : IInterceptHook, IDisposable
 
     public InspectionHook()
     {
-        _channel = Channel.CreateUnbounded<InspectionEvent>();
+        _channel = Channel.CreateBounded<InspectionEvent>(new BoundedChannelOptions(MaxChannelCapacity)
+        {
+            FullMode = BoundedChannelFullMode.DropOldest
+        });
         _reader = _channel.Reader;
-        _enabled = false;
+        _enabled = true;
     }
 
     public bool Enabled
