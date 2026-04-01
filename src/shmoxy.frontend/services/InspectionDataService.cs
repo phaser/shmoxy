@@ -1,4 +1,5 @@
 using System.Text;
+using Microsoft.Extensions.Hosting;
 using shmoxy.frontend.models;
 
 namespace shmoxy.frontend.services;
@@ -6,6 +7,7 @@ namespace shmoxy.frontend.services;
 public class InspectionDataService : IDisposable
 {
     private readonly ApiClient _apiClient;
+    private readonly CancellationTokenSource _shutdownCts = new();
     private readonly List<InspectionRow> _rows = new();
     private readonly Dictionary<string, (int RowIndex, DateTime Timestamp)> _pendingRequests = new();
     private readonly object _lock = new();
@@ -32,9 +34,10 @@ public class InspectionDataService : IDisposable
 
     public event Action? OnRowsChanged;
 
-    public InspectionDataService(ApiClient apiClient)
+    public InspectionDataService(ApiClient apiClient, IHostApplicationLifetime? lifetime = null)
     {
         _apiClient = apiClient;
+        lifetime?.ApplicationStopping.Register(() => _shutdownCts.Cancel());
     }
 
     public IReadOnlyList<InspectionRow> GetRows()
@@ -51,7 +54,7 @@ public class InspectionDataService : IDisposable
             return;
 
         _cts?.Dispose();
-        _cts = new CancellationTokenSource();
+        _cts = CancellationTokenSource.CreateLinkedTokenSource(_shutdownCts.Token);
         _streamTask = ConsumeStreamAsync(_cts.Token);
     }
 
@@ -259,7 +262,9 @@ public class InspectionDataService : IDisposable
     public void Dispose()
     {
         if (_disposed) return;
+        _shutdownCts.Cancel();
         _cts?.Cancel();
+        _shutdownCts.Dispose();
         _cts?.Dispose();
         _disposed = true;
     }
