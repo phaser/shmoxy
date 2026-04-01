@@ -1,8 +1,9 @@
 #!/bin/bash
 # dist.sh - Build distribution artifacts
-# Usage: ./scripts/dist.sh [--no-docker]
+# Usage: ./scripts/dist.sh [--no-docker] [--smoke-test]
 #
 # By default builds a Docker image. Use --no-docker for bare-metal dotnet publish.
+# Use --smoke-test to build the Docker image and run smoke tests against it.
 
 set -e
 
@@ -32,15 +33,20 @@ log_error() {
 
 # Parse arguments
 USE_DOCKER=true
+RUN_SMOKE_TEST=false
 while [[ $# -gt 0 ]]; do
     case $1 in
         --no-docker)
             USE_DOCKER=false
             shift
             ;;
+        --smoke-test)
+            RUN_SMOKE_TEST=true
+            shift
+            ;;
         *)
             echo "Unknown option: $1"
-            echo "Usage: $0 [--no-docker]"
+            echo "Usage: $0 [--no-docker] [--smoke-test]"
             exit 1
             ;;
     esac
@@ -167,4 +173,129 @@ if [ "$USE_DOCKER" = true ]; then
     log_info "Then open http://localhost:5000 in your browser."
 else
     log_info "Output: $DIST_DIR"
+fi
+
+# --- Smoke Tests ---
+
+run_smoke_tests() {
+    local compose_file="$REPO_ROOT/docker-compose.yml"
+    local passed=0
+    local failed=0
+    local test_failures=""
+
+    log_info "=== Docker Smoke Tests ==="
+
+    # Ensure any previous run is cleaned up
+    docker compose -f "$compose_file" down --remove-orphans > /dev/null 2>&1 || true
+
+    # Start container
+    log_info "Starting container via docker compose..."
+    docker compose -f "$compose_file" up -d
+
+    # Wait for health endpoint
+    log_info "Waiting for application to start..."
+    local max_wait=120
+    local waited=0
+    while ! curl -sf http://localhost:5000/api/health > /dev/null 2>&1; do
+        sleep 1
+        waited=$((waited + 1))
+        if [ $waited -ge $max_wait ]; then
+            log_error "Application failed to start within ${max_wait}s"
+            docker compose -f "$compose_file" logs
+            docker compose -f "$compose_file" down
+            exit 1
+        fi
+    done
+    log_info "Application ready after ${waited}s"
+
+    # Test 1: API health check
+    log_info "Test 1: API health check (port 5000)..."
+    if curl -sf http://localhost:5000/api/health > /dev/null 2>&1; then
+        log_info "  PASS"
+        passed=$((passed + 1))
+    else
+        log_error "  FAIL: API health endpoint not responding"
+        failed=$((failed + 1))
+        test_failures="${test_failures}\n  - API health check failed"
+    fi
+
+    # Test 2: Proxy port accepting connections
+    log_info "Test 2: Proxy port (8080) accepting connections..."
+    if curl -sf -o /dev/null --max-time 5 --proxy http://localhost:8080 http://localhost:5000/api/health 2>/dev/null; then
+        log_info "  PASS"
+        passed=$((passed + 1))
+    else
+        log_error "  FAIL: Proxy port 8080 not accepting connections"
+        failed=$((failed + 1))
+        test_failures="${test_failures}\n  - Proxy port not accepting connections"
+    fi
+
+    # Test 3: E2E proxy smoke tests — proxy HTTPS requests to known sites
+    local sites=("https://news.ycombinator.com" "https://www.github.com" "https://www.microsoft.com")
+    for site in "${sites[@]}"; do
+        log_info "Test 3: Proxy request to $site..."
+        local http_code
+        http_code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 15 --proxy http://localhost:8080 "$site" 2>/dev/null || echo "000")
+        if [ "$http_code" -ge 200 ] 2>/dev/null && [ "$http_code" -lt 400 ] 2>/dev/null; then
+            log_info "  PASS (HTTP $http_code)"
+            passed=$((passed + 1))
+        else
+            log_error "  FAIL: $site returned HTTP $http_code"
+            failed=$((failed + 1))
+            test_failures="${test_failures}\n  - Proxy to $site failed (HTTP $http_code)"
+        fi
+    done
+
+    # Test 4: Log inspection
+    log_info "Test 4: Checking container logs for errors..."
+    local logs
+    logs=$(docker compose -f "$compose_file" logs 2>&1)
+    local error_lines
+    error_lines=$(echo "$logs" | grep -iE "^.*\s(fail|crit|fatal):" | grep -v "warn:" || true)
+    if [ -n "$error_lines" ]; then
+        local error_count
+        error_count=$(echo "$error_lines" | wc -l | tr -d ' ')
+        log_warn "  WARN: $error_count error(s) found in logs:"
+        echo "$error_lines" | head -20 | while IFS= read -r line; do
+            echo -e "    ${RED}$line${NC}"
+        done
+        # Log errors are warnings, not test failures — they get filed as separate issues
+    else
+        log_info "  PASS: No errors found in logs"
+    fi
+    passed=$((passed + 1))
+
+    # Test 5: Graceful shutdown
+    log_info "Test 5: Graceful shutdown..."
+    local shutdown_output
+    shutdown_output=$(docker compose -f "$compose_file" down 2>&1)
+    local shutdown_exit=$?
+    if [ $shutdown_exit -eq 0 ]; then
+        log_info "  PASS: Container shut down gracefully"
+        passed=$((passed + 1))
+    else
+        log_error "  FAIL: Shutdown returned exit code $shutdown_exit"
+        echo "$shutdown_output"
+        failed=$((failed + 1))
+        test_failures="${test_failures}\n  - Graceful shutdown failed (exit $shutdown_exit)"
+    fi
+
+    # Summary
+    echo ""
+    local total=$((passed + failed))
+    if [ $failed -eq 0 ]; then
+        log_info "=== Smoke tests: $passed/$total passed ==="
+    else
+        log_error "=== Smoke tests: $passed/$total passed, $failed failed ==="
+        echo -e "${RED}Failures:${NC}$test_failures"
+        exit 1
+    fi
+}
+
+if [ "$RUN_SMOKE_TEST" = true ]; then
+    if [ "$USE_DOCKER" = false ]; then
+        log_error "--smoke-test requires Docker (cannot use with --no-docker)"
+        exit 1
+    fi
+    run_smoke_tests
 fi
