@@ -70,16 +70,22 @@ public class ResendController : ControllerBase
 
             var response = await client.SendAsync(httpRequest, ct);
 
-            var responseBody = await response.Content.ReadAsStringAsync(ct);
+            var responseBytes = await response.Content.ReadAsByteArrayAsync(ct);
             var responseHeaders = response.Headers
                 .Concat(response.Content.Headers)
-                .ToDictionary(h => h.Key, h => string.Join(", ", h.Value));
+                .GroupBy(h => h.Key)
+                .ToDictionary(g => g.Key, g => string.Join(", ", g.SelectMany(h => h.Value)));
 
-            return Ok(new
+            var responseContentType = response.Content.Headers.ContentType?.MediaType;
+            var isText = IsTextContentType(responseContentType);
+
+            return Ok(new ResendResponseDto
             {
                 StatusCode = (int)response.StatusCode,
                 Headers = responseHeaders,
-                Body = responseBody
+                Body = isText ? Encoding.UTF8.GetString(responseBytes) : Convert.ToBase64String(responseBytes),
+                ContentType = responseContentType,
+                IsBase64 = !isText
             });
         }
         catch (HttpRequestException ex)
@@ -87,5 +93,21 @@ public class ResendController : ControllerBase
             _logger.LogWarning(ex, "Resend failed for {Method} {Url}", request.Method, request.Url);
             return StatusCode(502, new { Error = ex.Message });
         }
+    }
+
+    private static bool IsTextContentType(string? mediaType)
+    {
+        if (string.IsNullOrEmpty(mediaType))
+            return true;
+
+        if (mediaType.StartsWith("text/", StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        return mediaType.Contains("json", StringComparison.OrdinalIgnoreCase)
+            || mediaType.Contains("xml", StringComparison.OrdinalIgnoreCase)
+            || mediaType.Contains("javascript", StringComparison.OrdinalIgnoreCase)
+            || mediaType.Contains("html", StringComparison.OrdinalIgnoreCase)
+            || mediaType.Contains("css", StringComparison.OrdinalIgnoreCase)
+            || mediaType.Contains("form-urlencoded", StringComparison.OrdinalIgnoreCase);
     }
 }
