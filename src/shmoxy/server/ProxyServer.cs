@@ -394,7 +394,7 @@ public class ProxyServer : IDisposable
                 }
             }
 
-            // Parse body from the already-read buffer
+            // Parse body from the already-read buffer, then read remaining if needed
             var headerEndIndex = request.IndexOf("\r\n\r\n");
             byte[]? body = null;
             if (headerEndIndex >= 0 && headerEndIndex + 4 < bytesRead)
@@ -402,6 +402,8 @@ public class ProxyServer : IDisposable
                 body = new byte[bytesRead - (headerEndIndex + 4)];
                 Buffer.BlockCopy(buffer, headerEndIndex + 4, body, 0, body.Length);
             }
+
+            body = await ReadFullBodyAsync(client.GetStream(), body, headersDict);
 
             // Intercept request
             var interceptedRequest = new InterceptedRequest
@@ -685,7 +687,7 @@ public class ProxyServer : IDisposable
                 }
             }
 
-            // Parse body
+            // Parse body from the already-read buffer, then read remaining if needed
             var headerEnd = requestText.IndexOf("\r\n\r\n");
             byte[]? body = null;
             if (headerEnd >= 0 && headerEnd + 4 < read)
@@ -693,6 +695,8 @@ public class ProxyServer : IDisposable
                 body = new byte[read - (headerEnd + 4)];
                 Buffer.BlockCopy(buf, headerEnd + 4, body, 0, body.Length);
             }
+
+            body = await ReadFullBodyAsync(clientStream, body, headers);
 
             var scheme = port == 443 ? "https" : "http";
 
@@ -865,6 +869,44 @@ public class ProxyServer : IDisposable
         var stream = client.GetStream();
         await stream.WriteAsync(bytes, 0, bytes.Length);
         await stream.FlushAsync();
+    }
+
+    /// <summary>
+    /// Reads the full request body from the stream when the initial buffer read was incomplete.
+    /// Checks Content-Length to determine if more bytes need to be read beyond what was
+    /// already captured in the initial 8KB buffer.
+    /// </summary>
+    private static async Task<byte[]?> ReadFullBodyAsync(Stream stream, byte[]? initialBody, Dictionary<string, string> headers)
+    {
+        if (!headers.TryGetValue("Content-Length", out var clHeader) ||
+            !int.TryParse(clHeader, out var contentLength) ||
+            contentLength <= 0)
+        {
+            return initialBody;
+        }
+
+        var alreadyRead = initialBody?.Length ?? 0;
+        if (alreadyRead >= contentLength)
+            return initialBody;
+
+        // Need to read remaining bytes
+        var fullBody = new byte[contentLength];
+        if (initialBody != null)
+            Buffer.BlockCopy(initialBody, 0, fullBody, 0, alreadyRead);
+
+        var remaining = contentLength - alreadyRead;
+        var offset = alreadyRead;
+        while (remaining > 0)
+        {
+            var read = await stream.ReadAsync(fullBody, offset, remaining);
+            if (read == 0)
+                break;
+
+            offset += read;
+            remaining -= read;
+        }
+
+        return fullBody;
     }
 
     /// <summary>
