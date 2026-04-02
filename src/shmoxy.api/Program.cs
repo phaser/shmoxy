@@ -14,7 +14,7 @@ app.Run();
 
 public partial class Program
 {
-    public static WebApplication CreateApp(string[] args)
+    public static WebApplication CreateApp(string[] args, Action<IServiceCollection>? configureTestServices = null)
     {
         var builder = WebApplication.CreateBuilder(args);
 
@@ -62,6 +62,9 @@ public partial class Program
 
         // Add Blazor frontend (from shmoxy.frontend)
         builder.Services.AddBlazorFrontend();
+
+        // Allow tests to override service registrations before building the app
+        configureTestServices?.Invoke(builder.Services);
 
         var app = builder.Build();
 

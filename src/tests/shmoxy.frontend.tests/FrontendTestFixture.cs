@@ -1,7 +1,9 @@
 using System.Net;
 using System.Net.Sockets;
 using Microsoft.AspNetCore.Builder;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Playwright;
+using shmoxy.api.server;
 using Xunit;
 
 namespace shmoxy.frontend.tests;
@@ -33,7 +35,16 @@ public class FrontendTestFixture : IAsyncLifetime
         var proxyPort = GetAvailablePort();
         _app = Program.CreateApp(["--urls", BaseUrl, "--contentRoot", apiProjectDir,
             "--ApiConfig:ProxyPort", proxyPort.ToString(),
-            "--ApiConfig:AutoStartProxy", "false"]);
+            "--ApiConfig:AutoStartProxy", "false"],
+            services =>
+            {
+                // Replace the real ProxyProcessManager with a fake that doesn't
+                // spawn a real process. This makes Start/Stop tests deterministic
+                // and removes the dependency on the shmoxy binary being available.
+                var descriptor = services.SingleOrDefault(d => d.ServiceType == typeof(IProxyProcessManager));
+                if (descriptor != null) services.Remove(descriptor);
+                services.AddSingleton<IProxyProcessManager, FakeProxyProcessManager>();
+            });
 
         // Start the app in the background
         _ = _app.RunAsync();
