@@ -163,6 +163,23 @@ public class ApiClient(HttpClient httpClient)
         return await response.Content.ReadFromJsonAsync<List<SessionLogEntryData>>() ?? [];
     }
 
+    public async Task<string?> GetApiVersionAsync()
+    {
+        try
+        {
+            var response = await _httpClient.GetAsync("/api/health");
+            response.EnsureSuccessStatusCode();
+            var json = await response.Content.ReadFromJsonAsync<JsonElement>();
+            return json.TryGetProperty("version", out var v) ? v.GetString()
+                 : json.TryGetProperty("Version", out v) ? v.GetString()
+                 : null;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
     public async Task<RetentionPolicyDto> GetRetentionPolicyAsync()
     {
         var response = await _httpClient.GetAsync("/api/settings/retention");

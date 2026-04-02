@@ -1,5 +1,6 @@
 @page "/about"
 @inject ProxyStatusService ProxyStatusService
+@inject ApiClient ApiClient
 
 <h1>About</h1>
 
@@ -8,12 +9,11 @@
         <div class="about-section">
             <img src="_content/shmoxy.frontend/icon.png" alt="Shmoxy icon" class="about-icon" />
             <h3>Shmoxy</h3>
-            <p>Frontend Version: @_version</p>
-            <p>Proxy Server Version: @_proxyVersion</p>
-            @if (_versionMismatch)
-            {
-                <p class="version-warning">Warning: Frontend and proxy server versions differ.</p>
-            }
+            <table class="version-table">
+                <tr><td>Frontend</td><td>@_frontendVersion</td></tr>
+                <tr><td>API</td><td>@_apiVersion</td></tr>
+                <tr><td>Proxy</td><td>@_proxyVersion</td></tr>
+            </table>
             <p>
                 Licensed under the
                 <a href="https://github.com/phaser/shmoxy/blob/main/LICENSE" target="_blank" rel="noopener noreferrer">MIT License</a>.
@@ -50,35 +50,38 @@
 </div>
 
 @code {
-    private string _version = "";
+    private string _frontendVersion = "";
+    private string _apiVersion = "Loading...";
     private string _proxyVersion = "Not connected";
-    private bool _versionMismatch;
 
     private static readonly List<ThirdPartyDep> _thirdPartyDeps =
     [
         new("CyberChef", "Apache 2.0", "https://github.com/gchq/CyberChef"),
     ];
 
-    protected override void OnInitialized()
+    private static string GetInformationalVersion(System.Reflection.Assembly assembly)
     {
-        var assemblyVersion = typeof(App).Assembly.GetName().Version;
-        _version = assemblyVersion?.ToString(3) ?? "unknown";
-
-        UpdateProxyVersion();
+        return System.Reflection.CustomAttributeExtensions
+            .GetCustomAttribute<System.Reflection.AssemblyInformationalVersionAttribute>(assembly)?.InformationalVersion
+            ?? assembly.GetName().Version?.ToString(3)
+            ?? "unknown";
     }
 
-    private void UpdateProxyVersion()
+    protected override void OnInitialized()
     {
+        _frontendVersion = GetInformationalVersion(typeof(App).Assembly);
+
         var status = ProxyStatusService.CurrentStatus;
         if (status.IsRunning && !string.IsNullOrEmpty(status.ProxyVersion))
-        {
             _proxyVersion = status.ProxyVersion;
-            _versionMismatch = _version != _proxyVersion;
-        }
-        else
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
         {
-            _proxyVersion = "Not connected";
-            _versionMismatch = false;
+            _apiVersion = await ApiClient.GetApiVersionAsync() ?? "unknown";
+            StateHasChanged();
         }
     }
 
@@ -110,8 +113,25 @@
     margin-bottom: 1rem;
 }
 
-.version-warning {
-    color: var(--warning);
+.version-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.875rem;
+    margin: 0.75rem 0;
+}
+
+.version-table td {
+    padding: 4px 8px;
+    border-bottom: 1px solid var(--neutral-stroke-divider-rest);
+}
+
+.version-table td:first-child {
     font-weight: 600;
+    width: 100px;
+    color: var(--neutral-foreground-hint);
+}
+
+.version-table td:last-child {
+    font-family: monospace;
 }
 </style>

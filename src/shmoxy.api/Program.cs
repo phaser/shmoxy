@@ -78,7 +78,11 @@ public partial class Program
         app.MapControllers();
         app.MapBlazorFrontend();
 
-        app.MapGet("/api/health", () => new { Status = "Healthy", Timestamp = DateTime.UtcNow });
+        var apiVersion = System.Reflection.CustomAttributeExtensions
+            .GetCustomAttribute<System.Reflection.AssemblyInformationalVersionAttribute>(typeof(Program).Assembly)?.InformationalVersion
+            ?? typeof(Program).Assembly.GetName().Version?.ToString(3)
+            ?? "unknown";
+        app.MapGet("/api/health", () => new { Status = "Healthy", Timestamp = DateTime.UtcNow, Version = apiVersion });
 
         return app;
     }

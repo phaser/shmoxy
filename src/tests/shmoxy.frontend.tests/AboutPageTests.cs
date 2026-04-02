@@ -26,11 +26,11 @@ public class AboutPageTests
         await page.WaitForTimeoutAsync(3000);
 
         var content = await page.TextContentAsync(".about-container");
-        Assert.Contains("Frontend Version", content);
+        Assert.Contains("Frontend", content);
     }
 
     [Fact]
-    public async Task AboutPage_ShowsProxyVersionNotConnected_WhenProxyStopped()
+    public async Task AboutPage_ShowsAllComponentVersions()
     {
         var page = await _fixture.CreatePageAsync();
         await page.GotoAsync($"{_fixture.BaseUrl}/about", new PageGotoOptions
@@ -41,9 +41,10 @@ public class AboutPageTests
 
         await page.WaitForTimeoutAsync(3000);
 
-        var content = await page.TextContentAsync(".about-container");
-        Assert.Contains("Proxy Server Version", content);
-        Assert.Contains("Not connected", content);
+        var content = await page.TextContentAsync(".version-table");
+        Assert.Contains("Frontend", content);
+        Assert.Contains("API", content);
+        Assert.Contains("Proxy", content);
     }
 
     [Fact]
@@ -79,7 +80,7 @@ public class AboutPageTests
 
         await page.WaitForTimeoutAsync(3000);
 
-        var table = page.Locator(".about-container table");
+        var table = page.Locator(".about-container table:not(.version-table)");
         await table.WaitForAsync(new LocatorWaitForOptions { Timeout = 10000 });
         var isVisible = await table.IsVisibleAsync();
         Assert.True(isVisible, "Expected third-party table to be visible");
