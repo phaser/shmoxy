@@ -108,7 +108,7 @@ public class AboutPageTests
         Assert.True(isVisible, "Expected application icon to be visible on About page");
 
         var src = await icon.GetAttributeAsync("src");
-        Assert.Contains("icon.png", src);
+        Assert.Contains("icon.svg", src);
     }
 
     [Fact]

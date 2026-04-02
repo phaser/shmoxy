@@ -1,6 +1,6 @@
 services:
   shmoxy:
-    build: .
+    image: shmoxy:1.0.7-ghf3fe4f7c
     ports:
       - "5000:5000"   # API / UI
       - "8080:8080"   # Proxy

@@ -1,0 +1,179 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <!-- Background gradient -->
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#fef3e2"/>
+      <stop offset="100%" stop-color="#fde5c8"/>
+    </linearGradient>
+    <!-- Cat fur gradient -->
+    <linearGradient id="fur" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#3a3a3a"/>
+      <stop offset="100%" stop-color="#1a1a1a"/>
+    </linearGradient>
+    <!-- Cat fur highlight -->
+    <linearGradient id="fur-highlight" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#4a4a4a"/>
+      <stop offset="100%" stop-color="#2a2a2a"/>
+    </linearGradient>
+    <!-- Magnifying glass gradient -->
+    <linearGradient id="glass" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#a8d8ea"/>
+      <stop offset="50%" stop-color="#d4ecf7"/>
+      <stop offset="100%" stop-color="#e8f4fa"/>
+    </linearGradient>
+    <!-- Body gradient -->
+    <linearGradient id="body-grad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#3a3a3a"/>
+      <stop offset="100%" stop-color="#1a1a1a"/>
+    </linearGradient>
+    <!-- Ear inner -->
+    <linearGradient id="ear-inner" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#f8b4b4"/>
+      <stop offset="100%" stop-color="#e89090"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Rounded background -->
+  <rect x="16" y="16" width="480" height="480" rx="96" ry="96" fill="url(#bg)" stroke="#f0d4a8" stroke-width="4"/>
+
+  <!-- Floating data packets -->
+  <g opacity="0.5">
+    <rect x="62" y="78" width="36" height="14" rx="7" fill="#7ec8e3"/>
+    <rect x="48" y="100" width="28" height="14" rx="7" fill="#f9a85c"/>
+  </g>
+  <g opacity="0.5">
+    <rect x="410" y="90" width="44" height="14" rx="7" fill="#a5d6a7"/>
+    <rect x="420" y="112" width="30" height="14" rx="7" fill="#7ec8e3"/>
+  </g>
+  <g opacity="0.4">
+    <rect x="56" y="380" width="32" height="14" rx="7" fill="#f9a85c"/>
+  </g>
+  <g opacity="0.4">
+    <rect x="424" y="370" width="38" height="14" rx="7" fill="#a5d6a7"/>
+  </g>
+
+  <!-- Floating dots / sparkles -->
+  <circle cx="100" cy="140" r="5" fill="#f47c3c" opacity="0.4"/>
+  <circle cx="420" cy="160" r="4" fill="#7ec8e3" opacity="0.5"/>
+  <circle cx="80" cy="320" r="3.5" fill="#a5d6a7" opacity="0.4"/>
+  <circle cx="440" cy="300" r="5" fill="#f9a85c" opacity="0.4"/>
+  <circle cx="130" cy="430" r="4" fill="#7ec8e3" opacity="0.3"/>
+  <circle cx="390" cy="430" r="3" fill="#f47c3c" opacity="0.35"/>
+
+  <!-- Traffic flow arrows - left side (incoming) -->
+  <g opacity="0.6">
+    <path d="M60 240 L120 240" stroke="#7ec8e3" stroke-width="5" stroke-linecap="round"/>
+    <path d="M110 232 L122 240 L110 248" fill="none" stroke="#7ec8e3" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M70 270 L115 270" stroke="#50b5d9" stroke-width="4" stroke-linecap="round" opacity="0.7"/>
+    <path d="M107 263 L117 270 L107 277" fill="none" stroke="#50b5d9" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" opacity="0.7"/>
+  </g>
+
+  <!-- Traffic flow arrows - right side (outgoing) -->
+  <g opacity="0.6">
+    <path d="M392 240 L452 240" stroke="#a5d6a7" stroke-width="5" stroke-linecap="round"/>
+    <path d="M442 232 L454 240 L442 248" fill="none" stroke="#a5d6a7" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M397 270 L442 270" stroke="#81c784" stroke-width="4" stroke-linecap="round" opacity="0.7"/>
+    <path d="M434 263 L444 270 L434 277" fill="none" stroke="#81c784" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" opacity="0.7"/>
+  </g>
+
+  <!-- Cat tail - curving up from behind the body -->
+  <path d="M160 340 Q120 320 110 270 Q105 240 120 210 Q130 195 145 200"
+        fill="none" stroke="#2a2a2a" stroke-width="16" stroke-linecap="round"/>
+  <path d="M160 340 Q120 320 110 270 Q105 240 120 210 Q130 195 145 200"
+        fill="none" stroke="url(#fur-highlight)" stroke-width="12" stroke-linecap="round"/>
+  <!-- Tail tip -->
+  <circle cx="145" cy="200" r="10" fill="#2a2a2a"/>
+
+  <!-- Cat body - round chubby shape -->
+  <ellipse cx="256" cy="335" rx="85" ry="60" fill="url(#body-grad)" stroke="#111" stroke-width="2"/>
+
+  <!-- White triangle collar under chin -->
+  <polygon points="216,290 296,290 256,360" fill="white" stroke="#e0e0e0" stroke-width="2" stroke-linejoin="round"/>
+
+  <!-- Cat paws - front -->
+  <!-- Left paw -->
+  <ellipse cx="215" cy="388" rx="24" ry="14" fill="#2a2a2a" stroke="#111" stroke-width="2"/>
+  <ellipse cx="207" cy="386" rx="5" ry="4" fill="#3a3a3a"/>
+  <ellipse cx="217" cy="384" rx="5" ry="4" fill="#3a3a3a"/>
+  <ellipse cx="226" cy="386" rx="5" ry="4" fill="#3a3a3a"/>
+  <!-- Right paw -->
+  <ellipse cx="297" cy="388" rx="24" ry="14" fill="#2a2a2a" stroke="#111" stroke-width="2"/>
+  <ellipse cx="289" cy="386" rx="5" ry="4" fill="#3a3a3a"/>
+  <ellipse cx="299" cy="384" rx="5" ry="4" fill="#3a3a3a"/>
+  <ellipse cx="308" cy="386" rx="5" ry="4" fill="#3a3a3a"/>
+
+  <!-- Cat arms -->
+  <!-- Left arm -->
+  <path d="M195 330 Q170 350 168 370" fill="none" stroke="#2a2a2a" stroke-width="18" stroke-linecap="round"/>
+  <!-- Right arm reaching to magnifier -->
+  <path d="M320 325 Q350 310 360 290" fill="none" stroke="#2a2a2a" stroke-width="18" stroke-linecap="round"/>
+
+  <!-- Cat head -->
+  <circle cx="256" cy="215" r="78" fill="url(#fur)" stroke="#111" stroke-width="2"/>
+
+  <!-- Cat ears -->
+  <!-- Left ear outer -->
+  <path d="M190 185 L172 110 L225 162" fill="#2a2a2a" stroke="#111" stroke-width="2" stroke-linejoin="round"/>
+  <!-- Left ear inner -->
+  <path d="M195 178 L182 125 L218 165" fill="url(#ear-inner)" stroke="none"/>
+  <!-- Right ear outer -->
+  <path d="M322 185 L340 110 L287 162" fill="#2a2a2a" stroke="#111" stroke-width="2" stroke-linejoin="round"/>
+  <!-- Right ear inner -->
+  <path d="M317 178 L330 125 L294 165" fill="url(#ear-inner)" stroke="none"/>
+
+  <!-- Cat face - lighter muzzle area -->
+  <ellipse cx="256" cy="242" rx="35" ry="25" fill="#4a4a4a" opacity="0.5"/>
+
+  <!-- Eyes - big, curious, bright -->
+  <!-- Left eye -->
+  <ellipse cx="228" cy="215" rx="18" ry="20" fill="#e8f0d0" stroke="#333" stroke-width="2.5"/>
+  <ellipse cx="232" cy="216" rx="10" ry="12" fill="#5a8a32"/>
+  <ellipse cx="232" cy="216" rx="6" ry="8" fill="#2a2a2a"/>
+  <circle cx="236" cy="210" r="5" fill="white" opacity="0.8"/>
+  <circle cx="226" cy="220" r="2.5" fill="white" opacity="0.4"/>
+  <!-- Right eye -->
+  <ellipse cx="284" cy="215" rx="18" ry="20" fill="#e8f0d0" stroke="#333" stroke-width="2.5"/>
+  <ellipse cx="288" cy="216" rx="10" ry="12" fill="#5a8a32"/>
+  <ellipse cx="288" cy="216" rx="6" ry="8" fill="#2a2a2a"/>
+  <circle cx="292" cy="210" r="5" fill="white" opacity="0.8"/>
+  <circle cx="282" cy="220" r="2.5" fill="white" opacity="0.4"/>
+
+  <!-- Nose - pink cat triangle -->
+  <path d="M251 238 L256 232 L261 238 Z" fill="#f8a0a0" stroke="#e07878" stroke-width="1"/>
+
+  <!-- Mouth -->
+  <path d="M256 240 L256 248" stroke="#555" stroke-width="2" stroke-linecap="round"/>
+  <path d="M248 250 Q256 258 264 250" fill="none" stroke="#555" stroke-width="2" stroke-linecap="round"/>
+
+  <!-- Whiskers -->
+  <!-- Left whiskers -->
+  <line x1="175" y1="230" x2="220" y2="238" stroke="#666" stroke-width="1.5" stroke-linecap="round"/>
+  <line x1="172" y1="245" x2="218" y2="248" stroke="#666" stroke-width="1.5" stroke-linecap="round"/>
+  <line x1="178" y1="258" x2="222" y2="255" stroke="#666" stroke-width="1.5" stroke-linecap="round"/>
+  <!-- Right whiskers -->
+  <line x1="337" y1="230" x2="292" y2="238" stroke="#666" stroke-width="1.5" stroke-linecap="round"/>
+  <line x1="340" y1="245" x2="294" y2="248" stroke="#666" stroke-width="1.5" stroke-linecap="round"/>
+  <line x1="334" y1="258" x2="290" y2="255" stroke="#666" stroke-width="1.5" stroke-linecap="round"/>
+
+  <!-- Cheek blush -->
+  <ellipse cx="205" cy="240" rx="12" ry="7" fill="#f8b4b4" opacity="0.35"/>
+  <ellipse cx="307" cy="240" rx="12" ry="7" fill="#f8b4b4" opacity="0.35"/>
+
+  <!-- Magnifying glass (held by right paw) -->
+  <!-- Glass handle -->
+  <line x1="355" y1="325" x2="400" y2="375" stroke="#8d6e4c" stroke-width="12" stroke-linecap="round"/>
+  <line x1="355" y1="325" x2="400" y2="375" stroke="#a68260" stroke-width="8" stroke-linecap="round"/>
+  <!-- Glass ring -->
+  <circle cx="335" cy="302" r="42" fill="none" stroke="#8d6e4c" stroke-width="10"/>
+  <circle cx="335" cy="302" r="42" fill="none" stroke="#a68260" stroke-width="6"/>
+  <!-- Glass lens -->
+  <circle cx="335" cy="302" r="36" fill="url(#glass)" opacity="0.7"/>
+  <!-- Lens shine -->
+  <ellipse cx="322" cy="290" rx="12" ry="8" fill="white" opacity="0.5" transform="rotate(-30 322 290)"/>
+
+  <!-- Data bits visible through magnifying glass -->
+  <text x="318" y="300" font-family="monospace" font-size="11" fill="#3a7ca5" font-weight="bold" opacity="0.7">GET</text>
+  <text x="324" y="314" font-family="monospace" font-size="9" fill="#5a9bb5" opacity="0.6">200</text>
+  <rect x="344" y="306" width="14" height="3" rx="1.5" fill="#7ec8e3" opacity="0.5"/>
+
+</svg>
