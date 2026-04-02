@@ -31,7 +31,7 @@ public class ResendControllerTests
         {
             Method = "GET",
             Url = "https://example.com",
-            Headers = new Dictionary<string, string>()
+            Headers = new List<KeyValuePair<string, string>>()
         };
 
         var result = await _controller.Resend(request, CancellationToken.None);
@@ -49,7 +49,7 @@ public class ResendControllerTests
         {
             Method = "GET",
             Url = "https://example.com",
-            Headers = new Dictionary<string, string>()
+            Headers = new List<KeyValuePair<string, string>>()
         };
 
         var result = await _controller.Resend(request, CancellationToken.None);
@@ -72,7 +72,7 @@ public class ResendControllerTests
         {
             Method = "GET",
             Url = "http://192.0.2.1/test", // TEST-NET address, guaranteed unreachable
-            Headers = new Dictionary<string, string>()
+            Headers = new List<KeyValuePair<string, string>>()
         };
 
         var result = await _controller.Resend(request, CancellationToken.None);

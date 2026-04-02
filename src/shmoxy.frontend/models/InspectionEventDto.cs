@@ -6,7 +6,7 @@ public record InspectionEventDto(
     string Method,
     string Url,
     int? StatusCode,
-    Dictionary<string, string>? Headers = null,
+    List<KeyValuePair<string, string>>? Headers = null,
     byte[]? Body = null,
     string? CorrelationId = null,
     string? FrameType = null,

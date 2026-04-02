@@ -70,7 +70,7 @@ public class ProxyHttpClient : IDisposable
     /// <summary>
     /// Sends an HTTP request through the proxy and returns the response.
     /// </summary>
-    public async Task<byte[]> SendRequestAsync(string method, string path, Dictionary<string, string> headers, byte[]? body = null)
+    public async Task<byte[]> SendRequestAsync(string method, string path, List<KeyValuePair<string, string>> headers, byte[]? body = null)
     {
         var requestBuilder = new StringBuilder();
         requestBuilder.AppendLine($"{method} {path} HTTP/1.1");

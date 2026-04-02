@@ -3,6 +3,7 @@
 @inject NavigationManager NavigationManager
 @inject ApiClient ApiClient
 @using shmoxy.frontend.services
+@using shmoxy.shared
 
 <div class="detail-overlay" @onclick="OnClose" @onkeydown="HandleKeyDown" tabindex="0" @ref="overlayRef">
     <div class="detail-panel" @onclick:stopPropagation="true">
@@ -441,12 +442,9 @@
         };
     }
 
-    private static (string FormattedContent, string Language) FormatBody(string body, Dictionary<string, string> headers)
+    private static (string FormattedContent, string Language) FormatBody(string body, List<KeyValuePair<string, string>> headers)
     {
-        headers.TryGetValue("Content-Type", out var contentType);
-        if (contentType is null)
-            headers.TryGetValue("content-type", out contentType);
-
+        var contentType = headers.GetHeaderValue("Content-Type");
         return PayloadFormatter.Format(body, contentType);
     }
 
@@ -510,7 +508,7 @@
     {
         _resendMethod = Row.Method;
         _resendUrl = Row.Url;
-        _resendHeaders = string.Join("\n", Row.RequestHeaders.Select(h => $"{h.Key}: {h.Value}"));
+        _resendHeaders = string.Join("\n", Row.RequestHeaders.Select(kvp => $"{kvp.Key}: {kvp.Value}"));
         _resendBody = Row.RequestBody ?? "";
         _resendError = null;
         _resendStatusCode = null;
@@ -532,13 +530,13 @@
 
         try
         {
-            var headers = new Dictionary<string, string>();
+            var headers = new List<KeyValuePair<string, string>>();
             foreach (var line in _resendHeaders.Split('\n', StringSplitOptions.RemoveEmptyEntries))
             {
                 var colonIndex = line.IndexOf(':');
                 if (colonIndex > 0)
                 {
-                    headers[line[..colonIndex].Trim()] = line[(colonIndex + 1)..].Trim();
+                    headers.Add(new KeyValuePair<string, string>(line[..colonIndex].Trim(), line[(colonIndex + 1)..].Trim()));
                 }
             }
 

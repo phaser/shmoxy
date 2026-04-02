@@ -98,15 +98,15 @@ public class SessionSaveE2eTests : IDisposable
                     StatusCode = 200,
                     DurationMs = 150,
                     Timestamp = DateTime.UtcNow,
-                    RequestHeaders = new Dictionary<string, string>
+                    RequestHeaders = new List<KeyValuePair<string, string>>
                     {
-                        ["Host"] = "example.com",
-                        ["Accept"] = "application/json"
+                        new("Host", "example.com"),
+                        new("Accept", "application/json")
                     },
-                    ResponseHeaders = new Dictionary<string, string>
+                    ResponseHeaders = new List<KeyValuePair<string, string>>
                     {
-                        ["Content-Type"] = "application/json",
-                        ["Content-Length"] = "42"
+                        new("Content-Type", "application/json"),
+                        new("Content-Length", "42")
                     },
                     ResponseBody = "{\"status\": \"ok\"}"
                 },
@@ -117,15 +117,15 @@ public class SessionSaveE2eTests : IDisposable
                     StatusCode = 201,
                     DurationMs = 300,
                     Timestamp = DateTime.UtcNow,
-                    RequestHeaders = new Dictionary<string, string>
+                    RequestHeaders = new List<KeyValuePair<string, string>>
                     {
-                        ["Host"] = "example.com",
-                        ["Content-Type"] = "application/json"
+                        new("Host", "example.com"),
+                        new("Content-Type", "application/json")
                     },
                     RequestBody = "{\"key\": \"value\"}",
-                    ResponseHeaders = new Dictionary<string, string>
+                    ResponseHeaders = new List<KeyValuePair<string, string>>
                     {
-                        ["Content-Type"] = "application/json"
+                        new("Content-Type", "application/json")
                     },
                     ResponseBody = "{\"id\": 1}"
                 },
@@ -136,13 +136,13 @@ public class SessionSaveE2eTests : IDisposable
                     StatusCode = 200,
                     DurationMs = 50,
                     Timestamp = DateTime.UtcNow,
-                    RequestHeaders = new Dictionary<string, string>
+                    RequestHeaders = new List<KeyValuePair<string, string>>
                     {
-                        ["Host"] = "example.com"
+                        new("Host", "example.com")
                     },
-                    ResponseHeaders = new Dictionary<string, string>
+                    ResponseHeaders = new List<KeyValuePair<string, string>>
                     {
-                        ["Content-Type"] = "text/plain"
+                        new("Content-Type", "text/plain")
                     },
                     ResponseBody = "OK"
                 }

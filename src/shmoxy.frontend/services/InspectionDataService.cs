@@ -1,6 +1,7 @@
 using System.Text;
 using Microsoft.Extensions.Hosting;
 using shmoxy.frontend.models;
+using shmoxy.shared;
 
 namespace shmoxy.frontend.services;
 
@@ -199,7 +200,7 @@ public class InspectionDataService : IDisposable
                 Method = evt.Method,
                 Url = evt.Url,
                 Timestamp = evt.Timestamp,
-                RequestHeaders = evt.Headers ?? new Dictionary<string, string>(),
+                RequestHeaders = evt.Headers ?? new List<KeyValuePair<string, string>>(),
                 RequestBody = DecodeBody(evt.Body)
             };
             _rows.Add(row);
@@ -251,7 +252,7 @@ public class InspectionDataService : IDisposable
                 var (rowIndex, requestTimestamp) = pending;
                 if (rowIndex < _rows.Count)
                 {
-                    var headers = evt.Headers ?? new Dictionary<string, string>();
+                    var headers = evt.Headers ?? new List<KeyValuePair<string, string>>();
                     var contentType = GetContentType(headers);
                     _rows[rowIndex].Duration = evt.Timestamp - requestTimestamp;
                     _rows[rowIndex].StatusCode = evt.StatusCode;
@@ -280,7 +281,7 @@ public class InspectionDataService : IDisposable
                 Timestamp = evt.Timestamp,
                 StatusCode = evt.StatusCode,
                 IsWebSocket = true,
-                RequestHeaders = evt.Headers ?? new Dictionary<string, string>()
+                RequestHeaders = evt.Headers ?? new List<KeyValuePair<string, string>>()
             };
             _rows.Add(row);
 
@@ -326,11 +327,10 @@ public class InspectionDataService : IDisposable
         }
     }
 
-    internal static string? GetContentType(Dictionary<string, string> headers)
+    internal static string? GetContentType(List<KeyValuePair<string, string>> headers)
     {
-        if (headers.TryGetValue("Content-Type", out var ct))
-            return ct.Split(';')[0].Trim().ToLowerInvariant();
-        if (headers.TryGetValue("content-type", out ct))
+        var ct = headers.GetHeaderValue("Content-Type");
+        if (ct != null)
             return ct.Split(';')[0].Trim().ToLowerInvariant();
         return null;
     }
@@ -375,8 +375,8 @@ public class InspectionRow
     public TimeSpan? Duration { get; set; }
     public DateTime Timestamp { get; set; }
     public int? StatusCode { get; set; }
-    public Dictionary<string, string> RequestHeaders { get; set; } = new();
-    public Dictionary<string, string> ResponseHeaders { get; set; } = new();
+    public List<KeyValuePair<string, string>> RequestHeaders { get; set; } = new();
+    public List<KeyValuePair<string, string>> ResponseHeaders { get; set; } = new();
     public string? RequestBody { get; set; }
     public string? ResponseBody { get; set; }
     public string? ResponseBodyBase64 { get; set; }

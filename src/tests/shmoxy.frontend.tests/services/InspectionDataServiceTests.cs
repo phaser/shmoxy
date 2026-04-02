@@ -390,7 +390,7 @@ public class InspectionDataServiceTests
         service.ProcessEvent(new InspectionEventDto(now, "request", "GET", "https://example.com/logo.png", null, CorrelationId: "corr-img"));
         service.ProcessEvent(new InspectionEventDto(
             now.AddMilliseconds(50), "response", "", "", 200,
-            Headers: new Dictionary<string, string> { { "Content-Type", "image/png" } },
+            Headers: new List<KeyValuePair<string, string>> { new("Content-Type", "image/png") },
             Body: imageBytes,
             CorrelationId: "corr-img"));
 
@@ -411,7 +411,7 @@ public class InspectionDataServiceTests
         service.ProcessEvent(new InspectionEventDto(now, "request", "GET", "https://example.com/photo.jpg", null, CorrelationId: "corr-jpg"));
         service.ProcessEvent(new InspectionEventDto(
             now.AddMilliseconds(50), "response", "", "", 200,
-            Headers: new Dictionary<string, string> { { "Content-Type", "image/jpeg; charset=binary" } },
+            Headers: new List<KeyValuePair<string, string>> { new("Content-Type", "image/jpeg; charset=binary") },
             Body: imageBytes,
             CorrelationId: "corr-jpg"));
 
@@ -431,7 +431,7 @@ public class InspectionDataServiceTests
         service.ProcessEvent(new InspectionEventDto(now, "request", "GET", "https://example.com/api", null, CorrelationId: "corr-json"));
         service.ProcessEvent(new InspectionEventDto(
             now.AddMilliseconds(50), "response", "", "", 200,
-            Headers: new Dictionary<string, string> { { "Content-Type", "application/json" } },
+            Headers: new List<KeyValuePair<string, string>> { new("Content-Type", "application/json") },
             Body: jsonBytes,
             CorrelationId: "corr-json"));
 
@@ -451,7 +451,7 @@ public class InspectionDataServiceTests
         service.ProcessEvent(new InspectionEventDto(now, "request", "GET", "https://example.com/empty.png", null, CorrelationId: "corr-empty"));
         service.ProcessEvent(new InspectionEventDto(
             now.AddMilliseconds(50), "response", "", "", 200,
-            Headers: new Dictionary<string, string> { { "Content-Type", "image/png" } },
+            Headers: new List<KeyValuePair<string, string>> { new("Content-Type", "image/png") },
             Body: Array.Empty<byte>(),
             CorrelationId: "corr-empty"));
 
@@ -465,14 +465,14 @@ public class InspectionDataServiceTests
     [InlineData("content-type", "image/png")]
     public void GetContentType_ExtractsMediaType(string headerName, string expected)
     {
-        var headers = new Dictionary<string, string> { { headerName, "image/png; charset=binary" } };
+        var headers = new List<KeyValuePair<string, string>> { new(headerName, "image/png; charset=binary") };
         Assert.Equal(expected, InspectionDataService.GetContentType(headers));
     }
 
     [Fact]
     public void GetContentType_ReturnsNull_WhenMissing()
     {
-        var headers = new Dictionary<string, string>();
+        var headers = new List<KeyValuePair<string, string>>();
         Assert.Null(InspectionDataService.GetContentType(headers));
     }
 

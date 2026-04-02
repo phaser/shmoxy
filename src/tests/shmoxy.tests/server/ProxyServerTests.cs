@@ -174,8 +174,8 @@ public class ProxyServerTests : IClassFixture<ProxyTestFixture>, IDisposable
 
         var (_, headers, _) = ProxyServer.ParseRawHttpResponse(raw);
 
-        Assert.Equal("text/plain", headers["Content-Type"]);
-        Assert.Equal("value", headers["X-Custom"]);
+        Assert.Equal("text/plain", headers.First(h => h.Key == "Content-Type").Value);
+        Assert.Equal("value", headers.First(h => h.Key == "X-Custom").Value);
     }
 
     [Fact]
@@ -197,7 +197,7 @@ public class ProxyServerTests : IClassFixture<ProxyTestFixture>, IDisposable
         var (statusCode, headers, body) = ProxyServer.ParseRawHttpResponse(raw);
 
         Assert.Equal(204, statusCode);
-        Assert.Equal("value", headers["X-Header"]);
+        Assert.Equal("value", headers.First(h => h.Key == "X-Header").Value);
         Assert.Empty(body);
     }
 
@@ -209,7 +209,7 @@ public class ProxyServerTests : IClassFixture<ProxyTestFixture>, IDisposable
         var (statusCode, headers, body) = ProxyServer.ParseRawHttpResponse(raw);
 
         Assert.Equal(200, statusCode);
-        Assert.Equal("text/plain", headers["Content-Type"]);
+        Assert.Equal("text/plain", headers.First(h => h.Key == "Content-Type").Value);
         Assert.Empty(body);
     }
 
@@ -224,7 +224,7 @@ public class ProxyServerTests : IClassFixture<ProxyTestFixture>, IDisposable
 
         var (_, headers, body) = ProxyServer.ParseRawHttpResponse(raw);
 
-        Assert.Equal("application/octet-stream", headers["Content-Type"]);
+        Assert.Equal("application/octet-stream", headers.First(h => h.Key == "Content-Type").Value);
         Assert.Equal(bodyBytes, body);
     }
 
@@ -272,10 +272,10 @@ public class ProxyServerTests : IClassFixture<ProxyTestFixture>, IDisposable
     [Fact]
     public void IsWebSocketUpgrade_ReturnsTrueForValidHeaders()
     {
-        var headers = new Dictionary<string, string>
+        var headers = new List<KeyValuePair<string, string>>
         {
-            ["Upgrade"] = "websocket",
-            ["Connection"] = "Upgrade"
+            new("Upgrade", "websocket"),
+            new("Connection", "Upgrade")
         };
 
         Assert.True(ProxyServer.IsWebSocketUpgrade(headers));
@@ -284,9 +284,9 @@ public class ProxyServerTests : IClassFixture<ProxyTestFixture>, IDisposable
     [Fact]
     public void IsWebSocketUpgrade_ReturnsFalseWithoutUpgradeHeader()
     {
-        var headers = new Dictionary<string, string>
+        var headers = new List<KeyValuePair<string, string>>
         {
-            ["Connection"] = "Upgrade"
+            new("Connection", "Upgrade")
         };
 
         Assert.False(ProxyServer.IsWebSocketUpgrade(headers));
@@ -295,13 +295,26 @@ public class ProxyServerTests : IClassFixture<ProxyTestFixture>, IDisposable
     [Fact]
     public void IsWebSocketUpgrade_IsCaseInsensitive()
     {
-        var headers = new Dictionary<string, string>
+        var headers = new List<KeyValuePair<string, string>>
         {
-            ["upgrade"] = "WebSocket",
-            ["connection"] = "upgrade"
+            new("upgrade", "WebSocket"),
+            new("connection", "upgrade")
         };
 
         Assert.True(ProxyServer.IsWebSocketUpgrade(headers));
+    }
+
+    [Fact]
+    public void ParseRawHttpResponse_PreservesDuplicateHeaders()
+    {
+        var raw = "HTTP/1.1 200 OK\r\nSet-Cookie: a=1\r\nSet-Cookie: b=2\r\nContent-Type: text/plain\r\n\r\nBody"u8.ToArray();
+
+        var (_, headers, _) = ProxyServer.ParseRawHttpResponse(raw);
+
+        var setCookieHeaders = headers.Where(h => h.Key == "Set-Cookie").Select(h => h.Value).ToList();
+        Assert.Equal(2, setCookieHeaders.Count);
+        Assert.Contains("a=1", setCookieHeaders);
+        Assert.Contains("b=2", setCookieHeaders);
     }
 
     public void Dispose()

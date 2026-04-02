@@ -5,8 +5,8 @@ public record InspectionRequestInfo(
     string Url,
     int StatusCode,
     DateTime Timestamp,
-    Dictionary<string, string> RequestHeaders,
-    Dictionary<string, string> ResponseHeaders,
+    List<KeyValuePair<string, string>> RequestHeaders,
+    List<KeyValuePair<string, string>> ResponseHeaders,
     string? RequestBody,
     string? ResponseBody
 );

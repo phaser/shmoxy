@@ -10,7 +10,7 @@ public record InspectionEvent
     public string Method { get; init; } = string.Empty;
     public string Url { get; init; } = string.Empty;
     public int? StatusCode { get; init; }
-    public Dictionary<string, string> Headers { get; init; } = new();
+    public List<KeyValuePair<string, string>> Headers { get; init; } = new();
     public byte[]? Body { get; init; }
     public string? CorrelationId { get; init; }
     public string? FrameType { get; init; }

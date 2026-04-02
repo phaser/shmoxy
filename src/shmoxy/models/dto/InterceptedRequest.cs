@@ -10,7 +10,7 @@ public class InterceptedRequest
     public string Host { get; set; } = string.Empty;
     public int Port { get; set; } = 80;
     public string Path { get; set; } = string.Empty;
-    public Dictionary<string, string> Headers { get; set; } = new();
+    public List<KeyValuePair<string, string>> Headers { get; set; } = new();
     public byte[]? Body { get; set; }
 
     /// <summary>

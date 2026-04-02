@@ -18,4 +18,8 @@
     <SupportedPlatform Include="browser" />
   </ItemGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="../shmoxy.shared/shmoxy.shared.csproj" />
+  </ItemGroup>
+
 </Project>

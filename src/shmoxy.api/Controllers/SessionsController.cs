@@ -155,18 +155,26 @@ public class SessionsController : ControllerBase
         return row;
     }
 
-    private static string? SerializeHeaders(Dictionary<string, string>? headers)
+    private static string? SerializeHeaders(List<KeyValuePair<string, string>>? headers)
     {
         if (headers is null || headers.Count == 0)
             return null;
         return JsonSerializer.Serialize(headers);
     }
 
-    private static Dictionary<string, string>? DeserializeHeaders(string? json)
+    private static List<KeyValuePair<string, string>>? DeserializeHeaders(string? json)
     {
         if (string.IsNullOrEmpty(json))
             return null;
-        return JsonSerializer.Deserialize<Dictionary<string, string>>(json);
+
+        // Support both legacy dictionary format {"key":"value"} and new list format [{"Key":"k","Value":"v"}]
+        var trimmed = json.TrimStart();
+        if (trimmed.StartsWith('{'))
+        {
+            var dict = JsonSerializer.Deserialize<Dictionary<string, string>>(json);
+            return dict?.Select(kvp => new KeyValuePair<string, string>(kvp.Key, kvp.Value)).ToList();
+        }
+        return JsonSerializer.Deserialize<List<KeyValuePair<string, string>>>(json);
     }
 
     private static WebSocketFrameDto ToFrameDto(InspectionSessionWebSocketFrame frame) => new()

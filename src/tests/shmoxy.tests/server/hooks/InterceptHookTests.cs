@@ -55,7 +55,7 @@ public class InterceptHookTests
         {
             Method = "POST",
             Path = "/test",
-            Headers = { ["X-Custom"] = "value" }
+            Headers = { new("X-Custom", "value") }
         };
 
         // Act

@@ -8,6 +8,7 @@ using shmoxy.models.dto;
 using shmoxy.server.helpers;
 using shmoxy.server.hooks;
 using shmoxy.server.interfaces;
+using shmoxy.shared;
 using shmoxy.shared.ipc;
 
 namespace shmoxy.server;
@@ -381,7 +382,7 @@ public class ProxyServer : IDisposable
             }
 
             // Parse headers from the already-read buffer
-            var headersDict = new Dictionary<string, string>();
+            var headersDict = new List<KeyValuePair<string, string>>();
             for (int i = 1; i < lines.Length; i++)
             {
                 if (string.IsNullOrWhiteSpace(lines[i])) break; // End of headers
@@ -390,7 +391,7 @@ public class ProxyServer : IDisposable
                 {
                     var key = lines[i].Substring(0, colonIndex).Trim();
                     var value = lines[i].Substring(colonIndex + 1).Trim();
-                    headersDict[key] = value;
+                    headersDict.Add(new KeyValuePair<string, string>(key, value));
                 }
             }
 
@@ -626,9 +627,9 @@ public class ProxyServer : IDisposable
             // Decompress body for inspection hooks so they see readable content.
             // The client already received the original compressed bytes above.
             var inspectionBody = DecompressForInspection(respBody, respHeaders, _logger);
-            var inspectionHeaders = new Dictionary<string, string>(respHeaders);
+            var inspectionHeaders = new List<KeyValuePair<string, string>>(respHeaders);
             if (inspectionBody != respBody)
-                inspectionHeaders.Remove("Content-Encoding");
+                inspectionHeaders.RemoveAll(h => h.Key.Equals("Content-Encoding", StringComparison.OrdinalIgnoreCase));
 
             var interceptedResponse = new InterceptedResponse
             {
@@ -674,7 +675,7 @@ public class ProxyServer : IDisposable
             var path = firstLineParts[1];
 
             // Parse headers
-            var headers = new Dictionary<string, string>();
+            var headers = new List<KeyValuePair<string, string>>();
             for (int i = 1; i < lines.Length; i++)
             {
                 if (string.IsNullOrWhiteSpace(lines[i])) break;
@@ -683,7 +684,7 @@ public class ProxyServer : IDisposable
                 {
                     var key = lines[i][..colonIndex].Trim();
                     var value = lines[i][(colonIndex + 1)..].Trim();
-                    headers[key] = value;
+                    headers.Add(new KeyValuePair<string, string>(key, value));
                 }
             }
 
@@ -824,9 +825,9 @@ public class ProxyServer : IDisposable
                         // Decompress body for inspection hooks so they see readable content.
                         // The client already received the original compressed bytes above.
                         var inspectionBody = DecompressForInspection(respBody, respHeaders, _logger);
-                        var inspectionHeaders = new Dictionary<string, string>(respHeaders);
+                        var inspectionHeaders = new List<KeyValuePair<string, string>>(respHeaders);
                         if (inspectionBody != respBody)
-                            inspectionHeaders.Remove("Content-Encoding");
+                            inspectionHeaders.RemoveAll(h => h.Key.Equals("Content-Encoding", StringComparison.OrdinalIgnoreCase));
 
                         var interceptedResponse = new InterceptedResponse
                         {
@@ -876,9 +877,9 @@ public class ProxyServer : IDisposable
     /// Checks Content-Length to determine if more bytes need to be read beyond what was
     /// already captured in the initial 8KB buffer.
     /// </summary>
-    private static async Task<byte[]?> ReadFullBodyAsync(Stream stream, byte[]? initialBody, Dictionary<string, string> headers)
+    private static async Task<byte[]?> ReadFullBodyAsync(Stream stream, byte[]? initialBody, List<KeyValuePair<string, string>> headers)
     {
-        if (!headers.TryGetValue("Content-Length", out var clHeader) ||
+        if (!headers.TryGetHeaderValue("Content-Length", out var clHeader) ||
             !int.TryParse(clHeader, out var contentLength) ||
             contentLength <= 0)
         {
@@ -912,7 +913,7 @@ public class ProxyServer : IDisposable
     /// <summary>
     /// Parses a raw HTTP response into status code, headers, and body.
     /// </summary>
-    internal static (int StatusCode, Dictionary<string, string> Headers, byte[] Body) ParseRawHttpResponse(byte[] rawResponse)
+    internal static (int StatusCode, List<KeyValuePair<string, string>> Headers, byte[] Body) ParseRawHttpResponse(byte[] rawResponse)
     {
         var headerText = Encoding.Latin1.GetString(rawResponse, 0, Math.Min(rawResponse.Length, 8192));
 
@@ -952,7 +953,7 @@ public class ProxyServer : IDisposable
         }
 
         // Decode chunked transfer encoding if present
-        if (headers.TryGetValue("Transfer-Encoding", out var te) &&
+        if (headers.TryGetHeaderValue("Transfer-Encoding", out var te) &&
             te.Contains("chunked", StringComparison.OrdinalIgnoreCase) &&
             body.Length > 0)
         {
@@ -966,12 +967,12 @@ public class ProxyServer : IDisposable
     /// Decompresses a response body for inspection hooks based on Content-Encoding.
     /// Returns the original body unchanged if no encoding is present or decompression fails.
     /// </summary>
-    internal static byte[] DecompressForInspection(byte[] body, Dictionary<string, string> headers, ILogger logger)
+    internal static byte[] DecompressForInspection(byte[] body, List<KeyValuePair<string, string>> headers, ILogger logger)
     {
         if (body.Length == 0)
             return body;
 
-        if (!headers.TryGetValue("Content-Encoding", out var encoding))
+        if (!headers.TryGetHeaderValue("Content-Encoding", out var encoding))
             return body;
 
         var enc = encoding.Trim().ToLowerInvariant();
@@ -1054,9 +1055,9 @@ public class ProxyServer : IDisposable
         return -1;
     }
 
-    private static Dictionary<string, string> ParseHeaders(IEnumerable<string> lines)
+    private static List<KeyValuePair<string, string>> ParseHeaders(IEnumerable<string> lines)
     {
-        var headers = new Dictionary<string, string>();
+        var headers = new List<KeyValuePair<string, string>>();
         foreach (var line in lines)
         {
             if (string.IsNullOrWhiteSpace(line)) break;
@@ -1065,7 +1066,7 @@ public class ProxyServer : IDisposable
             {
                 var key = line[..colonIndex].Trim();
                 var value = line[(colonIndex + 1)..].Trim();
-                headers[key] = value;
+                headers.Add(new KeyValuePair<string, string>(key, value));
             }
         }
         return headers;
@@ -1096,7 +1097,7 @@ public class ProxyServer : IDisposable
         return false;
     }
 
-    internal static bool IsWebSocketUpgrade(Dictionary<string, string> headers)
+    internal static bool IsWebSocketUpgrade(List<KeyValuePair<string, string>> headers)
     {
         var hasUpgrade = headers.Any(h =>
             h.Key.Equals("Upgrade", StringComparison.OrdinalIgnoreCase) &&

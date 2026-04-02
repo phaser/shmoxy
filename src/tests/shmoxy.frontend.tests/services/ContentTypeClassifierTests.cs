@@ -84,9 +84,9 @@ public class ContentTypeClassifierTests
     [Fact]
     public void IsApiResponse_WithHeaders_ReturnsTrue_ForApiContentType()
     {
-        var headers = new Dictionary<string, string>
+        var headers = new List<KeyValuePair<string, string>>
         {
-            { "Content-Type", "application/json" }
+            new("Content-Type", "application/json")
         };
 
         Assert.True(ContentTypeClassifier.IsApiResponse(headers));
@@ -95,9 +95,9 @@ public class ContentTypeClassifierTests
     [Fact]
     public void IsApiResponse_WithHeaders_ReturnsFalse_ForNonApiContentType()
     {
-        var headers = new Dictionary<string, string>
+        var headers = new List<KeyValuePair<string, string>>
         {
-            { "Content-Type", "text/html" }
+            new("Content-Type", "text/html")
         };
 
         Assert.False(ContentTypeClassifier.IsApiResponse(headers));
@@ -106,16 +106,16 @@ public class ContentTypeClassifierTests
     [Fact]
     public void IsApiResponse_WithHeaders_ReturnsTrue_ForEmptyHeaders()
     {
-        Assert.True(ContentTypeClassifier.IsApiResponse((Dictionary<string, string>?)null));
-        Assert.True(ContentTypeClassifier.IsApiResponse(new Dictionary<string, string>()));
+        Assert.True(ContentTypeClassifier.IsApiResponse((List<KeyValuePair<string, string>>?)null));
+        Assert.True(ContentTypeClassifier.IsApiResponse(new List<KeyValuePair<string, string>>()));
     }
 
     [Fact]
     public void IsApiResponse_WithHeaders_IsCaseInsensitiveOnHeaderName()
     {
-        var headers = new Dictionary<string, string>
+        var headers = new List<KeyValuePair<string, string>>
         {
-            { "content-type", "application/json" }
+            new("content-type", "application/json")
         };
 
         Assert.True(ContentTypeClassifier.IsApiResponse(headers));
@@ -172,9 +172,9 @@ public class ContentTypeClassifierTests
     [Fact]
     public void IsApiCall_ReturnsFalse_ForAzureBlobResponse()
     {
-        var responseHeaders = new Dictionary<string, string>
+        var responseHeaders = new List<KeyValuePair<string, string>>
         {
-            { "x-ms-blob-type", "BlockBlob" }
+            new("x-ms-blob-type", "BlockBlob")
         };
 
         Assert.False(ContentTypeClassifier.IsApiCall("https://storage.blob.core.windows.net/container/file", null, responseHeaders));
@@ -183,9 +183,9 @@ public class ContentTypeClassifierTests
     [Fact]
     public void IsApiCall_ReturnsFalse_ForS3Response()
     {
-        var responseHeaders = new Dictionary<string, string>
+        var responseHeaders = new List<KeyValuePair<string, string>>
         {
-            { "x-amz-request-id", "ABC123" }
+            new("x-amz-request-id", "ABC123")
         };
 
         Assert.False(ContentTypeClassifier.IsApiCall("https://bucket.s3.amazonaws.com/file", null, responseHeaders));
@@ -194,9 +194,9 @@ public class ContentTypeClassifierTests
     [Fact]
     public void IsApiCall_ReturnsFalse_ForGcsResponse()
     {
-        var responseHeaders = new Dictionary<string, string>
+        var responseHeaders = new List<KeyValuePair<string, string>>
         {
-            { "x-goog-stored-content-length", "12345" }
+            new("x-goog-stored-content-length", "12345")
         };
 
         Assert.False(ContentTypeClassifier.IsApiCall("https://storage.googleapis.com/bucket/file", null, responseHeaders));
@@ -205,9 +205,9 @@ public class ContentTypeClassifierTests
     [Fact]
     public void IsApiCall_ReturnsFalse_ForFileDownloadDisposition()
     {
-        var responseHeaders = new Dictionary<string, string>
+        var responseHeaders = new List<KeyValuePair<string, string>>
         {
-            { "Content-Disposition", "attachment; filename=\"report.csv\"" }
+            new("Content-Disposition", "attachment; filename=\"report.csv\"")
         };
 
         Assert.False(ContentTypeClassifier.IsApiCall("https://api.example.com/export", null, responseHeaders));
@@ -216,10 +216,10 @@ public class ContentTypeClassifierTests
     [Fact]
     public void IsApiCall_ReturnsTrue_ForInlineDisposition()
     {
-        var responseHeaders = new Dictionary<string, string>
+        var responseHeaders = new List<KeyValuePair<string, string>>
         {
-            { "Content-Disposition", "inline" },
-            { "Content-Type", "application/json" }
+            new("Content-Disposition", "inline"),
+            new("Content-Type", "application/json")
         };
 
         Assert.True(ContentTypeClassifier.IsApiCall("https://api.example.com/data", null, responseHeaders));
@@ -228,9 +228,9 @@ public class ContentTypeClassifierTests
     [Fact]
     public void IsApiCall_ReturnsTrue_ForJsonResponseWithNoExtension()
     {
-        var responseHeaders = new Dictionary<string, string>
+        var responseHeaders = new List<KeyValuePair<string, string>>
         {
-            { "Content-Type", "application/json" }
+            new("Content-Type", "application/json")
         };
 
         Assert.True(ContentTypeClassifier.IsApiCall("https://api.example.com/users/123", null, responseHeaders));
@@ -240,9 +240,9 @@ public class ContentTypeClassifierTests
     public void IsApiCall_ReturnsFalse_ForJsFileEvenWithMissingContentType()
     {
         // This is the exact scenario from the bug report
-        var responseHeaders = new Dictionary<string, string>
+        var responseHeaders = new List<KeyValuePair<string, string>>
         {
-            { "x-ms-blob-type", "BlockBlob" }
+            new("x-ms-blob-type", "BlockBlob")
         };
 
         Assert.False(ContentTypeClassifier.IsApiCall(
