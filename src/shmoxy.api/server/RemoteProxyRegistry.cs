@@ -83,8 +83,8 @@ public class RemoteProxyRegistry : IRemoteProxyRegistry
     {
         try
         {
-            var handler = new HttpClientHandler();
-            var httpClient = new HttpClient(handler)
+            using var handler = new HttpClientHandler();
+            using var httpClient = new HttpClient(handler)
             {
                 BaseAddress = new Uri(url),
                 Timeout = TimeSpan.FromSeconds(5)
@@ -92,7 +92,7 @@ public class RemoteProxyRegistry : IRemoteProxyRegistry
             httpClient.DefaultRequestHeaders.Add("X-API-Key", apiKey);
 
             var tempLogger = _loggerFactory.CreateLogger<ProxyIpcClient>();
-            var tempClient = new ProxyIpcClient(httpClient, tempLogger);
+            using var tempClient = new ProxyIpcClient(httpClient, tempLogger);
             return await tempClient.IsHealthyAsync(ct);
         }
         catch (Exception ex)

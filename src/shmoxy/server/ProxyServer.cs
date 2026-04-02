@@ -300,9 +300,9 @@ public class ProxyServer : IDisposable
                 await destination.FlushAsync(ct);
             }
         }
-        catch (Exception) when (ct.IsCancellationRequested || true)
+        catch (Exception)
         {
-            // Expected: connection closed, cancelled, or IO error
+            // Expected: connection closed, cancelled, or IO error during relay
         }
     }
 

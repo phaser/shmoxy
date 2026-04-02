@@ -142,32 +142,32 @@ public static class ProxyControlApi
             }
         });
 
-        endpoints.MapGet("/ipc/inspect/stream", async (HttpResponse response) =>
+        endpoints.MapGet("/ipc/inspect/stream", async (HttpContext httpContext) =>
         {
             if (stateService.InspectionHook == null)
             {
-                response.StatusCode = 400;
-                await response.WriteAsync("Inspection not available");
+                httpContext.Response.StatusCode = 400;
+                await httpContext.Response.WriteAsync("Inspection not available");
                 return;
             }
 
-            response.Headers.ContentType = "text/event-stream";
+            httpContext.Response.Headers.ContentType = "text/event-stream";
 
             var reader = stateService.InspectionHook.GetReader();
-            var cts = new CancellationTokenSource();
+            var ct = httpContext.RequestAborted;
 
             try
             {
-                while (!cts.Token.IsCancellationRequested)
+                while (!ct.IsCancellationRequested)
                 {
-                    var hasData = await reader.WaitToReadAsync(cts.Token);
+                    var hasData = await reader.WaitToReadAsync(ct);
                     if (!hasData) break;
 
                     while (reader.TryRead(out var evt))
                     {
                         var json = JsonSerializer.Serialize(evt);
-                        await response.WriteAsync($"data: {json}\n\n", cts.Token);
-                        await response.Body.FlushAsync(cts.Token);
+                        await httpContext.Response.WriteAsync($"data: {json}\n\n", ct);
+                        await httpContext.Response.Body.FlushAsync(ct);
                     }
                 }
             }

@@ -9,6 +9,11 @@ public class ApiClient(HttpClient httpClient)
 {
     private readonly HttpClient _httpClient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
 
+    private static readonly JsonSerializerOptions CaseInsensitiveJsonOptions = new()
+    {
+        PropertyNameCaseInsensitive = true
+    };
+
     public async Task<FrontendProxyConfig> GetProxyConfigAsync()
     {
         var response = await _httpClient.GetAsync("/api/proxies/local/config");
@@ -258,10 +263,7 @@ public class ApiClient(HttpClient httpClient)
                 continue;
 
             var json = line["data: ".Length..];
-            var evt = JsonSerializer.Deserialize<InspectionEventDto>(json, new JsonSerializerOptions
-            {
-                PropertyNameCaseInsensitive = true
-            });
+            var evt = JsonSerializer.Deserialize<InspectionEventDto>(json, CaseInsensitiveJsonOptions);
 
             if (evt is not null)
                 yield return evt;
