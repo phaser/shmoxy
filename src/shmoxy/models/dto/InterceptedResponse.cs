@@ -7,7 +7,7 @@ public class InterceptedResponse
 {
     public int StatusCode { get; set; }
     public string? ReasonPhrase { get; set; }
-    public Dictionary<string, string> Headers { get; set; } = new();
+    public List<KeyValuePair<string, string>> Headers { get; set; } = new();
     public byte[] Body { get; set; } = Array.Empty<byte>();
 
     /// <summary>

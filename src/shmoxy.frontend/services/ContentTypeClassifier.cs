@@ -23,7 +23,7 @@ public static class ContentTypeClassifier
         "x-goog-stored-content-length",
     };
 
-    public static bool IsApiCall(string? url, Dictionary<string, string>? requestHeaders, Dictionary<string, string>? responseHeaders, bool isWebSocket = false)
+    public static bool IsApiCall(string? url, List<KeyValuePair<string, string>>? requestHeaders, List<KeyValuePair<string, string>>? responseHeaders, bool isWebSocket = false)
     {
         if (isWebSocket)
             return true;
@@ -69,7 +69,7 @@ public static class ContentTypeClassifier
         return false;
     }
 
-    public static bool IsApiResponse(Dictionary<string, string>? responseHeaders)
+    public static bool IsApiResponse(List<KeyValuePair<string, string>>? responseHeaders)
     {
         if (responseHeaders is null || responseHeaders.Count == 0)
             return true;
@@ -115,7 +115,7 @@ public static class ContentTypeClassifier
         return StaticResourceExtensions.Contains(extension);
     }
 
-    private static bool HasBlobStorageHeaders(Dictionary<string, string>? headers)
+    private static bool HasBlobStorageHeaders(List<KeyValuePair<string, string>>? headers)
     {
         if (headers is null)
             return false;
@@ -129,7 +129,7 @@ public static class ContentTypeClassifier
         return false;
     }
 
-    private static bool HasFileDownloadDisposition(Dictionary<string, string>? headers)
+    private static bool HasFileDownloadDisposition(List<KeyValuePair<string, string>>? headers)
     {
         if (headers is null)
             return false;

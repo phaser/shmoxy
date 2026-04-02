@@ -47,14 +47,14 @@ public class ResendController : ControllerBase
 
             using var httpRequest = new HttpRequestMessage(new HttpMethod(request.Method), request.Url);
 
-            foreach (var (key, value) in request.Headers)
+            foreach (var header in request.Headers)
             {
                 // Skip pseudo-headers and content headers that need special handling
-                if (key.Equals("Content-Type", StringComparison.OrdinalIgnoreCase) ||
-                    key.Equals("Content-Length", StringComparison.OrdinalIgnoreCase))
+                if (header.Key.Equals("Content-Type", StringComparison.OrdinalIgnoreCase) ||
+                    header.Key.Equals("Content-Length", StringComparison.OrdinalIgnoreCase))
                     continue;
 
-                httpRequest.Headers.TryAddWithoutValidation(key, value);
+                httpRequest.Headers.TryAddWithoutValidation(header.Key, header.Value);
             }
 
             if (!string.IsNullOrEmpty(request.Body))
@@ -73,8 +73,8 @@ public class ResendController : ControllerBase
             var responseBytes = await response.Content.ReadAsByteArrayAsync(ct);
             var responseHeaders = response.Headers
                 .Concat(response.Content.Headers)
-                .GroupBy(h => h.Key)
-                .ToDictionary(g => g.Key, g => string.Join(", ", g.SelectMany(h => h.Value)));
+                .SelectMany(h => h.Value.Select(v => new KeyValuePair<string, string>(h.Key, v)))
+                .ToList();
 
             var responseContentType = response.Content.Headers.ContentType?.MediaType;
             var isText = IsTextContentType(responseContentType);

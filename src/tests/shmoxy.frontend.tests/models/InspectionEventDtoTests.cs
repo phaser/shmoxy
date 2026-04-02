@@ -10,7 +10,7 @@ public class InspectionEventDtoTests
     public void Deserialize_ResponseEvent_HasHeadersAndBody()
     {
         // Simulate JSON from the API (PascalCase, byte[] as Base64)
-        var json = """{"Timestamp":"2024-01-01T00:00:00Z","EventType":"response","Method":"","Url":"","StatusCode":200,"Headers":{"Content-Type":"text/html"},"Body":"SGVM"}""";
+        var json = """{"Timestamp":"2024-01-01T00:00:00Z","EventType":"response","Method":"","Url":"","StatusCode":200,"Headers":[{"Key":"Content-Type","Value":"text/html"}],"Body":"SGVM"}""";
 
         var dto = JsonSerializer.Deserialize<InspectionEventDto>(json, new JsonSerializerOptions
         {
@@ -22,7 +22,7 @@ public class InspectionEventDtoTests
         Assert.Equal(200, dto.StatusCode);
         Assert.NotNull(dto.Headers);
         Assert.Single(dto.Headers);
-        Assert.Equal("text/html", dto.Headers["Content-Type"]);
+        Assert.Equal("text/html", dto.Headers.First(h => h.Key == "Content-Type").Value);
         Assert.NotNull(dto.Body);
         Assert.True(dto.Body.Length > 0);
     }
@@ -54,10 +54,10 @@ public class InspectionEventDtoTests
             Method = "",
             Url = "",
             StatusCode = 200,
-            Headers = new Dictionary<string, string>
+            Headers = new List<KeyValuePair<string, string>>
             {
-                { "Content-Type", "text/html" },
-                { "Server", "nginx" }
+                new("Content-Type", "text/html"),
+                new("Server", "nginx")
             },
             Body = System.Text.Encoding.UTF8.GetBytes("<html>Hello</html>")
         };
@@ -75,7 +75,7 @@ public class InspectionEventDtoTests
         Assert.Equal(200, dto.StatusCode);
         Assert.NotNull(dto.Headers);
         Assert.Equal(2, dto.Headers.Count);
-        Assert.Equal("text/html", dto.Headers["Content-Type"]);
+        Assert.Equal("text/html", dto.Headers.First(h => h.Key == "Content-Type").Value);
         Assert.NotNull(dto.Body);
         Assert.Equal("<html>Hello</html>", System.Text.Encoding.UTF8.GetString(dto.Body));
     }

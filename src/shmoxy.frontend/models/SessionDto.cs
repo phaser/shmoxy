@@ -16,8 +16,8 @@ public class SessionRowData
     public int? StatusCode { get; set; }
     public long? DurationMs { get; set; }
     public DateTime Timestamp { get; set; }
-    public Dictionary<string, string>? RequestHeaders { get; set; }
-    public Dictionary<string, string>? ResponseHeaders { get; set; }
+    public List<KeyValuePair<string, string>>? RequestHeaders { get; set; }
+    public List<KeyValuePair<string, string>>? ResponseHeaders { get; set; }
     public string? RequestBody { get; set; }
     public string? ResponseBody { get; set; }
     public string? ResponseBodyBase64 { get; set; }

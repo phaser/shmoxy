@@ -245,9 +245,9 @@ public class ProxyIpcClientTests
     public async Task GetInspectionStreamAsync_ParsesSseEvents()
     {
         var sseData = """
-            data: {"timestamp":"2024-01-01T00:00:00Z","eventType":"request","method":"GET","url":"http://example.com","statusCode":null,"headers":{},"body":null}
+            data: {"timestamp":"2024-01-01T00:00:00Z","eventType":"request","method":"GET","url":"http://example.com","statusCode":null,"headers":[],"body":null}
 
-            data: {"timestamp":"2024-01-01T00:00:01Z","eventType":"response","method":"GET","url":"http://example.com","statusCode":200,"headers":{},"body":null}
+            data: {"timestamp":"2024-01-01T00:00:01Z","eventType":"response","method":"GET","url":"http://example.com","statusCode":200,"headers":[],"body":null}
 
             """;
         var client = CreateClientWithResponse(sseData, HttpStatusCode.OK, "text/event-stream");

@@ -184,8 +184,8 @@ public class SessionsControllerTests
         var ok = Assert.IsType<OkObjectResult>(result.Result);
         var rows = Assert.IsType<List<SessionRowDto>>(ok.Value);
         Assert.NotNull(rows[0].RequestHeaders);
-        Assert.Equal("application/json", rows[0].RequestHeaders!["Accept"]);
+        Assert.Equal("application/json", rows[0].RequestHeaders!.First(h => h.Key == "Accept").Value);
         Assert.NotNull(rows[0].ResponseHeaders);
-        Assert.Equal("application/json", rows[0].ResponseHeaders!["Content-Type"]);
+        Assert.Equal("application/json", rows[0].ResponseHeaders!.First(h => h.Key == "Content-Type").Value);
     }
 }
