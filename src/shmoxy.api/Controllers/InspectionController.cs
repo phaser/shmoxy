@@ -112,9 +112,7 @@ public class InspectionController : ControllerBase
         }
         finally
         {
-            loggerFactory.Dispose();
             httpClient.Dispose();
-            handler.Dispose();
         }
     }
 }

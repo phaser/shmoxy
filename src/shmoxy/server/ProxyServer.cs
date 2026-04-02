@@ -627,9 +627,9 @@ public class ProxyServer : IDisposable
             // Decompress body for inspection hooks so they see readable content.
             // The client already received the original compressed bytes above.
             var inspectionBody = DecompressForInspection(respBody, respHeaders, _logger);
-            var inspectionHeaders = new Dictionary<string, string>(respHeaders);
+            var inspectionHeaders = new List<KeyValuePair<string, string>>(respHeaders);
             if (inspectionBody != respBody)
-                inspectionHeaders.Remove("Content-Encoding");
+                inspectionHeaders.RemoveAll(h => h.Key.Equals("Content-Encoding", StringComparison.OrdinalIgnoreCase));
 
             var interceptedResponse = new InterceptedResponse
             {
@@ -825,9 +825,9 @@ public class ProxyServer : IDisposable
                         // Decompress body for inspection hooks so they see readable content.
                         // The client already received the original compressed bytes above.
                         var inspectionBody = DecompressForInspection(respBody, respHeaders, _logger);
-                        var inspectionHeaders = new Dictionary<string, string>(respHeaders);
+                        var inspectionHeaders = new List<KeyValuePair<string, string>>(respHeaders);
                         if (inspectionBody != respBody)
-                            inspectionHeaders.Remove("Content-Encoding");
+                            inspectionHeaders.RemoveAll(h => h.Key.Equals("Content-Encoding", StringComparison.OrdinalIgnoreCase));
 
                         var interceptedResponse = new InterceptedResponse
                         {
@@ -877,9 +877,9 @@ public class ProxyServer : IDisposable
     /// Checks Content-Length to determine if more bytes need to be read beyond what was
     /// already captured in the initial 8KB buffer.
     /// </summary>
-    private static async Task<byte[]?> ReadFullBodyAsync(Stream stream, byte[]? initialBody, Dictionary<string, string> headers)
+    private static async Task<byte[]?> ReadFullBodyAsync(Stream stream, byte[]? initialBody, List<KeyValuePair<string, string>> headers)
     {
-        if (!headers.TryGetValue("Content-Length", out var clHeader) ||
+        if (!headers.TryGetHeaderValue("Content-Length", out var clHeader) ||
             !int.TryParse(clHeader, out var contentLength) ||
             contentLength <= 0)
         {
@@ -967,12 +967,12 @@ public class ProxyServer : IDisposable
     /// Decompresses a response body for inspection hooks based on Content-Encoding.
     /// Returns the original body unchanged if no encoding is present or decompression fails.
     /// </summary>
-    internal static byte[] DecompressForInspection(byte[] body, Dictionary<string, string> headers, ILogger logger)
+    internal static byte[] DecompressForInspection(byte[] body, List<KeyValuePair<string, string>> headers, ILogger logger)
     {
         if (body.Length == 0)
             return body;
 
-        if (!headers.TryGetValue("Content-Encoding", out var encoding))
+        if (!headers.TryGetHeaderValue("Content-Encoding", out var encoding))
             return body;
 
         var enc = encoding.Trim().ToLowerInvariant();
