@@ -76,7 +76,7 @@ BASE_VERSION="$MAJOR.$MINOR.$NEW_PATCH"
 
 # Append git commit hash suffix
 GIT_HASH=$(git -C "$REPO_ROOT" rev-parse --short=8 HEAD 2>/dev/null || echo "unknown")
-NEW_VERSION="$BASE_VERSION-gh.$GIT_HASH"
+NEW_VERSION="$BASE_VERSION-gh$GIT_HASH"
 
 log_info "New version: $NEW_VERSION"
 
