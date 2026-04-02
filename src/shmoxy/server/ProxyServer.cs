@@ -567,8 +567,7 @@ public class ProxyServer : IDisposable
             .Where(h => !h.Key.Equals("Host", StringComparison.OrdinalIgnoreCase)
                      && !h.Key.Equals("Connection", StringComparison.OrdinalIgnoreCase)
                      && !h.Key.Equals("Proxy-Connection", StringComparison.OrdinalIgnoreCase)
-                     && !h.Key.Equals("Content-Length", StringComparison.OrdinalIgnoreCase)
-                             && !h.Key.Equals("Accept-Encoding", StringComparison.OrdinalIgnoreCase)))
+                     && !h.Key.Equals("Content-Length", StringComparison.OrdinalIgnoreCase)))
         {
             outgoing.Append($"{header.Key}: {header.Value}\r\n");
         }
@@ -622,11 +621,18 @@ public class ProxyServer : IDisposable
         {
             var (respStatusCode, respHeaders, respBody) = ParseRawHttpResponse(responseBytes);
 
+            // Decompress body for inspection hooks so they see readable content.
+            // The client already received the original compressed bytes above.
+            var inspectionBody = DecompressForInspection(respBody, respHeaders, _logger);
+            var inspectionHeaders = new Dictionary<string, string>(respHeaders);
+            if (inspectionBody != respBody)
+                inspectionHeaders.Remove("Content-Encoding");
+
             var interceptedResponse = new InterceptedResponse
             {
                 StatusCode = respStatusCode,
-                Headers = respHeaders,
-                Body = respBody,
+                Headers = inspectionHeaders,
+                Body = inspectionBody,
                 CorrelationId = request.CorrelationId
             };
             await _interceptor.OnResponseAsync(interceptedResponse);
@@ -760,8 +766,7 @@ public class ProxyServer : IDisposable
                         .Where(h => !h.Key.Equals("Host", StringComparison.OrdinalIgnoreCase)
                                  && !h.Key.Equals("Connection", StringComparison.OrdinalIgnoreCase)
                                  && !h.Key.Equals("Proxy-Connection", StringComparison.OrdinalIgnoreCase)
-                                 && !h.Key.Equals("Content-Length", StringComparison.OrdinalIgnoreCase)
-                             && !h.Key.Equals("Accept-Encoding", StringComparison.OrdinalIgnoreCase)))
+                                 && !h.Key.Equals("Content-Length", StringComparison.OrdinalIgnoreCase)))
                     {
                         outgoing.Append($"{header.Key}: {header.Value}\r\n");
                     }
@@ -812,11 +817,18 @@ public class ProxyServer : IDisposable
                     {
                         var (respStatusCode, respHeaders, respBody) = ParseRawHttpResponse(responseBytes);
 
+                        // Decompress body for inspection hooks so they see readable content.
+                        // The client already received the original compressed bytes above.
+                        var inspectionBody = DecompressForInspection(respBody, respHeaders, _logger);
+                        var inspectionHeaders = new Dictionary<string, string>(respHeaders);
+                        if (inspectionBody != respBody)
+                            inspectionHeaders.Remove("Content-Encoding");
+
                         var interceptedResponse = new InterceptedResponse
                         {
                             StatusCode = respStatusCode,
-                            Headers = respHeaders,
-                            Body = respBody,
+                            Headers = inspectionHeaders,
+                            Body = inspectionBody,
                             CorrelationId = correlationId
                         };
                         await _interceptor.OnResponseAsync(interceptedResponse);
@@ -906,6 +918,48 @@ public class ProxyServer : IDisposable
         }
 
         return (statusCode, headers, body);
+    }
+
+    /// <summary>
+    /// Decompresses a response body for inspection hooks based on Content-Encoding.
+    /// Returns the original body unchanged if no encoding is present or decompression fails.
+    /// </summary>
+    internal static byte[] DecompressForInspection(byte[] body, Dictionary<string, string> headers, ILogger logger)
+    {
+        if (body.Length == 0)
+            return body;
+
+        if (!headers.TryGetValue("Content-Encoding", out var encoding))
+            return body;
+
+        var enc = encoding.Trim().ToLowerInvariant();
+        try
+        {
+            using var input = new MemoryStream(body);
+            using var output = new MemoryStream();
+            Stream? decompressionStream = enc switch
+            {
+                "gzip" => new System.IO.Compression.GZipStream(input, System.IO.Compression.CompressionMode.Decompress),
+                "deflate" => new System.IO.Compression.DeflateStream(input, System.IO.Compression.CompressionMode.Decompress),
+                "br" => new System.IO.Compression.BrotliStream(input, System.IO.Compression.CompressionMode.Decompress),
+                _ => null
+            };
+
+            if (decompressionStream == null)
+                return body;
+
+            using (decompressionStream)
+            {
+                decompressionStream.CopyTo(output);
+            }
+
+            return output.ToArray();
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Failed to decompress {Encoding} response body for inspection, passing raw bytes", enc);
+            return body;
+        }
     }
 
     /// <summary>
