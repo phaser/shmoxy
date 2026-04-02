@@ -53,7 +53,7 @@ public class ProxyHttpClient : IDisposable
     /// </summary>
     private void EstablishTunnel()
     {
-        var connectRequest = Encoding.ASCII.GetBytes($"CONNECT {Host}:{Port} HTTP/1.1\r\nHost: {Host}:{Port}\r\nConnection: Keep-Alive\r\n\r\n");
+        var connectRequest = Encoding.Latin1.GetBytes($"CONNECT {Host}:{Port} HTTP/1.1\r\nHost: {Host}:{Port}\r\nConnection: Keep-Alive\r\n\r\n");
 
         Stream.Write(connectRequest, 0, connectRequest.Length);
         Stream.Flush();
@@ -84,7 +84,7 @@ public class ProxyHttpClient : IDisposable
 
         requestBuilder.Append("\r\n");
 
-        var requestBytes = Encoding.ASCII.GetBytes(requestBuilder.ToString());
+        var requestBytes = Encoding.Latin1.GetBytes(requestBuilder.ToString());
         Stream.Write(requestBytes, 0, requestBytes.Length);
 
         if (body != null && body.Length > 0)
@@ -106,7 +106,7 @@ public class ProxyHttpClient : IDisposable
             var bytesRead = Stream.Read(buffer, 0, buffer.Length);
             if (bytesRead == 0) break;
 
-            var chunk = Encoding.ASCII.GetString(buffer, 0, bytesRead);
+            var chunk = Encoding.Latin1.GetString(buffer, 0, bytesRead);
             result.Append(chunk);
 
             if (chunk.Contains("\r\n\r\n")) break;
@@ -130,7 +130,7 @@ public class ProxyHttpClient : IDisposable
             var bytesRead = await Stream.ReadAsync(buffer, 0, buffer.Length);
             if (bytesRead == 0) break;
 
-            var chunk = Encoding.ASCII.GetString(buffer, 0, bytesRead);
+            var chunk = Encoding.Latin1.GetString(buffer, 0, bytesRead);
             headerBuffer.Append(chunk);
             result.Write(buffer, 0, bytesRead);
 
