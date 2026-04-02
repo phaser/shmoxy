@@ -89,15 +89,15 @@ public class CertsController : ControllerBase
             return NotFound(new { Message = $"Remote proxy {proxyId} not found" });
         }
 
-        var handler = new HttpClientHandler();
-        var httpClient = new HttpClient(handler)
+        using var handler = new HttpClientHandler();
+        using var httpClient = new HttpClient(handler)
         {
             BaseAddress = new Uri(proxy.AdminUrl),
             Timeout = TimeSpan.FromSeconds(5)
         };
         httpClient.DefaultRequestHeaders.Add("X-API-Key", proxy.ApiKey);
 
-        var loggerFactory = LoggerFactory.Create(builder => builder.AddConsole());
+        using var loggerFactory = LoggerFactory.Create(builder => builder.AddConsole());
         var tempLogger = loggerFactory.CreateLogger<ProxyIpcClient>();
         var tempClient = new ProxyIpcClient(httpClient, tempLogger);
 
