@@ -23,11 +23,13 @@ COPY scripts/ scripts/
 # Download CyberChef assets (gitignored, must be fetched at build time)
 RUN scripts/download-cyberchef.sh
 
+ARG VERSION=0.0.0-dev
+
 # Publish API (includes frontend RCL assets)
-RUN dotnet publish src/shmoxy.api -c Release -o /app --nologo -v quiet
+RUN dotnet publish src/shmoxy.api -c Release -o /app /p:Version="$VERSION" --nologo -v quiet
 
 # Publish proxy into its own subdirectory to avoid DLL conflicts with the API
-RUN dotnet publish src/shmoxy -c Release -o /app/proxy --nologo -v quiet
+RUN dotnet publish src/shmoxy -c Release -o /app/proxy /p:Version="$VERSION" --nologo -v quiet
 
 # Stage 2: Runtime
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime

@@ -25,7 +25,9 @@ public static class ProxyControlApi
                 Port = stateService.Port,
                 Uptime = stateService.Uptime,
                 ActiveConnections = stateService.ActiveConnections,
-                Version = typeof(ProxyControlApi).Assembly.GetName().Version?.ToString(3)
+                Version = System.Reflection.CustomAttributeExtensions
+                    .GetCustomAttribute<System.Reflection.AssemblyInformationalVersionAttribute>(typeof(ProxyControlApi).Assembly)?.InformationalVersion
+                    ?? typeof(ProxyControlApi).Assembly.GetName().Version?.ToString(3)
             });
         });
 

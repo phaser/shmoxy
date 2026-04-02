@@ -72,17 +72,22 @@ MINOR=$(echo "$CURRENT_VERSION" | cut -d. -f2)
 PATCH=$(echo "$CURRENT_VERSION" | cut -d. -f3)
 
 NEW_PATCH=$((PATCH + 1))
-NEW_VERSION="$MAJOR.$MINOR.$NEW_PATCH"
+BASE_VERSION="$MAJOR.$MINOR.$NEW_PATCH"
+
+# Append git commit hash suffix
+GIT_HASH=$(git -C "$REPO_ROOT" rev-parse --short=8 HEAD 2>/dev/null || echo "unknown")
+NEW_VERSION="$BASE_VERSION-gh.$GIT_HASH"
 
 log_info "New version: $NEW_VERSION"
 
 BUILD_TIMESTAMP=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
-TAG_NAME="v$NEW_VERSION"
+TAG_NAME="v$BASE_VERSION"
 
 if [ "$USE_DOCKER" = true ]; then
     # Docker build
     log_info "Building Docker image..."
     docker build \
+        --build-arg VERSION="$NEW_VERSION" \
         -t "shmoxy:$NEW_VERSION" \
         -t "shmoxy:latest" \
         "$REPO_ROOT"
@@ -148,9 +153,9 @@ EOF
     log_info "Build manifest written to $MANIFEST_FILE"
 fi
 
-# Update dist.yaml with new version
+# Update dist.yaml with new base version (no suffix, used for patch bumping)
 cat > "$DIST_YAML" << EOF
-version: $NEW_VERSION
+version: $BASE_VERSION
 EOF
 
 log_info "Updated dist.yaml to version $NEW_VERSION"
