@@ -281,6 +281,54 @@
                             <span class="resend-status status-@GetStatusClass(_resendStatusCode.Value)">@_resendStatusCode</span>
                         }
                     </div>
+
+                    @if (_resendResponse != null)
+                    {
+                        <div class="resend-response">
+                            <div class="section">
+                                <div class="section-header">
+                                    <h3>Response Headers</h3>
+                                </div>
+                                @if (_resendResponse.Headers.Count > 0)
+                                {
+                                    <table class="headers-table">
+                                        @foreach (var header in _resendResponse.Headers)
+                                        {
+                                            <tr>
+                                                <td class="header-name">@header.Key</td>
+                                                <td class="header-value">@header.Value</td>
+                                            </tr>
+                                        }
+                                    </table>
+                                }
+                            </div>
+
+                            <div class="section">
+                                <div class="section-header">
+                                    <h3>Response Body</h3>
+                                    @if (!string.IsNullOrEmpty(GetResendResponseBody()))
+                                    {
+                                        <div class="section-actions">
+                                            <button class="copy-button" @onclick="() => CopyToClipboard(GetResendResponseBody())">Copy</button>
+                                        </div>
+                                    }
+                                </div>
+                                @if (_resendResponse.IsBase64)
+                                {
+                                    <p class="no-data">Binary response (@(_resendResponse.ContentType ?? "unknown type"), @FormatBytes(Convert.FromBase64String(_resendResponse.Body).Length))</p>
+                                }
+                                else if (!string.IsNullOrEmpty(_resendResponse.Body))
+                                {
+                                    var (formatted, lang) = PayloadFormatter.Format(_resendResponse.Body, _resendResponse.ContentType);
+                                    <pre class="code-block"><code class="language-@lang">@formatted</code></pre>
+                                }
+                                else
+                                {
+                                    <p class="no-data">No body</p>
+                                }
+                            </div>
+                        </div>
+                    }
                 </div>
             </div>
         }
@@ -456,6 +504,7 @@
     private bool _resendSending;
     private string? _resendError;
     private int? _resendStatusCode;
+    private ResendResponseDto? _resendResponse;
 
     private void OpenResendEditor()
     {
@@ -465,6 +514,7 @@
         _resendBody = Row.RequestBody ?? "";
         _resendError = null;
         _resendStatusCode = null;
+        _resendResponse = null;
         _showResendEditor = true;
     }
 
@@ -502,6 +552,7 @@
 
             var response = await ApiClient.ResendRequestAsync(request);
             _resendStatusCode = response.StatusCode;
+            _resendResponse = response;
         }
         catch (Exception ex)
         {
@@ -511,6 +562,13 @@
         {
             _resendSending = false;
         }
+    }
+
+    private string? GetResendResponseBody()
+    {
+        if (_resendResponse == null || _resendResponse.IsBase64)
+            return null;
+        return _resendResponse.Body;
     }
 
     // Quick-break state
@@ -1002,6 +1060,14 @@
     color: var(--neutral-foreground-hint);
     margin: 0;
     font-family: monospace;
+}
+
+.resend-response {
+    margin-top: 0.75rem;
+    border-top: 1px solid var(--neutral-stroke-rest);
+    padding-top: 0.75rem;
+    max-height: 400px;
+    overflow-y: auto;
 }
 
 .resend-error {
