@@ -4,6 +4,13 @@ using shmoxy.frontend.models;
 
 namespace shmoxy.frontend.services;
 
+public enum StreamConnectionState
+{
+    Connected,
+    Reconnecting,
+    Disconnected
+}
+
 public class InspectionDataService : IDisposable
 {
     private readonly ApiClient _apiClient;
@@ -18,8 +25,12 @@ public class InspectionDataService : IDisposable
     private bool _disposed;
 
     public const int MaxRows = 1000;
+    private const int MaxRetries = 5;
+    private const int InitialDelaySeconds = 1;
+    private const int MaxDelaySeconds = 30;
 
     public bool IsCapturing => _streamTask is not null && !_streamTask.IsCompleted;
+    public StreamConnectionState ConnectionState { get; private set; } = StreamConnectionState.Disconnected;
 
     public string? ActiveSessionId { get; private set; }
     public string? ActiveSessionName { get; private set; }
@@ -33,6 +44,7 @@ public class InspectionDataService : IDisposable
     public bool AllDomainsSelected { get; set; } = true;
 
     public event Action? OnRowsChanged;
+    public event Action? OnConnectionStateChanged;
 
     public InspectionDataService(ApiClient apiClient, IHostApplicationLifetime? lifetime = null)
     {
@@ -61,6 +73,15 @@ public class InspectionDataService : IDisposable
     public void StopCapture()
     {
         _cts?.Cancel();
+        SetConnectionState(StreamConnectionState.Disconnected);
+    }
+
+    public void Reconnect()
+    {
+        if (ConnectionState != StreamConnectionState.Disconnected)
+            return;
+
+        StartCapture();
     }
 
     public void Clear()
@@ -98,25 +119,74 @@ public class InspectionDataService : IDisposable
 
     private async Task ConsumeStreamAsync(CancellationToken ct)
     {
-        try
+        var retryCount = 0;
+
+        while (!ct.IsCancellationRequested)
         {
-            await foreach (var evt in _apiClient.StreamInspectionEventsAsync("local", ct))
+            try
             {
-                lock (_lock)
+                var connectedSignalled = false;
+                await foreach (var evt in _apiClient.StreamInspectionEventsAsync("local", ct))
                 {
-                    ProcessEvent(evt);
+                    if (!connectedSignalled)
+                    {
+                        connectedSignalled = true;
+                        retryCount = 0;
+                        SetConnectionState(StreamConnectionState.Connected);
+                    }
+                    lock (_lock)
+                    {
+                        ProcessEvent(evt);
+                    }
+                    OnRowsChanged?.Invoke();
                 }
-                OnRowsChanged?.Invoke();
+
+                // Stream ended normally (server closed) — retry
+            }
+            catch (OperationCanceledException)
+            {
+                // Intentional stop — don't retry
+                SetConnectionState(StreamConnectionState.Disconnected);
+                return;
+            }
+            catch (Exception)
+            {
+                // Unexpected failure — retry with backoff
+            }
+
+            if (ct.IsCancellationRequested)
+                break;
+
+            retryCount++;
+            if (retryCount > MaxRetries)
+            {
+                SetConnectionState(StreamConnectionState.Disconnected);
+                return;
+            }
+
+            SetConnectionState(StreamConnectionState.Reconnecting);
+            var delaySeconds = Math.Min(InitialDelaySeconds * (1 << (retryCount - 1)), MaxDelaySeconds);
+            try
+            {
+                await Task.Delay(TimeSpan.FromSeconds(delaySeconds), ct);
+            }
+            catch (OperationCanceledException)
+            {
+                SetConnectionState(StreamConnectionState.Disconnected);
+                return;
             }
         }
-        catch (OperationCanceledException)
-        {
-            // Expected on stop/dispose
-        }
-        catch (Exception)
-        {
-            // Stream ended (proxy stopped, connection lost)
-        }
+
+        SetConnectionState(StreamConnectionState.Disconnected);
+    }
+
+    private void SetConnectionState(StreamConnectionState state)
+    {
+        if (ConnectionState == state)
+            return;
+
+        ConnectionState = state;
+        OnConnectionStateChanged?.Invoke();
     }
 
     internal void ProcessEvent(InspectionEventDto evt)

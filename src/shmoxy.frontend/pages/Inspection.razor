@@ -79,6 +79,15 @@
         <div class="toolbar-spacer"></div>
 
         <div class="session-actions">
+            @if (InspectionService.ConnectionState == StreamConnectionState.Reconnecting)
+            {
+                <span class="connection-status reconnecting">Reconnecting...</span>
+            }
+            else if (InspectionService.ConnectionState == StreamConnectionState.Disconnected && InspectionService.IsCapturing is false)
+            {
+                <span class="connection-status disconnected" @onclick="InspectionService.Reconnect" title="Click to reconnect">Disconnected</span>
+            }
+
             <FluentButton Appearance="Appearance.Outline"
                           OnClick="@ToggleCapture">
                 @(InspectionService.IsCapturing ? "Pause Capture" : "Resume Capture")
@@ -258,6 +267,7 @@
     {
         InspectionService.StartCapture();
         InspectionService.OnRowsChanged += OnRowsChanged;
+        InspectionService.OnConnectionStateChanged += OnConnectionStateChanged;
         ApplyFilters();
     }
 
@@ -267,6 +277,11 @@
         {
             await JS.InvokeVoidAsync("inspectionAutoScroll.init", ContainerId);
         }
+    }
+
+    private async void OnConnectionStateChanged()
+    {
+        await InvokeAsync(StateHasChanged);
     }
 
     private async void OnRowsChanged()
@@ -582,6 +597,7 @@
     public async ValueTask DisposeAsync()
     {
         InspectionService.OnRowsChanged -= OnRowsChanged;
+        InspectionService.OnConnectionStateChanged -= OnConnectionStateChanged;
         try
         {
             await JS.InvokeVoidAsync("inspectionAutoScroll.dispose", ContainerId);
@@ -598,6 +614,30 @@
 }
 
 <style>
+.connection-status {
+    font-size: 0.8rem;
+    font-weight: 600;
+    padding: 2px 10px;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+}
+
+.connection-status.reconnecting {
+    background: rgba(200, 150, 0, 0.15);
+    color: #b08800;
+}
+
+.connection-status.disconnected {
+    background: rgba(200, 0, 0, 0.15);
+    color: #cb2431;
+    cursor: pointer;
+}
+
+.connection-status.disconnected:hover {
+    background: rgba(200, 0, 0, 0.25);
+}
+
 .inspection-container {
     width: 100%;
     height: 100%;
