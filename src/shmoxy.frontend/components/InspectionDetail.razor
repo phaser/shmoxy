@@ -218,7 +218,16 @@
                             </div>
                         }
                     </div>
-                    @if (!string.IsNullOrEmpty(Row.ResponseBody))
+                    @if (FrontendSettings.EnableImagePreview && IsImageResponse())
+                    {
+                        <div class="image-preview">
+                            <img src="@ImageContentTypeDetector.BuildDataUri(Row.ResponseContentType!, Row.ResponseBodyBase64!)"
+                                 alt="Response image preview"
+                                 class="preview-image" />
+                            <p class="image-info">@Row.ResponseContentType — @FormatBytes(Row.ResponseBodyBase64!.Length * 3 / 4)</p>
+                        </div>
+                    }
+                    else if (!string.IsNullOrEmpty(Row.ResponseBody))
                     {
                         var (formatted, lang) = FormatBody(Row.ResponseBody, Row.ResponseHeaders);
                         <pre class="code-block"><code id="response-body-code" class="language-@lang">@formatted</code></pre>
@@ -365,6 +374,23 @@
         {
             // Circuit disconnected
         }
+    }
+
+    private bool IsImageResponse()
+    {
+        return !string.IsNullOrEmpty(Row.ResponseBodyBase64)
+            && !string.IsNullOrEmpty(Row.ResponseContentType)
+            && ImageContentTypeDetector.IsImageContentType(Row.ResponseContentType);
+    }
+
+    private static string FormatBytes(int bytes)
+    {
+        return bytes switch
+        {
+            < 1024 => $"{bytes} B",
+            < 1024 * 1024 => $"{bytes / 1024.0:F1} KB",
+            _ => $"{bytes / (1024.0 * 1024.0):F1} MB"
+        };
     }
 
     private static (string FormattedContent, string Language) FormatBody(string body, Dictionary<string, string> headers)
@@ -952,6 +978,30 @@
 .resend-send-button:disabled {
     opacity: 0.6;
     cursor: not-allowed;
+}
+
+.image-preview {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 12px;
+    background: var(--neutral-layer-3);
+    border-radius: calc(var(--control-corner-radius) * 1px);
+}
+
+.preview-image {
+    max-width: 100%;
+    max-height: 500px;
+    object-fit: contain;
+    border-radius: calc(var(--control-corner-radius) * 1px);
+}
+
+.image-info {
+    font-size: 0.75rem;
+    color: var(--neutral-foreground-hint);
+    margin: 0;
+    font-family: monospace;
 }
 
 .resend-error {

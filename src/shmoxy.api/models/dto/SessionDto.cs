@@ -27,6 +27,8 @@ public class SessionRowDto
     public Dictionary<string, string>? ResponseHeaders { get; set; }
     public string? RequestBody { get; set; }
     public string? ResponseBody { get; set; }
+    public string? ResponseBodyBase64 { get; set; }
+    public string? ResponseContentType { get; set; }
     public bool IsWebSocket { get; set; }
     public bool WebSocketClosed { get; set; }
     public List<WebSocketFrameDto>? WebSocketFrames { get; set; }

@@ -20,6 +20,8 @@ public class SessionRowData
     public Dictionary<string, string>? ResponseHeaders { get; set; }
     public string? RequestBody { get; set; }
     public string? ResponseBody { get; set; }
+    public string? ResponseBodyBase64 { get; set; }
+    public string? ResponseContentType { get; set; }
 }
 
 public class SessionLogEntryData

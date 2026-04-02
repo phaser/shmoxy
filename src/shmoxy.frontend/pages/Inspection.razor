@@ -445,7 +445,9 @@
                 RequestHeaders = r.RequestHeaders ?? new Dictionary<string, string>(),
                 ResponseHeaders = r.ResponseHeaders ?? new Dictionary<string, string>(),
                 RequestBody = r.RequestBody,
-                ResponseBody = r.ResponseBody
+                ResponseBody = r.ResponseBody,
+                ResponseBodyBase64 = r.ResponseBodyBase64,
+                ResponseContentType = r.ResponseContentType
             }).ToList();
 
             InspectionService.LoadRows(rows, sessionId, sessionName);
@@ -482,7 +484,9 @@
                 RequestHeaders = r.RequestHeaders.Count > 0 ? new Dictionary<string, string>(r.RequestHeaders) : null,
                 ResponseHeaders = r.ResponseHeaders.Count > 0 ? new Dictionary<string, string>(r.ResponseHeaders) : null,
                 RequestBody = r.RequestBody,
-                ResponseBody = r.ResponseBody
+                ResponseBody = r.ResponseBody,
+                ResponseBodyBase64 = r.ResponseBodyBase64,
+                ResponseContentType = r.ResponseContentType
             }).ToList();
 
             var logEntries = await ApiClient.DrainSessionLogAsync();
@@ -551,7 +555,9 @@
                 RequestHeaders = r.RequestHeaders.Count > 0 ? new Dictionary<string, string>(r.RequestHeaders) : null,
                 ResponseHeaders = r.ResponseHeaders.Count > 0 ? new Dictionary<string, string>(r.ResponseHeaders) : null,
                 RequestBody = r.RequestBody,
-                ResponseBody = r.ResponseBody
+                ResponseBody = r.ResponseBody,
+                ResponseBodyBase64 = r.ResponseBodyBase64,
+                ResponseContentType = r.ResponseContentType
             }).ToList();
 
             var logEntries = await ApiClient.DrainSessionLogAsync();

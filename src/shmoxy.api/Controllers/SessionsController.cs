@@ -112,6 +112,8 @@ public class SessionsController : ControllerBase
         ResponseHeaders = DeserializeHeaders(row.ResponseHeaders),
         RequestBody = row.RequestBody,
         ResponseBody = row.ResponseBody,
+        ResponseBodyBase64 = row.ResponseBodyBase64,
+        ResponseContentType = row.ResponseContentType,
         IsWebSocket = row.IsWebSocket,
         WebSocketClosed = row.WebSocketClosed,
         WebSocketFrames = row.WebSocketFrames.Count > 0
@@ -132,6 +134,8 @@ public class SessionsController : ControllerBase
             ResponseHeaders = SerializeHeaders(dto.ResponseHeaders),
             RequestBody = dto.RequestBody,
             ResponseBody = dto.ResponseBody,
+            ResponseBodyBase64 = dto.ResponseBodyBase64,
+            ResponseContentType = dto.ResponseContentType,
             IsWebSocket = dto.IsWebSocket,
             WebSocketClosed = dto.WebSocketClosed
         };

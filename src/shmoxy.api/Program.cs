@@ -110,6 +110,25 @@ public partial class Program
                 "CREATE $1INDEX IF NOT EXISTS",
                 RegexOptions.IgnoreCase);
             dbContext.Database.ExecuteSqlRaw(safeScript);
+
+            // Add columns that may be missing from existing tables.
+            // SQLite ALTER TABLE ADD COLUMN fails if the column already exists,
+            // so we catch and ignore errors for each.
+            AddColumnIfMissing(dbContext, "InspectionSessionRows", "ResponseBodyBase64", "TEXT");
+            AddColumnIfMissing(dbContext, "InspectionSessionRows", "ResponseContentType", "TEXT");
+        }
+    }
+
+    private static void AddColumnIfMissing(ProxiesDbContext dbContext, string table, string column, string type)
+    {
+        try
+        {
+            var sql = string.Concat("ALTER TABLE ", table, " ADD COLUMN ", column, " ", type);
+            dbContext.Database.ExecuteSqlRaw(sql);
+        }
+        catch
+        {
+            // Column already exists
         }
     }
 
