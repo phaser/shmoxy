@@ -24,7 +24,7 @@ public class ProxyServer : IDisposable
     private readonly ILogger<ProxyServer> _logger;
     private CancellationTokenSource? _cts;
     private bool _disposed;
-    private bool _isListening;
+    private volatile bool _isListening;
     private X509Certificate2? _rootCert;
 
     private const int UpstreamReadTimeoutMs = 30000;
