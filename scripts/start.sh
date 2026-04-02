@@ -50,11 +50,25 @@ if [ "$USE_DOCKER" = "auto" ]; then
 fi
 
 if [ "$USE_DOCKER" = true ]; then
+    # Resolve the global cert location (matches ProxyConfig.DefaultCertStoragePath)
+    if [ "$(uname)" = "Darwin" ]; then
+        HOST_CERT_DIR="$HOME/Library/Application Support/shmoxy"
+    else
+        HOST_CERT_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/shmoxy"
+    fi
+
+    CERT_MOUNT_ARGS=()
+    if [ -f "$HOST_CERT_DIR/shmoxy-root-ca.pfx" ]; then
+        echo "Found existing certs in $HOST_CERT_DIR, mounting into container..."
+        CERT_MOUNT_ARGS=(-v "$HOST_CERT_DIR:/root/.local/share/shmoxy")
+    fi
+
     echo "Starting shmoxy via Docker on port $API_PORT (proxy on port $PROXY_PORT)..."
     exec docker run --rm \
         -p "$API_PORT:5000" \
         -p "$PROXY_PORT:8080" \
         -v shmoxy-data:/root/.local/share/shmoxy-api \
+        "${CERT_MOUNT_ARGS[@]}" \
         -e "ASPNETCORE_URLS=http://+:5000" \
         -e "ApiConfig__ProxyPort=8080" \
         shmoxy:latest
