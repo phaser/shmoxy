@@ -380,6 +380,102 @@ public class InspectionDataServiceTests
         Assert.False(service.IsCapturing);
     }
 
+    [Fact]
+    public void ProcessEvent_ImageResponse_StoresBase64()
+    {
+        using var service = CreateService();
+        var now = DateTime.UtcNow;
+        var imageBytes = new byte[] { 0x89, 0x50, 0x4E, 0x47 }; // PNG magic bytes
+
+        service.ProcessEvent(new InspectionEventDto(now, "request", "GET", "https://example.com/logo.png", null, CorrelationId: "corr-img"));
+        service.ProcessEvent(new InspectionEventDto(
+            now.AddMilliseconds(50), "response", "", "", 200,
+            Headers: new Dictionary<string, string> { { "Content-Type", "image/png" } },
+            Body: imageBytes,
+            CorrelationId: "corr-img"));
+
+        var rows = service.GetRows();
+        Assert.Single(rows);
+        Assert.Equal("image/png", rows[0].ResponseContentType);
+        Assert.Equal(Convert.ToBase64String(imageBytes), rows[0].ResponseBodyBase64);
+        Assert.Contains("Image:", rows[0].ResponseBody);
+    }
+
+    [Fact]
+    public void ProcessEvent_JpegResponse_StoresBase64()
+    {
+        using var service = CreateService();
+        var now = DateTime.UtcNow;
+        var imageBytes = new byte[] { 0xFF, 0xD8, 0xFF, 0xE0 }; // JPEG magic bytes
+
+        service.ProcessEvent(new InspectionEventDto(now, "request", "GET", "https://example.com/photo.jpg", null, CorrelationId: "corr-jpg"));
+        service.ProcessEvent(new InspectionEventDto(
+            now.AddMilliseconds(50), "response", "", "", 200,
+            Headers: new Dictionary<string, string> { { "Content-Type", "image/jpeg; charset=binary" } },
+            Body: imageBytes,
+            CorrelationId: "corr-jpg"));
+
+        var rows = service.GetRows();
+        Assert.Single(rows);
+        Assert.Equal("image/jpeg", rows[0].ResponseContentType);
+        Assert.Equal(Convert.ToBase64String(imageBytes), rows[0].ResponseBodyBase64);
+    }
+
+    [Fact]
+    public void ProcessEvent_NonImageResponse_DoesNotStoreBase64()
+    {
+        using var service = CreateService();
+        var now = DateTime.UtcNow;
+        var jsonBytes = System.Text.Encoding.UTF8.GetBytes("{\"ok\":true}");
+
+        service.ProcessEvent(new InspectionEventDto(now, "request", "GET", "https://example.com/api", null, CorrelationId: "corr-json"));
+        service.ProcessEvent(new InspectionEventDto(
+            now.AddMilliseconds(50), "response", "", "", 200,
+            Headers: new Dictionary<string, string> { { "Content-Type", "application/json" } },
+            Body: jsonBytes,
+            CorrelationId: "corr-json"));
+
+        var rows = service.GetRows();
+        Assert.Single(rows);
+        Assert.Null(rows[0].ResponseBodyBase64);
+        Assert.Equal("application/json", rows[0].ResponseContentType);
+        Assert.Equal("{\"ok\":true}", rows[0].ResponseBody);
+    }
+
+    [Fact]
+    public void ProcessEvent_ImageResponse_EmptyBody_DoesNotStoreBase64()
+    {
+        using var service = CreateService();
+        var now = DateTime.UtcNow;
+
+        service.ProcessEvent(new InspectionEventDto(now, "request", "GET", "https://example.com/empty.png", null, CorrelationId: "corr-empty"));
+        service.ProcessEvent(new InspectionEventDto(
+            now.AddMilliseconds(50), "response", "", "", 200,
+            Headers: new Dictionary<string, string> { { "Content-Type", "image/png" } },
+            Body: Array.Empty<byte>(),
+            CorrelationId: "corr-empty"));
+
+        var rows = service.GetRows();
+        Assert.Single(rows);
+        Assert.Null(rows[0].ResponseBodyBase64);
+    }
+
+    [Theory]
+    [InlineData("Content-Type", "image/png")]
+    [InlineData("content-type", "image/png")]
+    public void GetContentType_ExtractsMediaType(string headerName, string expected)
+    {
+        var headers = new Dictionary<string, string> { { headerName, "image/png; charset=binary" } };
+        Assert.Equal(expected, InspectionDataService.GetContentType(headers));
+    }
+
+    [Fact]
+    public void GetContentType_ReturnsNull_WhenMissing()
+    {
+        var headers = new Dictionary<string, string>();
+        Assert.Null(InspectionDataService.GetContentType(headers));
+    }
+
     private class TestHostApplicationLifetime : IHostApplicationLifetime
     {
         private readonly CancellationTokenSource _stoppingCts = new();

@@ -66,11 +66,12 @@ public class SettingsPageTests
 
         var items = page.Locator("fluent-accordion-item");
         var count = await items.CountAsync();
-        Assert.Equal(4, count);
+        Assert.Equal(5, count);
 
         var content = await page.Locator("fluent-accordion").TextContentAsync();
         Assert.Contains("Appearance", content);
         Assert.Contains("Tools", content);
+        Assert.Contains("Inspector", content);
         Assert.Contains("Security", content);
         Assert.Contains("Session Retention", content);
     }

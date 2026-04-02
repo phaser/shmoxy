@@ -181,10 +181,22 @@ public class InspectionDataService : IDisposable
                 var (rowIndex, requestTimestamp) = pending;
                 if (rowIndex < _rows.Count)
                 {
+                    var headers = evt.Headers ?? new Dictionary<string, string>();
+                    var contentType = GetContentType(headers);
                     _rows[rowIndex].Duration = evt.Timestamp - requestTimestamp;
                     _rows[rowIndex].StatusCode = evt.StatusCode;
-                    _rows[rowIndex].ResponseHeaders = evt.Headers ?? new Dictionary<string, string>();
-                    _rows[rowIndex].ResponseBody = DecodeBody(evt.Body);
+                    _rows[rowIndex].ResponseHeaders = headers;
+                    _rows[rowIndex].ResponseContentType = contentType;
+
+                    if (ImageContentTypeDetector.IsImageContentType(contentType) && evt.Body is { Length: > 0 })
+                    {
+                        _rows[rowIndex].ResponseBodyBase64 = Convert.ToBase64String(evt.Body);
+                        _rows[rowIndex].ResponseBody = $"[Image: {contentType}, {evt.Body.Length} bytes]";
+                    }
+                    else
+                    {
+                        _rows[rowIndex].ResponseBody = DecodeBody(evt.Body);
+                    }
                 }
             }
         }
@@ -244,6 +256,15 @@ public class InspectionDataService : IDisposable
         }
     }
 
+    internal static string? GetContentType(Dictionary<string, string> headers)
+    {
+        if (headers.TryGetValue("Content-Type", out var ct))
+            return ct.Split(';')[0].Trim().ToLowerInvariant();
+        if (headers.TryGetValue("content-type", out ct))
+            return ct.Split(';')[0].Trim().ToLowerInvariant();
+        return null;
+    }
+
     private static string? DecodeBody(byte[]? body)
     {
         if (body is null || body.Length == 0)
@@ -288,6 +309,8 @@ public class InspectionRow
     public Dictionary<string, string> ResponseHeaders { get; set; } = new();
     public string? RequestBody { get; set; }
     public string? ResponseBody { get; set; }
+    public string? ResponseBodyBase64 { get; set; }
+    public string? ResponseContentType { get; set; }
     public RowOrigin Origin { get; set; } = RowOrigin.Live;
     public bool IsPassthrough { get; set; }
     public bool IsWebSocket { get; set; }

@@ -44,6 +44,25 @@
             </ChildContent>
         </FluentAccordionItem>
 
+        <FluentAccordionItem Heading="Inspector">
+            <HeadingTemplate>
+                <div class="accordion-heading">
+                    <FluentIcon Value="@(new Icons.Regular.Size20.Search())" />
+                    <span>Inspector</span>
+                </div>
+            </HeadingTemplate>
+            <ChildContent>
+                <div class="setting-row">
+                    <div class="setting-label">
+                        <span>Image preview (PNG, JPEG)</span>
+                    </div>
+                    <FluentSwitch Label="@(FrontendSettings.EnableImagePreview ? "On" : "Off")"
+                                 Value="@FrontendSettings.EnableImagePreview"
+                                 ValueChanged="OnImagePreviewToggle" />
+                </div>
+            </ChildContent>
+        </FluentAccordionItem>
+
         <FluentAccordionItem Heading="Security">
             <HeadingTemplate>
                 <div class="accordion-heading">
@@ -149,6 +168,11 @@
     private async Task OnCyberChefToggle(bool value)
     {
         await FrontendSettings.SetEnableCyberChefAsync(JS, value);
+    }
+
+    private async Task OnImagePreviewToggle(bool value)
+    {
+        await FrontendSettings.SetEnableImagePreviewAsync(JS, value);
     }
 
     private async Task OnRetentionForeverToggle(bool keepForever)
