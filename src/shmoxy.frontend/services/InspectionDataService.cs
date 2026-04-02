@@ -125,11 +125,15 @@ public class InspectionDataService : IDisposable
         {
             try
             {
-                SetConnectionState(StreamConnectionState.Connected);
-                retryCount = 0;
-
+                var connectedSignalled = false;
                 await foreach (var evt in _apiClient.StreamInspectionEventsAsync("local", ct))
                 {
+                    if (!connectedSignalled)
+                    {
+                        connectedSignalled = true;
+                        retryCount = 0;
+                        SetConnectionState(StreamConnectionState.Connected);
+                    }
                     lock (_lock)
                     {
                         ProcessEvent(evt);
