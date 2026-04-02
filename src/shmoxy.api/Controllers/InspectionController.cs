@@ -15,15 +15,21 @@ public class InspectionController : ControllerBase
     private readonly IProxyProcessManager _processManager;
     private readonly IRemoteProxyRegistry _registry;
     private readonly ILogger<InspectionController> _logger;
+    private readonly IHttpClientFactory _httpClientFactory;
+    private readonly ILoggerFactory _loggerFactory;
 
     public InspectionController(
         IProxyProcessManager processManager,
         IRemoteProxyRegistry registry,
-        ILogger<InspectionController> logger)
+        ILogger<InspectionController> logger,
+        IHttpClientFactory httpClientFactory,
+        ILoggerFactory loggerFactory)
     {
         _processManager = processManager;
         _registry = registry;
         _logger = logger;
+        _httpClientFactory = httpClientFactory;
+        _loggerFactory = loggerFactory;
     }
 
     /// <summary>
@@ -89,17 +95,13 @@ public class InspectionController : ControllerBase
             throw new InvalidOperationException($"Remote proxy {proxyId} not found");
         }
 
-        var handler = new HttpClientHandler();
-        var httpClient = new HttpClient(handler)
-        {
-            BaseAddress = new Uri(proxy.AdminUrl),
-            Timeout = TimeSpan.FromSeconds(5)
-        };
+        var httpClient = _httpClientFactory.CreateClient();
+        httpClient.BaseAddress = new Uri(proxy.AdminUrl);
+        httpClient.Timeout = TimeSpan.FromSeconds(5);
         httpClient.DefaultRequestHeaders.Add("X-API-Key", proxy.ApiKey);
 
-        var loggerFactory = LoggerFactory.Create(builder => builder.AddConsole());
-        var tempLogger = loggerFactory.CreateLogger<ProxyIpcClient>();
-        var client = new ProxyIpcClient(httpClient, tempLogger);
+        var logger = _loggerFactory.CreateLogger<ProxyIpcClient>();
+        var client = new ProxyIpcClient(httpClient, logger);
 
         try
         {

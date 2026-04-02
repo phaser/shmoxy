@@ -13,6 +13,8 @@ public class RemoteProxyHealthMonitor : IHostedService, IDisposable
     private readonly IServiceProvider _serviceProvider;
     private readonly IOptions<ApiConfig> _config;
     private readonly ILogger<RemoteProxyHealthMonitor> _logger;
+    private readonly IHttpClientFactory _httpClientFactory;
+    private readonly ILoggerFactory _loggerFactory;
 
     private Timer? _healthCheckTimer;
     private bool _disposed;
@@ -24,11 +26,15 @@ public class RemoteProxyHealthMonitor : IHostedService, IDisposable
     public RemoteProxyHealthMonitor(
         IOptions<ApiConfig> config,
         ILogger<RemoteProxyHealthMonitor> logger,
-        IServiceProvider serviceProvider)
+        IServiceProvider serviceProvider,
+        IHttpClientFactory httpClientFactory,
+        ILoggerFactory loggerFactory)
     {
         _serviceProvider = serviceProvider;
         _config = config;
         _logger = logger;
+        _httpClientFactory = httpClientFactory;
+        _loggerFactory = loggerFactory;
     }
 
     public Task StartAsync(CancellationToken cancellationToken)
@@ -99,17 +105,13 @@ public class RemoteProxyHealthMonitor : IHostedService, IDisposable
 
     private async Task<bool> CheckHealthWithClientAsync(string url, string apiKey)
     {
-        using var handler = new HttpClientHandler();
-        using var httpClient = new HttpClient(handler)
-        {
-            BaseAddress = new Uri(url),
-            Timeout = TimeSpan.FromSeconds(5)
-        };
+        var httpClient = _httpClientFactory.CreateClient();
+        httpClient.BaseAddress = new Uri(url);
+        httpClient.Timeout = TimeSpan.FromSeconds(5);
         httpClient.DefaultRequestHeaders.Add("X-API-Key", apiKey);
 
-        using var loggerFactory = LoggerFactory.Create(b => b.AddConsole());
-        var tempLogger = loggerFactory.CreateLogger<ProxyIpcClient>();
-        var tempClient = new ProxyIpcClient(httpClient, tempLogger);
+        var logger = _loggerFactory.CreateLogger<ProxyIpcClient>();
+        var tempClient = new ProxyIpcClient(httpClient, logger);
         return await tempClient.IsHealthyAsync();
     }
 
