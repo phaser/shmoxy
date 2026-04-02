@@ -5,7 +5,8 @@ public static class ImageContentTypeDetector
     private static readonly HashSet<string> SupportedImageTypes = new(StringComparer.OrdinalIgnoreCase)
     {
         "image/png",
-        "image/jpeg"
+        "image/jpeg",
+        "image/svg+xml"
     };
 
     public static bool IsImageContentType(string? contentType)

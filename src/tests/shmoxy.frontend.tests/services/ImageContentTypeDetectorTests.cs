@@ -14,7 +14,8 @@ public class ImageContentTypeDetectorTests
     [InlineData("image/jpeg; boundary=something", true)]
     [InlineData("image/gif", false)]
     [InlineData("image/webp", false)]
-    [InlineData("image/svg+xml", false)]
+    [InlineData("image/svg+xml", true)]
+    [InlineData("image/svg+xml; charset=utf-8", true)]
     [InlineData("application/json", false)]
     [InlineData("text/html", false)]
     [InlineData("application/pdf", false)]
@@ -30,6 +31,7 @@ public class ImageContentTypeDetectorTests
     [InlineData("image/jpeg", "dGVzdA==", "data:image/jpeg;base64,dGVzdA==")]
     [InlineData("image/PNG", "AQID", "data:image/png;base64,AQID")]
     [InlineData("image/jpeg; charset=utf-8", "dGVzdA==", "data:image/jpeg;base64,dGVzdA==")]
+    [InlineData("image/svg+xml", "PHN2Zz4=", "data:image/svg+xml;base64,PHN2Zz4=")]
     public void BuildDataUri_FormatsCorrectly(string contentType, string base64, string expected)
     {
         Assert.Equal(expected, ImageContentTypeDetector.BuildDataUri(contentType, base64));
