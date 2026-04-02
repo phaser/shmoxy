@@ -99,15 +99,15 @@ public class RemoteProxyHealthMonitor : IHostedService, IDisposable
 
     private async Task<bool> CheckHealthWithClientAsync(string url, string apiKey)
     {
-        var handler = new HttpClientHandler();
-        var httpClient = new HttpClient(handler)
+        using var handler = new HttpClientHandler();
+        using var httpClient = new HttpClient(handler)
         {
             BaseAddress = new Uri(url),
             Timeout = TimeSpan.FromSeconds(5)
         };
         httpClient.DefaultRequestHeaders.Add("X-API-Key", apiKey);
 
-        var loggerFactory = LoggerFactory.Create(b => b.AddConsole());
+        using var loggerFactory = LoggerFactory.Create(b => b.AddConsole());
         var tempLogger = loggerFactory.CreateLogger<ProxyIpcClient>();
         var tempClient = new ProxyIpcClient(httpClient, tempLogger);
         return await tempClient.IsHealthyAsync();

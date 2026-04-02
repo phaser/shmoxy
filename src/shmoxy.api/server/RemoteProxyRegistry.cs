@@ -83,8 +83,8 @@ public class RemoteProxyRegistry : IRemoteProxyRegistry
     {
         try
         {
-            var handler = new HttpClientHandler();
-            var httpClient = new HttpClient(handler)
+            using var handler = new HttpClientHandler();
+            using var httpClient = new HttpClient(handler)
             {
                 BaseAddress = new Uri(url),
                 Timeout = TimeSpan.FromSeconds(5)

@@ -101,9 +101,18 @@ public class InspectionController : ControllerBase
         var tempLogger = loggerFactory.CreateLogger<ProxyIpcClient>();
         var client = new ProxyIpcClient(httpClient, tempLogger);
 
-        await foreach (var evt in client.GetInspectionStreamAsync(ct))
+        try
         {
-            yield return evt;
+            await foreach (var evt in client.GetInspectionStreamAsync(ct))
+            {
+                yield return evt;
+            }
+        }
+        finally
+        {
+            loggerFactory.Dispose();
+            httpClient.Dispose();
+            handler.Dispose();
         }
     }
 }
