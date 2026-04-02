@@ -178,7 +178,7 @@ public class ProxyServer : IDisposable
                 var bytesRead = await stream.ReadAsync(buffer, 0, buffer.Length);
                 if (bytesRead == 0) return;
 
-                var requestLine = Encoding.ASCII.GetString(buffer, 0, bytesRead).Split('\r')[0];
+                var requestLine = Encoding.Latin1.GetString(buffer, 0, bytesRead).Split('\r')[0];
                 var parts = requestLine.Split(' ');
 
                 if (parts.Length < 2)
@@ -211,7 +211,7 @@ public class ProxyServer : IDisposable
     /// </summary>
     private async Task HandleConnectAsync(TcpClient client, byte[] buffer, int bytesRead)
     {
-        var request = Encoding.ASCII.GetString(buffer, 0, bytesRead);
+        var request = Encoding.Latin1.GetString(buffer, 0, bytesRead);
         var hostPort = request.Split('\r')[0].Split(' ')[1];
 
         _logger.LogInformation("CONNECT request to {HostPort}", hostPort);
@@ -315,7 +315,7 @@ public class ProxyServer : IDisposable
         try
         {
             // Parse the request that was already read by HandleConnectionAsync
-            var request = Encoding.ASCII.GetString(buffer, 0, bytesRead);
+            var request = Encoding.Latin1.GetString(buffer, 0, bytesRead);
             var lines = request.Split("\r\n");
 
             if (lines.Length < 1) return;
@@ -467,7 +467,7 @@ public class ProxyServer : IDisposable
         {
             var der = GetRootCertificateDer();
             var header = $"HTTP/1.1 200 OK\r\nContent-Type: application/x-x509-ca-cert\r\nContent-Length: {der.Length}\r\nContent-Disposition: attachment; filename=\"shmoxy-root-ca.der\"\r\nConnection: close\r\n\r\n";
-            var headerBytes = Encoding.ASCII.GetBytes(header);
+            var headerBytes = Encoding.Latin1.GetBytes(header);
             var stream = client.GetStream();
             await stream.WriteAsync(headerBytes, 0, headerBytes.Length);
             await stream.WriteAsync(der, 0, der.Length);
@@ -582,7 +582,7 @@ public class ProxyServer : IDisposable
 
         outgoing.Append("\r\n");
 
-        var requestBytes = Encoding.ASCII.GetBytes(outgoing.ToString());
+        var requestBytes = Encoding.Latin1.GetBytes(outgoing.ToString());
         await targetStream.WriteAsync(requestBytes, 0, requestBytes.Length);
 
         if (request.Body != null && request.Body.Length > 0)
@@ -655,7 +655,7 @@ public class ProxyServer : IDisposable
             }
             if (read == 0) break;
 
-            var requestText = Encoding.ASCII.GetString(buf, 0, read);
+            var requestText = Encoding.Latin1.GetString(buf, 0, read);
             var lines = requestText.Split("\r\n");
             if (lines.Length == 0) break;
 
@@ -773,7 +773,7 @@ public class ProxyServer : IDisposable
 
                     outgoing.Append("\r\n");
 
-                    var requestBytes = Encoding.ASCII.GetBytes(outgoing.ToString());
+                    var requestBytes = Encoding.Latin1.GetBytes(outgoing.ToString());
                     await targetStream.WriteAsync(requestBytes, 0, requestBytes.Length);
 
                     if (result.Body != null && result.Body.Length > 0)
@@ -860,7 +860,7 @@ public class ProxyServer : IDisposable
     /// </summary>
     internal static (int StatusCode, Dictionary<string, string> Headers, byte[] Body) ParseRawHttpResponse(byte[] rawResponse)
     {
-        var headerText = Encoding.ASCII.GetString(rawResponse, 0, Math.Min(rawResponse.Length, 8192));
+        var headerText = Encoding.Latin1.GetString(rawResponse, 0, Math.Min(rawResponse.Length, 8192));
 
         var headerEndIndex = headerText.IndexOf("\r\n\r\n", StringComparison.Ordinal);
         if (headerEndIndex < 0)
@@ -924,7 +924,7 @@ public class ProxyServer : IDisposable
                 break;
 
             // Parse chunk size (hex)
-            var sizeLine = Encoding.ASCII.GetString(chunkedData, offset, lineEnd - offset).Trim();
+            var sizeLine = Encoding.Latin1.GetString(chunkedData, offset, lineEnd - offset).Trim();
             // Chunk extensions (after ';') are allowed by RFC but rare — strip them
             var semiColon = sizeLine.IndexOf(';');
             if (semiColon >= 0)
