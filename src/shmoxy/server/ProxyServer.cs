@@ -304,10 +304,9 @@ public class ProxyServer : IDisposable
                 await destination.FlushAsync(ct);
             }
         }
-        catch (Exception) when (ct.IsCancellationRequested || true)
-        {
-            // Expected: connection closed, cancelled, or IO error
-        }
+        catch (OperationCanceledException) { }
+        catch (IOException) { }
+        catch (SocketException) { }
     }
 
     /// <summary>
