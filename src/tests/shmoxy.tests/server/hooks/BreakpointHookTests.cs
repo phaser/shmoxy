@@ -165,4 +165,206 @@ public class BreakpointHookTests
         hook.RemoveRule(rule.Id);
         Assert.Empty(hook.GetRules());
     }
+
+    [Fact]
+    public async Task OnRequestAsync_EmptyCorrelationId_PassesThrough()
+    {
+        var hook = new BreakpointHook { Enabled = true };
+        var request = new InterceptedRequest
+        {
+            Method = "GET",
+            Url = new Uri("http://example.com"),
+            CorrelationId = ""
+        };
+
+        var result = await hook.OnRequestAsync(request);
+        Assert.Same(request, result);
+    }
+
+    [Fact]
+    public async Task OnRequestAsync_NullCorrelationId_PassesThrough()
+    {
+        var hook = new BreakpointHook { Enabled = true };
+        var request = new InterceptedRequest
+        {
+            Method = "GET",
+            Url = new Uri("http://example.com"),
+            CorrelationId = null!
+        };
+
+        var result = await hook.OnRequestAsync(request);
+        Assert.Same(request, result);
+    }
+
+    [Fact]
+    public void Release_NonExistentCorrelationId_ReturnsFalse()
+    {
+        var hook = new BreakpointHook { Enabled = true };
+
+        var released = hook.Release("nonexistent");
+        Assert.False(released);
+    }
+
+    [Fact]
+    public void Drop_NonExistentCorrelationId_ReturnsFalse()
+    {
+        var hook = new BreakpointHook { Enabled = true };
+
+        var dropped = hook.Drop("nonexistent");
+        Assert.False(dropped);
+    }
+
+    [Fact]
+    public void RemoveRule_NonExistentId_ReturnsFalse()
+    {
+        var hook = new BreakpointHook();
+
+        var removed = hook.RemoveRule("nonexistent");
+        Assert.False(removed);
+    }
+
+    [Fact]
+    public void AddRule_AutoEnablesBreakpoints()
+    {
+        var hook = new BreakpointHook { Enabled = false };
+
+        hook.AddRule("GET", "/api/test");
+
+        Assert.True(hook.Enabled);
+    }
+
+    [Fact]
+    public async Task OnRequestAsync_NoRules_BreaksOnAll()
+    {
+        // When enabled with no rules, should break on all requests (legacy behavior)
+        var hook = new BreakpointHook { Enabled = true, TimeoutMs = 5000 };
+        var request = new InterceptedRequest
+        {
+            Method = "DELETE",
+            Url = new Uri("http://example.com/any/path"),
+            CorrelationId = "test-norule"
+        };
+
+        var pauseTask = hook.OnRequestAsync(request);
+        await Task.Delay(50);
+        Assert.False(pauseTask.IsCompleted);
+
+        hook.Release("test-norule");
+        var result = await pauseTask;
+        Assert.Same(request, result);
+    }
+
+    [Fact]
+    public async Task OnRequestAsync_RuleWithNullMethod_MatchesAnyMethod()
+    {
+        var hook = new BreakpointHook { Enabled = true, TimeoutMs = 5000 };
+        hook.AddRule(null, "/api/users");
+
+        var request = new InterceptedRequest
+        {
+            Method = "DELETE",
+            Url = new Uri("http://example.com/api/users/42"),
+            CorrelationId = "test-nullmethod"
+        };
+
+        var pauseTask = hook.OnRequestAsync(request);
+        await Task.Delay(50);
+        Assert.False(pauseTask.IsCompleted);
+
+        hook.Release("test-nullmethod");
+        var result = await pauseTask;
+        Assert.Same(request, result);
+    }
+
+    [Fact]
+    public async Task OnRequestAsync_RuleMatchIsCaseInsensitive()
+    {
+        var hook = new BreakpointHook { Enabled = true, TimeoutMs = 5000 };
+        hook.AddRule("get", "/API/USERS");
+
+        var request = new InterceptedRequest
+        {
+            Method = "GET",
+            Url = new Uri("http://example.com/api/users/123"),
+            CorrelationId = "test-case"
+        };
+
+        var pauseTask = hook.OnRequestAsync(request);
+        await Task.Delay(50);
+        Assert.False(pauseTask.IsCompleted);
+
+        hook.Release("test-case");
+        await pauseTask;
+    }
+
+    [Fact]
+    public async Task OnRequestAsync_ConcurrentPausesAreIndependent()
+    {
+        var hook = new BreakpointHook { Enabled = true, TimeoutMs = 5000 };
+
+        var request1 = new InterceptedRequest
+        {
+            Method = "GET",
+            Url = new Uri("http://example.com/1"),
+            CorrelationId = "concurrent-1"
+        };
+        var request2 = new InterceptedRequest
+        {
+            Method = "POST",
+            Url = new Uri("http://example.com/2"),
+            CorrelationId = "concurrent-2"
+        };
+
+        var task1 = hook.OnRequestAsync(request1);
+        var task2 = hook.OnRequestAsync(request2);
+
+        await Task.Delay(50);
+        Assert.Equal(2, hook.GetPausedRequests().Count);
+
+        // Release only the first
+        hook.Release("concurrent-1");
+        var result1 = await task1;
+        Assert.Same(request1, result1);
+
+        // Second should still be paused
+        Assert.False(task2.IsCompleted);
+        Assert.Single(hook.GetPausedRequests());
+
+        hook.Drop("concurrent-2");
+        var result2 = await task2;
+        Assert.Null(result2);
+    }
+
+    [Fact]
+    public void GetPausedRequests_ReturnsSnapshot()
+    {
+        var hook = new BreakpointHook();
+        var paused = hook.GetPausedRequests();
+        Assert.Empty(paused);
+    }
+
+    [Fact]
+    public async Task OnResponseAsync_AlwaysPassesThrough()
+    {
+        var hook = new BreakpointHook { Enabled = true };
+        var response = new InterceptedResponse
+        {
+            StatusCode = 200,
+            CorrelationId = "resp-1"
+        };
+
+        var result = await hook.OnResponseAsync(response);
+        Assert.Same(response, result);
+    }
+
+    [Fact]
+    public void AddRule_ReturnsRuleWithUniqueId()
+    {
+        var hook = new BreakpointHook();
+        var rule1 = hook.AddRule("GET", "/api/test1");
+        var rule2 = hook.AddRule("POST", "/api/test2");
+
+        Assert.NotEqual(rule1.Id, rule2.Id);
+        Assert.Equal(2, hook.GetRules().Count);
+    }
 }

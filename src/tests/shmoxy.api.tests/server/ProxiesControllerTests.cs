@@ -2,8 +2,10 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
 using Moq;
 using shmoxy.api.Controllers;
+using shmoxy.api.ipc;
 using shmoxy.api.models;
 using shmoxy.api.server;
+using shmoxy.shared.ipc;
 
 namespace shmoxy.api.tests.server;
 
@@ -220,5 +222,76 @@ public class ProxiesControllerTests
         await _controller.RestartProxy(CancellationToken.None);
 
         _mockProcessManager.Verify(m => m.StopAsync(ShutdownSource.User, It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task DrainSessionLog_ReturnsEmpty_WhenProxyNotRunning()
+    {
+        _mockProcessManager.Setup(m => m.GetStateAsync())
+            .ReturnsAsync(new ProxyInstanceState { State = ProxyProcessState.Stopped });
+
+        var result = await _controller.DrainSessionLog(CancellationToken.None);
+
+        var okResult = Assert.IsType<OkObjectResult>(result.Result);
+        var entries = Assert.IsAssignableFrom<SessionLogEntry[]>(okResult.Value);
+        Assert.Empty(entries);
+    }
+
+    [Fact]
+    public async Task DrainSessionLog_ReturnsEmpty_WhenStateIsNull()
+    {
+        _mockProcessManager.Setup(m => m.GetStateAsync())
+            .ReturnsAsync((ProxyInstanceState?)null);
+
+        var result = await _controller.DrainSessionLog(CancellationToken.None);
+
+        var okResult = Assert.IsType<OkObjectResult>(result.Result);
+        var entries = Assert.IsAssignableFrom<SessionLogEntry[]>(okResult.Value);
+        Assert.Empty(entries);
+    }
+
+    [Fact]
+    public async Task DrainSessionLog_ReturnsEntries_WhenRunning()
+    {
+        var expectedEntries = new List<SessionLogEntry>
+        {
+            new() { Level = "Info", Category = "Proxy", Message = "Started" },
+            new() { Level = "Warning", Category = "TLS", Message = "Cert expired" }
+        };
+
+        _mockProcessManager.Setup(m => m.GetStateAsync())
+            .ReturnsAsync(new ProxyInstanceState { State = ProxyProcessState.Running });
+
+        var mockIpcClient = new Mock<IProxyIpcClient>();
+        mockIpcClient.Setup(c => c.DrainSessionLogAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(expectedEntries);
+        _mockProcessManager.Setup(m => m.GetIpcClient())
+            .Returns(mockIpcClient.Object);
+
+        var result = await _controller.DrainSessionLog(CancellationToken.None);
+
+        var okResult = Assert.IsType<OkObjectResult>(result.Result);
+        var entries = Assert.IsAssignableFrom<IReadOnlyList<SessionLogEntry>>(okResult.Value);
+        Assert.Equal(2, entries.Count);
+        Assert.Equal("Started", entries[0].Message);
+    }
+
+    [Fact]
+    public async Task DrainSessionLog_ReturnsEmpty_WhenIpcThrows()
+    {
+        _mockProcessManager.Setup(m => m.GetStateAsync())
+            .ReturnsAsync(new ProxyInstanceState { State = ProxyProcessState.Running });
+
+        var mockIpcClient = new Mock<IProxyIpcClient>();
+        mockIpcClient.Setup(c => c.DrainSessionLogAsync(It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new Exception("IPC connection lost"));
+        _mockProcessManager.Setup(m => m.GetIpcClient())
+            .Returns(mockIpcClient.Object);
+
+        var result = await _controller.DrainSessionLog(CancellationToken.None);
+
+        var okResult = Assert.IsType<OkObjectResult>(result.Result);
+        var entries = Assert.IsAssignableFrom<SessionLogEntry[]>(okResult.Value);
+        Assert.Empty(entries);
     }
 }
