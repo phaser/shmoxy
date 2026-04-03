@@ -3,6 +3,7 @@
 @inject InspectionDataService InspectionService
 @inject ApiClient ApiClient
 @inject IJSRuntime JS
+@inject KeyboardShortcutService KeyboardShortcuts
 @implements IAsyncDisposable
 @using shmoxy.frontend.models
 @using shmoxy.frontend.services
@@ -281,6 +282,7 @@
         InspectionService.StartCapture();
         InspectionService.OnRowsChanged += OnRowsChanged;
         InspectionService.OnConnectionStateChanged += OnConnectionStateChanged;
+        KeyboardShortcuts.OnShortcutTriggered += OnShortcut;
         ApplyFilters();
     }
 
@@ -469,6 +471,82 @@
         if (row.Duration?.TotalMilliseconds > 1000)
             return "row-slow";
         return "";
+    }
+
+    private void OnShortcut(string action)
+    {
+        InvokeAsync(async () =>
+        {
+            switch (action)
+            {
+                case "clear":
+                    InspectionService.Clear();
+                    ApplyFilters();
+                    StateHasChanged();
+                    break;
+                case "toggle-capture":
+                    ToggleCapture();
+                    StateHasChanged();
+                    break;
+                case "focus-search":
+                    await KeyboardShortcuts.FocusSearchAsync();
+                    break;
+                case "copy-curl":
+                    if (selectedRow != null)
+                    {
+                        var curl = GenerateCurlCommand(selectedRow);
+                        try { await JS.InvokeVoidAsync("clipboard.copyText", curl); }
+                        catch (JSDisconnectedException) { }
+                    }
+                    break;
+                case "close-detail":
+                    if (selectedRow != null)
+                    {
+                        selectedRow = null;
+                        StateHasChanged();
+                    }
+                    break;
+                case "open-detail":
+                    if (selectedRow == null && filteredRows.Count > 0)
+                    {
+                        selectedRow = filteredRows[0];
+                        StateHasChanged();
+                    }
+                    break;
+                case "breakpoint":
+                    if (selectedRow != null && !selectedRow.IsWebSocket)
+                    {
+                        try
+                        {
+                            var uri = new Uri(selectedRow.Url);
+                            await ApiClient.AddBreakpointRuleAsync(selectedRow.Method, uri.AbsolutePath);
+                        }
+                        catch { }
+                    }
+                    break;
+                case "resend":
+                    if (selectedRow != null && !selectedRow.IsWebSocket)
+                    {
+                        SelectRow(selectedRow);
+                        StateHasChanged();
+                        KeyboardShortcuts.RequestResend();
+                    }
+                    break;
+            }
+        });
+    }
+
+    private static string GenerateCurlCommand(InspectionRow row)
+    {
+        var sb = new System.Text.StringBuilder();
+        sb.Append("curl");
+        if (row.Method != "GET") sb.Append($" -X {row.Method}");
+        sb.Append($" '{row.Url.Replace("'", "'\\''")}'");
+        foreach (var header in row.RequestHeaders)
+            sb.Append($" \\\n  -H '{header.Key.Replace("'", "'\\''")}: {header.Value.Replace("'", "'\\''")}'");
+        if (!string.IsNullOrEmpty(row.RequestBody))
+            sb.Append($" \\\n  -d '{row.RequestBody.Replace("'", "'\\''")}'");
+        return sb.ToString();
     }
 
     private void ToggleCapture()
@@ -678,6 +756,7 @@
     {
         InspectionService.OnRowsChanged -= OnRowsChanged;
         InspectionService.OnConnectionStateChanged -= OnConnectionStateChanged;
+        KeyboardShortcuts.OnShortcutTriggered -= OnShortcut;
         try
         {
             await JS.InvokeVoidAsync("inspectionAutoScroll.dispose", ContainerId);
