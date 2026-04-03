@@ -494,7 +494,7 @@
                 case "copy-curl":
                     if (selectedRow != null)
                     {
-                        var curl = GenerateCurlCommand(selectedRow);
+                        var curl = CurlExporter.GenerateCommand(selectedRow);
                         try { await JS.InvokeVoidAsync("clipboard.copyText", curl); }
                         catch (JSDisconnectedException) { }
                     }
@@ -534,19 +534,6 @@
                     break;
             }
         });
-    }
-
-    private static string GenerateCurlCommand(InspectionRow row)
-    {
-        var sb = new System.Text.StringBuilder();
-        sb.Append("curl");
-        if (row.Method != "GET") sb.Append($" -X {row.Method}");
-        sb.Append($" '{row.Url.Replace("'", "'\\''")}'");
-        foreach (var header in row.RequestHeaders)
-            sb.Append($" \\\n  -H '{header.Key.Replace("'", "'\\''")}: {header.Value.Replace("'", "'\\''")}'");
-        if (!string.IsNullOrEmpty(row.RequestBody))
-            sb.Append($" \\\n  -d '{row.RequestBody.Replace("'", "'\\''")}'");
-        return sb.ToString();
     }
 
     private void ToggleCapture()
