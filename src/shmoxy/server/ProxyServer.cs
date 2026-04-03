@@ -25,6 +25,7 @@ public class ProxyServer : IAsyncDisposable, IDisposable
     private readonly ProxyConfig _config;
     private readonly ILogger<ProxyServer> _logger;
     private readonly ConcurrentDictionary<Task, byte> _activeConnections = new();
+    private readonly ConnectionPool? _connectionPool;
     private CancellationTokenSource? _cts;
     private bool _disposed;
     private volatile bool _isListening;
@@ -103,6 +104,18 @@ public class ProxyServer : IAsyncDisposable, IDisposable
         _listener = TcpListener.Create(config.Port);
         _tlsHandler = new TlsHandler(config.CertStoragePath);
         _rootCert = _tlsHandler.GetRootCertificate();
+
+        if (config.ConnectionPoolSizePerHost > 0)
+        {
+            _connectionPool = new ConnectionPool(
+                config.ConnectionPoolSizePerHost,
+                TimeSpan.FromSeconds(config.ConnectionPoolIdleTimeoutSeconds),
+                UpstreamReadTimeoutMs,
+                ValidateCertificate,
+                logger);
+            _logger.LogInformation("Connection pool enabled: {PoolSize} per host, {IdleTimeout}s idle timeout",
+                config.ConnectionPoolSizePerHost, config.ConnectionPoolIdleTimeoutSeconds);
+        }
 
         _logger.LogInformation("Proxy server initialized on port {Port}", config.Port);
         _logger.LogInformation("Certificate storage: {CertStoragePath}", config.CertStoragePath);
@@ -573,89 +586,129 @@ public class ProxyServer : IAsyncDisposable, IDisposable
     /// </summary>
     private async Task ForwardHttpRequestAsync(TcpClient client, InterceptedRequest request, string host, int port)
     {
-        using var targetClient = new TcpClient();
-        targetClient.ReceiveTimeout = UpstreamReadTimeoutMs;
-        await targetClient.ConnectAsync(host, port);
-        using var targetStream = targetClient.GetStream();
+        PooledConnection? pooledConn = null;
+        TcpClient? ownedClient = null;
+        Stream targetStream;
 
-        // Build the outgoing HTTP request with a relative path
-        var outgoing = new StringBuilder();
-        outgoing.Append($"{request.Method} {request.Path} HTTP/1.1\r\n");
-        outgoing.Append($"Host: {host}\r\n");
-
-        foreach (var header in request.Headers
-            .Where(h => !h.Key.Equals("Host", StringComparison.OrdinalIgnoreCase)
-                     && !h.Key.Equals("Connection", StringComparison.OrdinalIgnoreCase)
-                     && !h.Key.Equals("Proxy-Connection", StringComparison.OrdinalIgnoreCase)
-                     && !h.Key.Equals("Content-Length", StringComparison.OrdinalIgnoreCase)))
+        if (_connectionPool != null)
         {
-            outgoing.Append($"{header.Key}: {header.Value}\r\n");
+            pooledConn = await _connectionPool.AcquireAsync(host, port, useTls: false);
+            targetStream = pooledConn.Stream;
+        }
+        else
+        {
+            ownedClient = new TcpClient();
+            ownedClient.ReceiveTimeout = UpstreamReadTimeoutMs;
+            await ownedClient.ConnectAsync(host, port);
+            targetStream = ownedClient.GetStream();
         }
 
-        // Add Connection: close so the target closes the connection after the response,
-        // which makes it straightforward to detect the end of the response.
-        outgoing.Append("Connection: close\r\n");
-
-        if (request.Body != null && request.Body.Length > 0)
-            outgoing.Append($"Content-Length: {request.Body.Length}\r\n");
-
-        outgoing.Append("\r\n");
-
-        var requestBytes = Encoding.Latin1.GetBytes(outgoing.ToString());
-        await targetStream.WriteAsync(requestBytes, 0, requestBytes.Length);
-
-        if (request.Body != null && request.Body.Length > 0)
-            await targetStream.WriteAsync(request.Body, 0, request.Body.Length);
-
-        await targetStream.FlushAsync();
-
-        // Stream the response from the target back to the client as chunks arrive
-        var clientStream = client.GetStream();
-        using var ms = new MemoryStream();
-        var responseBuffer = new byte[8192];
-        int read;
-        using var readCts = new CancellationTokenSource(UpstreamReadTimeoutMs);
         try
         {
-            while ((read = await targetStream.ReadAsync(responseBuffer, 0, responseBuffer.Length, readCts.Token)) > 0)
+            // Build the outgoing HTTP request with a relative path
+            var outgoing = new StringBuilder();
+            outgoing.Append($"{request.Method} {request.Path} HTTP/1.1\r\n");
+            outgoing.Append($"Host: {host}\r\n");
+
+            foreach (var header in request.Headers
+                .Where(h => !h.Key.Equals("Host", StringComparison.OrdinalIgnoreCase)
+                         && !h.Key.Equals("Connection", StringComparison.OrdinalIgnoreCase)
+                         && !h.Key.Equals("Proxy-Connection", StringComparison.OrdinalIgnoreCase)
+                         && !h.Key.Equals("Content-Length", StringComparison.OrdinalIgnoreCase)))
             {
-                await clientStream.WriteAsync(responseBuffer, 0, read);
-                ms.Write(responseBuffer, 0, read);
-                readCts.CancelAfter(UpstreamReadTimeoutMs);
+                outgoing.Append($"{header.Key}: {header.Value}\r\n");
+            }
+
+            var useKeepAlive = pooledConn != null;
+            outgoing.Append(useKeepAlive ? "Connection: keep-alive\r\n" : "Connection: close\r\n");
+
+            if (request.Body != null && request.Body.Length > 0)
+                outgoing.Append($"Content-Length: {request.Body.Length}\r\n");
+
+            outgoing.Append("\r\n");
+
+            var requestBytes = Encoding.Latin1.GetBytes(outgoing.ToString());
+            await targetStream.WriteAsync(requestBytes, 0, requestBytes.Length);
+
+            if (request.Body != null && request.Body.Length > 0)
+                await targetStream.WriteAsync(request.Body, 0, request.Body.Length);
+
+            await targetStream.FlushAsync();
+
+            // Stream the response from the target back to the client
+            var clientStream = client.GetStream();
+            byte[] responseBytes;
+            var success = false;
+
+            if (useKeepAlive)
+            {
+                using var readCts = new CancellationTokenSource(UpstreamReadTimeoutMs);
+                responseBytes = await ReadFramedHttpResponseAsync(targetStream, clientStream, readCts.Token);
+                success = responseBytes.Length > 0;
+            }
+            else
+            {
+                using var ms = new MemoryStream();
+                var responseBuffer = new byte[8192];
+                int read;
+                using var readCts = new CancellationTokenSource(UpstreamReadTimeoutMs);
+                try
+                {
+                    while ((read = await targetStream.ReadAsync(responseBuffer, 0, responseBuffer.Length, readCts.Token)) > 0)
+                    {
+                        await clientStream.WriteAsync(responseBuffer, 0, read);
+                        ms.Write(responseBuffer, 0, read);
+                        readCts.CancelAfter(UpstreamReadTimeoutMs);
+                    }
+                }
+                catch (OperationCanceledException)
+                {
+                    _logger.LogDebug("Upstream read timed out for {Host}:{Port}{Path}", host, port, request.Path);
+                }
+                catch (IOException)
+                {
+                    // Connection closed by server — expected with Connection: close
+                }
+                await clientStream.FlushAsync();
+                responseBytes = ms.ToArray();
+            }
+
+            // Parse and capture response for inspection
+            if (responseBytes.Length > 0)
+            {
+                var (respStatusCode, respHeaders, respBody) = ParseRawHttpResponse(responseBytes);
+
+                // Decompress body for inspection hooks so they see readable content.
+                // The client already received the original compressed bytes above.
+                var inspectionBody = DecompressForInspection(respBody, respHeaders, _logger);
+                var inspectionHeaders = new List<KeyValuePair<string, string>>(respHeaders);
+                if (inspectionBody != respBody)
+                    inspectionHeaders.RemoveAll(h => h.Key.Equals("Content-Encoding", StringComparison.OrdinalIgnoreCase));
+
+                var interceptedResponse = new InterceptedResponse
+                {
+                    StatusCode = respStatusCode,
+                    Headers = inspectionHeaders,
+                    Body = inspectionBody,
+                    CorrelationId = request.CorrelationId
+                };
+                await _interceptor.OnResponseAsync(interceptedResponse);
+            }
+
+            // Return healthy pooled connection for reuse, or dispose
+            if (pooledConn != null)
+            {
+                if (success && IsKeepAliveResponse(responseBytes))
+                    pooledConn.ReturnToPool();
+                else
+                    pooledConn.Dispose();
+                pooledConn = null;
             }
         }
-        catch (OperationCanceledException)
+        finally
         {
-            _logger.LogDebug("Upstream read timed out for {Host}:{Port}{Path}", host, port, request.Path);
-        }
-        catch (IOException)
-        {
-            // Connection closed by server — expected with Connection: close
-        }
-
-        await clientStream.FlushAsync();
-
-        // Parse and capture response for inspection
-        var responseBytes = ms.ToArray();
-        if (responseBytes.Length > 0)
-        {
-            var (respStatusCode, respHeaders, respBody) = ParseRawHttpResponse(responseBytes);
-
-            // Decompress body for inspection hooks so they see readable content.
-            // The client already received the original compressed bytes above.
-            var inspectionBody = DecompressForInspection(respBody, respHeaders, _logger);
-            var inspectionHeaders = new List<KeyValuePair<string, string>>(respHeaders);
-            if (inspectionBody != respBody)
-                inspectionHeaders.RemoveAll(h => h.Key.Equals("Content-Encoding", StringComparison.OrdinalIgnoreCase));
-
-            var interceptedResponse = new InterceptedResponse
-            {
-                StatusCode = respStatusCode,
-                Headers = inspectionHeaders,
-                Body = inspectionBody,
-                CorrelationId = request.CorrelationId
-            };
-            await _interceptor.OnResponseAsync(interceptedResponse);
+            pooledConn?.Dispose();
+            ownedClient?.Dispose();
         }
     }
 
@@ -739,46 +792,58 @@ public class ProxyServer : IAsyncDisposable, IDisposable
             if (result == null || result.Cancel) break;
 
             // Forward to upstream — activate temporary passthrough directly if the connection fails.
+            PooledConnection? pooledConn = null;
+            TcpClient? ownedTargetClient = null;
             try
             {
-                using var targetClient = new TcpClient();
-                targetClient.ReceiveTimeout = UpstreamReadTimeoutMs;
-                try
-                {
-                    await targetClient.ConnectAsync(host, port);
-                }
-                catch (Exception connectEx)
-                {
-                    _logger.LogWarning(
-                        "TCP connect failed for {Host}:{Port}: {ExceptionType}: {ErrorMessage}", host, port, connectEx.GetType().Name, connectEx.Message);
-                    throw;
-                }
-
                 Stream targetStream;
-                if (port == 443)
+                if (_connectionPool != null)
                 {
-                    var sslTarget = new global::System.Net.Security.SslStream(
-                        targetClient.GetStream(),
-                        false,
-                        ValidateCertificate);
-                    try
-                    {
-                        await sslTarget.AuthenticateAsClientAsync(host);
-                    }
-                    catch (Exception tlsEx)
-                    {
-                        _logger.LogWarning(
-                            "TLS handshake failed for {Host}:{Port}: {ExceptionType}: {ErrorMessage}", host, port, tlsEx.GetType().Name, tlsEx.Message);
-                        throw;
-                    }
-                    targetStream = sslTarget;
+                    pooledConn = await _connectionPool.AcquireAsync(host, port, useTls: port == 443);
+                    targetStream = pooledConn.Stream;
                 }
                 else
                 {
-                    targetStream = targetClient.GetStream();
+                    ownedTargetClient = new TcpClient();
+                    ownedTargetClient.ReceiveTimeout = UpstreamReadTimeoutMs;
+                    try
+                    {
+                        await ownedTargetClient.ConnectAsync(host, port);
+                    }
+                    catch (Exception connectEx)
+                    {
+                        _logger.LogWarning(
+                            "TCP connect failed for {Host}:{Port}: {ExceptionType}: {ErrorMessage}", host, port, connectEx.GetType().Name, connectEx.Message);
+                        throw;
+                    }
+
+                    if (port == 443)
+                    {
+                        var sslTarget = new global::System.Net.Security.SslStream(
+                            ownedTargetClient.GetStream(),
+                            false,
+                            ValidateCertificate);
+                        try
+                        {
+                            await sslTarget.AuthenticateAsClientAsync(host);
+                        }
+                        catch (Exception tlsEx)
+                        {
+                            _logger.LogWarning(
+                                "TLS handshake failed for {Host}:{Port}: {ExceptionType}: {ErrorMessage}", host, port, tlsEx.GetType().Name, tlsEx.Message);
+                            throw;
+                        }
+                        targetStream = sslTarget;
+                    }
+                    else
+                    {
+                        targetStream = ownedTargetClient.GetStream();
+                    }
                 }
 
-                using (targetStream)
+                var useKeepAlive = pooledConn != null;
+
+                try
                 {
                     // Build outgoing request
                     var outgoing = new StringBuilder();
@@ -794,7 +859,7 @@ public class ProxyServer : IAsyncDisposable, IDisposable
                         outgoing.Append($"{header.Key}: {header.Value}\r\n");
                     }
 
-                    outgoing.Append("Connection: close\r\n");
+                    outgoing.Append(useKeepAlive ? "Connection: keep-alive\r\n" : "Connection: close\r\n");
 
                     if (result.Body != null && result.Body.Length > 0)
                         outgoing.Append($"Content-Length: {result.Body.Length}\r\n");
@@ -809,33 +874,44 @@ public class ProxyServer : IAsyncDisposable, IDisposable
 
                     await targetStream.FlushAsync();
 
-                    // Stream the response back to the client as chunks arrive
-                    using var ms = new MemoryStream();
-                    var responseBuf = new byte[8192];
-                    int responseRead;
-                    using var readCts = new CancellationTokenSource(UpstreamReadTimeoutMs);
-                    try
-                    {
-                        while ((responseRead = await targetStream.ReadAsync(responseBuf, 0, responseBuf.Length, readCts.Token)) > 0)
-                        {
-                            await clientStream.WriteAsync(responseBuf, 0, responseRead);
-                            ms.Write(responseBuf, 0, responseRead);
-                            readCts.CancelAfter(UpstreamReadTimeoutMs);
-                        }
-                    }
-                    catch (OperationCanceledException)
-                    {
-                        _logger.LogDebug("Upstream read timed out for {Host}:{Port}{Path}", host, port, result.Path);
-                    }
-                    catch (IOException)
-                    {
-                        // Connection closed by server — expected with Connection: close
-                    }
+                    // Stream the response back to the client
+                    byte[] responseBytes;
+                    var success = false;
 
-                    await clientStream.FlushAsync();
+                    if (useKeepAlive)
+                    {
+                        using var readCts = new CancellationTokenSource(UpstreamReadTimeoutMs);
+                        responseBytes = await ReadFramedHttpResponseAsync(targetStream, clientStream, readCts.Token);
+                        success = responseBytes.Length > 0;
+                    }
+                    else
+                    {
+                        using var ms = new MemoryStream();
+                        var responseBuf = new byte[8192];
+                        int responseRead;
+                        using var readCts = new CancellationTokenSource(UpstreamReadTimeoutMs);
+                        try
+                        {
+                            while ((responseRead = await targetStream.ReadAsync(responseBuf, 0, responseBuf.Length, readCts.Token)) > 0)
+                            {
+                                await clientStream.WriteAsync(responseBuf, 0, responseRead);
+                                ms.Write(responseBuf, 0, responseRead);
+                                readCts.CancelAfter(UpstreamReadTimeoutMs);
+                            }
+                        }
+                        catch (OperationCanceledException)
+                        {
+                            _logger.LogDebug("Upstream read timed out for {Host}:{Port}{Path}", host, port, result.Path);
+                        }
+                        catch (IOException)
+                        {
+                            // Connection closed by server — expected with Connection: close
+                        }
+                        await clientStream.FlushAsync();
+                        responseBytes = ms.ToArray();
+                    }
 
                     // Parse response for intercept hook
-                    var responseBytes = ms.ToArray();
                     if (responseBytes.Length > 0)
                     {
                         var (respStatusCode, respHeaders, respBody) = ParseRawHttpResponse(responseBytes);
@@ -864,6 +940,25 @@ public class ProxyServer : IAsyncDisposable, IDisposable
                             return;
                         }
                     }
+
+                    // Return healthy pooled connection for reuse, or dispose
+                    if (pooledConn != null)
+                    {
+                        if (success && IsKeepAliveResponse(responseBytes))
+                            pooledConn.ReturnToPool();
+                        else
+                            pooledConn.Dispose();
+                        pooledConn = null;
+                    }
+                }
+                finally
+                {
+                    pooledConn?.Dispose();
+                    if (ownedTargetClient != null)
+                    {
+                        targetStream.Dispose();
+                        ownedTargetClient.Dispose();
+                    }
                 }
             }
             catch (Exception ex) when (ex is IOException or SocketException
@@ -874,8 +969,8 @@ public class ProxyServer : IAsyncDisposable, IDisposable
                     "Upstream connection failed for {Host}:{Port}{Path}: {ExceptionType}: {ErrorMessage}{InnerException}", host, port, result.Path, ex.GetType().Name, ex.Message, inner);
             }
 
-            // Connection: close means we're done after one request
-            break;
+            // Without pool, Connection: close means we're done after one request
+            if (_connectionPool == null) break;
         }
     }
 
@@ -987,6 +1082,170 @@ public class ProxyServer : IAsyncDisposable, IDisposable
         }
 
         return fullBody;
+    }
+
+    /// <summary>
+    /// Reads a complete HTTP response from an upstream stream using proper framing
+    /// (Content-Length or chunked Transfer-Encoding). Streams bytes to the client as
+    /// they arrive. Returns all raw bytes for inspection parsing.
+    /// </summary>
+    private static async Task<byte[]> ReadFramedHttpResponseAsync(
+        Stream targetStream, Stream clientStream, CancellationToken ct)
+    {
+        using var ms = new MemoryStream();
+        var buffer = new byte[8192];
+
+        // Phase 1: Read until we have the complete header section (\r\n\r\n)
+        var headerEndByteIndex = -1;
+        while (headerEndByteIndex < 0)
+        {
+            int read;
+            try
+            {
+                read = await targetStream.ReadAsync(buffer, 0, buffer.Length, ct);
+            }
+            catch (OperationCanceledException) { break; }
+            catch (IOException) { break; }
+
+            if (read == 0) break;
+            await clientStream.WriteAsync(buffer, 0, read, ct);
+            ms.Write(buffer, 0, read);
+
+            // Search for \r\n\r\n in accumulated bytes
+            var accumulated = ms.ToArray();
+            headerEndByteIndex = FindHeaderEndIndex(accumulated);
+        }
+
+        if (headerEndByteIndex < 0)
+            return ms.ToArray();
+
+        // Phase 2: Parse headers to determine body framing
+        var allBytes = ms.ToArray();
+        var headerStr = Encoding.Latin1.GetString(allBytes, 0, headerEndByteIndex);
+        var bodyStartIndex = headerEndByteIndex + 4;
+        var bodyBytesAlreadyRead = allBytes.Length - bodyStartIndex;
+
+        var contentLength = ParseContentLengthFromHeaders(headerStr);
+        var isChunked = headerStr.Contains("Transfer-Encoding: chunked", StringComparison.OrdinalIgnoreCase)
+                     || headerStr.Contains("transfer-encoding: chunked", StringComparison.OrdinalIgnoreCase);
+
+        if (contentLength >= 0)
+        {
+            // Read exact body length
+            var remaining = contentLength - bodyBytesAlreadyRead;
+            while (remaining > 0)
+            {
+                var toRead = (int)Math.Min(remaining, buffer.Length);
+                int read;
+                try
+                {
+                    read = await targetStream.ReadAsync(buffer, 0, toRead, ct);
+                }
+                catch (OperationCanceledException) { break; }
+                catch (IOException) { break; }
+                if (read == 0) break;
+                await clientStream.WriteAsync(buffer, 0, read, ct);
+                ms.Write(buffer, 0, read);
+                remaining -= read;
+            }
+        }
+        else if (isChunked)
+        {
+            // Read until the chunk terminator "0\r\n\r\n"
+            while (true)
+            {
+                var data = ms.ToArray();
+                if (EndsWithChunkTerminator(data, bodyStartIndex))
+                    break;
+
+                int read;
+                try
+                {
+                    read = await targetStream.ReadAsync(buffer, 0, buffer.Length, ct);
+                }
+                catch (OperationCanceledException) { break; }
+                catch (IOException) { break; }
+                if (read == 0) break;
+                await clientStream.WriteAsync(buffer, 0, read, ct);
+                ms.Write(buffer, 0, read);
+            }
+        }
+        else
+        {
+            // No Content-Length and not chunked — read until connection closes
+            while (true)
+            {
+                int read;
+                try
+                {
+                    read = await targetStream.ReadAsync(buffer, 0, buffer.Length, ct);
+                }
+                catch (OperationCanceledException) { break; }
+                catch (IOException) { break; }
+                if (read == 0) break;
+                await clientStream.WriteAsync(buffer, 0, read, ct);
+                ms.Write(buffer, 0, read);
+            }
+        }
+
+        await clientStream.FlushAsync(ct);
+        return ms.ToArray();
+    }
+
+    internal static int FindHeaderEndIndex(byte[] data)
+    {
+        // Search for \r\n\r\n (0x0D 0x0A 0x0D 0x0A)
+        for (var i = 0; i <= data.Length - 4; i++)
+        {
+            if (data[i] == 0x0D && data[i + 1] == 0x0A && data[i + 2] == 0x0D && data[i + 3] == 0x0A)
+                return i;
+        }
+        return -1;
+    }
+
+    internal static long ParseContentLengthFromHeaders(string headerStr)
+    {
+        foreach (var line in headerStr.Split("\r\n"))
+        {
+            if (line.StartsWith("Content-Length:", StringComparison.OrdinalIgnoreCase))
+            {
+                var val = line["Content-Length:".Length..].Trim();
+                if (long.TryParse(val, out var len))
+                    return len;
+            }
+        }
+        return -1;
+    }
+
+    internal static bool EndsWithChunkTerminator(byte[] data, int bodyStart)
+    {
+        // Look for "0\r\n\r\n" at the end of the body section
+        if (data.Length - bodyStart < 5) return false;
+        var end = data.Length;
+        return data[end - 5] == '0'
+            && data[end - 4] == '\r'
+            && data[end - 3] == '\n'
+            && data[end - 2] == '\r'
+            && data[end - 1] == '\n';
+    }
+
+    /// <summary>
+    /// Checks whether the response indicates the server will keep the connection open.
+    /// HTTP/1.1 defaults to keep-alive unless "Connection: close" is present.
+    /// </summary>
+    internal static bool IsKeepAliveResponse(byte[] responseBytes)
+    {
+        var headerEndIndex = FindHeaderEndIndex(responseBytes);
+        if (headerEndIndex < 0) return false;
+        var headerStr = Encoding.Latin1.GetString(responseBytes, 0, headerEndIndex);
+        // Check for explicit Connection: close
+        foreach (var line in headerStr.Split("\r\n"))
+        {
+            if (line.StartsWith("Connection:", StringComparison.OrdinalIgnoreCase) &&
+                line.Contains("close", StringComparison.OrdinalIgnoreCase))
+                return false;
+        }
+        return true;
     }
 
     /// <summary>
@@ -1249,6 +1508,7 @@ public class ProxyServer : IAsyncDisposable, IDisposable
         _cts?.Cancel();
         _listener.Stop();
         _isListening = false;
+        _connectionPool?.Dispose();
         _tlsHandler.Dispose();
         _disposed = true;
     }
