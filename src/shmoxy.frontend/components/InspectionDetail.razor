@@ -214,7 +214,7 @@
                                 <button class="copy-button" @onclick="() => CopyToClipboard(Row.ResponseBody)">Copy</button>
                                 @if (FrontendSettings.EnableCyberChef)
                                 {
-                                    <button class="copy-button" @onclick="() => SendToCyberChef(Row.ResponseBody)">CyberChef</button>
+                                    <button class="copy-button" @onclick="() => SendToCyberChef(Row.ResponseBody, Row.ResponseBodyBase64)">CyberChef</button>
                                 }
                             </div>
                         }
@@ -461,10 +461,10 @@
         }
     }
 
-    private void SendToCyberChef(string? body)
+    private void SendToCyberChef(string? body, string? bodyBase64 = null)
     {
-        if (string.IsNullOrEmpty(body)) return;
-        var base64 = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(body));
+        if (string.IsNullOrEmpty(body) && string.IsNullOrEmpty(bodyBase64)) return;
+        var base64 = bodyBase64 ?? Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(body!));
         NavigationManager.NavigateTo($"/cyberchef?input={Uri.EscapeDataString(base64)}");
     }
 
