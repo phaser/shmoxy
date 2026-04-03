@@ -173,6 +173,7 @@
                     <th class="col-method">Method</th>
                     <th>URL</th>
                     <th class="col-status">Status</th>
+                    <th class="col-size">Size</th>
                     <th class="col-duration">Duration</th>
                 </tr>
             </thead>
@@ -180,7 +181,7 @@
                 @if (filteredRows.Count == 0)
                 {
                     <tr>
-                        <td colspan="6" class="empty-state">Start the proxy to see requests</td>
+                        <td colspan="7" class="empty-state">Start the proxy to see requests</td>
                     </tr>
                 }
                 else
@@ -213,6 +214,7 @@
                                     <span>-</span>
                                 }
                             </td>
+                            <td class="size-cell">@FormatSize(row.ResponseBodySize)</td>
                             <td>@(row.Duration.HasValue ? $"{row.Duration.Value.TotalMilliseconds:F0} ms" : "-")</td>
                         </tr>
                     }
@@ -406,6 +408,17 @@
         _ => "unknown"
     };
 
+    private static string FormatSize(long? bytes)
+    {
+        if (bytes is null) return "-";
+        return bytes.Value switch
+        {
+            < 1024 => $"{bytes.Value} B",
+            < 1024 * 1024 => $"{bytes.Value / 1024.0:F1} KB",
+            _ => $"{bytes.Value / (1024.0 * 1024.0):F1} MB"
+        };
+    }
+
     private void ToggleCapture()
     {
         if (InspectionService.IsCapturing)
@@ -462,7 +475,12 @@
                 RequestBody = r.RequestBody,
                 ResponseBody = r.ResponseBody,
                 ResponseBodyBase64 = r.ResponseBodyBase64,
-                ResponseContentType = r.ResponseContentType
+                ResponseContentType = r.ResponseContentType,
+                ResponseBodySize = r.ResponseBodyBase64 != null
+                    ? (long)(r.ResponseBodyBase64.Length * 3 / 4)
+                    : r.ResponseBody != null
+                        ? System.Text.Encoding.UTF8.GetByteCount(r.ResponseBody)
+                        : null
             }).ToList();
 
             InspectionService.LoadRows(rows, sessionId, sessionName);
@@ -675,6 +693,7 @@
 .col-time { width: 7.5rem; }
 .col-method { width: 6rem; }
 .col-status { width: 4rem; }
+.col-size { width: 5rem; }
 .col-duration { width: 5rem; }
 
 .inspection-table thead {

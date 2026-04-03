@@ -258,6 +258,7 @@ public class InspectionDataService : IDisposable
                     _rows[rowIndex].StatusCode = evt.StatusCode;
                     _rows[rowIndex].ResponseHeaders = headers;
                     _rows[rowIndex].ResponseContentType = contentType;
+                    _rows[rowIndex].ResponseBodySize = evt.Body?.Length;
 
                     if (ImageContentTypeDetector.IsImageContentType(contentType) && evt.Body is { Length: > 0 })
                     {
@@ -380,6 +381,7 @@ public class InspectionRow
     public string? RequestBody { get; set; }
     public string? ResponseBody { get; set; }
     public string? ResponseBodyBase64 { get; set; }
+    public long? ResponseBodySize { get; set; }
     public string? ResponseContentType { get; set; }
     public RowOrigin Origin { get; set; } = RowOrigin.Live;
     public bool IsPassthrough { get; set; }
