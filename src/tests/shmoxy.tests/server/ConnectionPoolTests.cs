@@ -110,6 +110,30 @@ public class ConnectionPoolTests : IDisposable
         return listener;
     }
 
+    [Fact]
+    public async Task PooledConnection_Dispose_DisposesStream()
+    {
+        _server = StartTestServer(out var port);
+
+        var conn = await _pool.AcquireAsync("localhost", port, useTls: false);
+        var stream = conn.Stream;
+        conn.Dispose();
+
+        // After disposing, the stream should not be writable
+        Assert.False(stream.CanWrite);
+    }
+
+    [Fact]
+    public async Task PooledConnection_Dispose_CalledTwice_NoException()
+    {
+        _server = StartTestServer(out var port);
+
+        var conn = await _pool.AcquireAsync("localhost", port, useTls: false);
+        conn.Dispose();
+        var ex = Record.Exception(() => conn.Dispose());
+        Assert.Null(ex);
+    }
+
     public void Dispose()
     {
         _pool.Dispose();

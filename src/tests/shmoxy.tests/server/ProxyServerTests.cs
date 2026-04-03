@@ -418,6 +418,72 @@ public class ProxyServerTests : IClassFixture<ProxyTestFixture>, IDisposable
         Assert.Contains("\r\n\r\n", text);
     }
 
+    [Fact]
+    public void FindHeaderEndIndex_FindsSeparator()
+    {
+        var data = "HTTP/1.1 200 OK\r\nContent-Length: 4\r\n\r\nBody"u8.ToArray();
+        var index = ProxyServer.FindHeaderEndIndex(data);
+        Assert.Equal(34, index);
+    }
+
+    [Fact]
+    public void FindHeaderEndIndex_ReturnsNegativeWhenNotFound()
+    {
+        var data = "HTTP/1.1 200 OK\r\nContent-Length: 4\r\n"u8.ToArray();
+        Assert.Equal(-1, ProxyServer.FindHeaderEndIndex(data));
+    }
+
+    [Fact]
+    public void ParseContentLengthFromHeaders_ExtractsValue()
+    {
+        var headers = "HTTP/1.1 200 OK\r\nContent-Length: 42\r\nContent-Type: text/plain";
+        Assert.Equal(42, ProxyServer.ParseContentLengthFromHeaders(headers));
+    }
+
+    [Fact]
+    public void ParseContentLengthFromHeaders_ReturnsNegativeWhenMissing()
+    {
+        var headers = "HTTP/1.1 200 OK\r\nContent-Type: text/plain";
+        Assert.Equal(-1, ProxyServer.ParseContentLengthFromHeaders(headers));
+    }
+
+    [Fact]
+    public void EndsWithChunkTerminator_DetectsTerminator()
+    {
+        var data = "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n4\r\ntest\r\n0\r\n\r\n"u8.ToArray();
+        var bodyStart = ProxyServer.FindHeaderEndIndex(data) + 4;
+        Assert.True(ProxyServer.EndsWithChunkTerminator(data, bodyStart));
+    }
+
+    [Fact]
+    public void EndsWithChunkTerminator_ReturnsFalseForIncompleteData()
+    {
+        var data = "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n4\r\ntest\r\n"u8.ToArray();
+        var bodyStart = ProxyServer.FindHeaderEndIndex(data) + 4;
+        Assert.False(ProxyServer.EndsWithChunkTerminator(data, bodyStart));
+    }
+
+    [Fact]
+    public void IsKeepAliveResponse_TrueByDefault()
+    {
+        var data = "HTTP/1.1 200 OK\r\nContent-Length: 4\r\n\r\nBody"u8.ToArray();
+        Assert.True(ProxyServer.IsKeepAliveResponse(data));
+    }
+
+    [Fact]
+    public void IsKeepAliveResponse_FalseWithConnectionClose()
+    {
+        var data = "HTTP/1.1 200 OK\r\nConnection: close\r\n\r\nBody"u8.ToArray();
+        Assert.False(ProxyServer.IsKeepAliveResponse(data));
+    }
+
+    [Fact]
+    public void IsKeepAliveResponse_FalseWithNoHeaders()
+    {
+        var data = "Incomplete"u8.ToArray();
+        Assert.False(ProxyServer.IsKeepAliveResponse(data));
+    }
+
     public void Dispose()
     {
         if (_disposed) return;

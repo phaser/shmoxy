@@ -154,7 +154,7 @@ public sealed class ConnectionPool : IDisposable
         Stream stream = tcpClient.GetStream();
         if (useTls)
         {
-            var sslStream = new SslStream(tcpClient.GetStream(), false, _certValidator);
+            var sslStream = new SslStream(stream, false, _certValidator);
             await sslStream.AuthenticateAsClientAsync(host);
             stream = sslStream;
         }
@@ -204,6 +204,15 @@ public sealed class ConnectionPool : IDisposable
 
     private static void DisposeConnection(PooledConnection conn)
     {
+        try
+        {
+            conn.Stream.Dispose();
+        }
+        catch
+        {
+            // Best-effort cleanup
+        }
+
         try
         {
             conn.TcpClient.Dispose();
