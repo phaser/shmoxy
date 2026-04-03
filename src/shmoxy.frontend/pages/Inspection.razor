@@ -199,7 +199,7 @@
                 {
                     @foreach (var row in filteredRows)
                     {
-                        <tr class="clickable-row @(selectedRow?.Id == row.Id ? "selected-row" : "") @(row.Origin == RowOrigin.Loaded ? "loaded-row" : "")"
+                        <tr class="clickable-row @(selectedRow?.Id == row.Id ? "selected-row" : "") @(row.Origin == RowOrigin.Loaded ? "loaded-row" : "") @GetRowColorClass(row)"
                             @onclick="() => SelectRow(row)">
                             <td>@row.Id</td>
                             <td class="time-cell">@row.Timestamp.ToLocalTime().ToString("HH:mm:ss.fff")</td>
@@ -454,6 +454,21 @@
             < 1024 * 1024 => $"{bytes.Value / 1024.0:F1} KB",
             _ => $"{bytes.Value / (1024.0 * 1024.0):F1} MB"
         };
+    }
+
+    private static string GetRowColorClass(InspectionRow row)
+    {
+        if (row.StatusCode is >= 500)
+            return "row-server-error";
+        if (row.StatusCode is >= 400 and < 500)
+            return "row-client-error";
+        if (row.IsPassthrough)
+            return "row-passthrough";
+        if (!row.StatusCode.HasValue && !row.IsWebSocket && row.Duration is null)
+            return "row-pending";
+        if (row.Duration?.TotalMilliseconds > 1000)
+            return "row-slow";
+        return "";
     }
 
     private void ToggleCapture()
@@ -778,6 +793,30 @@
 
 .loaded-row {
     border-left: 3px solid var(--accent-foreground-rest);
+}
+
+.row-server-error {
+    background: rgba(249, 62, 62, 0.08);
+}
+
+.row-client-error {
+    background: rgba(252, 161, 48, 0.08);
+}
+
+.row-slow {
+    background: rgba(252, 161, 48, 0.05);
+}
+
+.row-passthrough {
+    background: rgba(128, 128, 128, 0.06);
+}
+
+.row-pending {
+    opacity: 0.6;
+}
+
+.row-server-error:hover, .row-client-error:hover, .row-slow:hover, .row-passthrough:hover {
+    background: var(--neutral-layer-3);
 }
 
 .time-cell {
