@@ -3,7 +3,9 @@
 @inject FrontendSettings FrontendSettings
 @inject IJSRuntime JS
 @inject NavigationManager NavigationManager
+@inject KeyboardShortcutService KeyboardShortcuts
 @implements IDisposable
+@using shmoxy.frontend.services
 
 <FluentDesignTheme @ref="_theme" @bind-Mode="_mode" StorageName="preferred-theme">
     <div class="layout">
@@ -84,6 +86,32 @@
         </FluentDialog>
     }
 
+    @if (showHelpDialog)
+    {
+        <FluentDialog @bind-Hidden="@helpDialogHidden" Modal="true" TrapFocus="true" PreventDismissOnOverlayClick="false" @ondialogdismiss="CloseHelpDialog">
+            <FluentDialogHeader>
+                <h3 style="margin:0;">Keyboard Shortcuts</h3>
+            </FluentDialogHeader>
+            <FluentDialogBody>
+                <table class="shortcuts-table">
+                    <tr><td class="shortcut-key"><kbd>/</kbd></td><td>Focus search</td></tr>
+                    <tr><td class="shortcut-key"><kbd>Ctrl+K</kbd></td><td>Clear all requests</td></tr>
+                    <tr><td class="shortcut-key"><kbd>Ctrl+E</kbd></td><td>Toggle capture</td></tr>
+                    <tr><td class="shortcut-key"><kbd>Ctrl+Shift+C</kbd></td><td>Copy selected as cURL</td></tr>
+                    <tr><td class="shortcut-key"><kbd>Enter</kbd></td><td>Open selected request detail</td></tr>
+                    <tr><td class="shortcut-key"><kbd>Esc</kbd></td><td>Close detail panel</td></tr>
+                    <tr><td class="shortcut-key"><kbd>Tab</kbd></td><td>Switch Request/Response tab</td></tr>
+                    <tr><td class="shortcut-key"><kbd>B</kbd></td><td>Toggle breakpoint on selected request</td></tr>
+                    <tr><td class="shortcut-key"><kbd>R</kbd></td><td>Open resend for selected request</td></tr>
+                    <tr><td class="shortcut-key"><kbd>?</kbd></td><td>Show this help</td></tr>
+                </table>
+            </FluentDialogBody>
+            <FluentDialogFooter>
+                <FluentButton Appearance="Appearance.Stealth" OnClick="@CloseHelpDialog">Close</FluentButton>
+            </FluentDialogFooter>
+        </FluentDialog>
+    }
+
     <FluentToastProvider />
     <FluentDialogProvider />
     <FluentTooltipProvider />
@@ -97,6 +125,7 @@
     {
         ThemeState.OnChange += OnThemeStateChanged;
         FrontendSettings.OnChange += OnFrontendSettingsChanged;
+        KeyboardShortcuts.OnShortcutTriggered += OnShortcutTriggered;
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -104,6 +133,7 @@
         if (firstRender)
         {
             await FrontendSettings.LoadAsync(JS);
+            await KeyboardShortcuts.InitializeAsync();
             StateHasChanged();
             try
             {
@@ -130,6 +160,28 @@
     private void OnFrontendSettingsChanged()
     {
         InvokeAsync(StateHasChanged);
+    }
+
+    private bool showHelpDialog;
+    private bool helpDialogHidden = true;
+
+    private void OnShortcutTriggered(string action)
+    {
+        InvokeAsync(() =>
+        {
+            if (action == "help")
+            {
+                showHelpDialog = true;
+                helpDialogHidden = false;
+                StateHasChanged();
+            }
+        });
+    }
+
+    private void CloseHelpDialog()
+    {
+        showHelpDialog = false;
+        helpDialogHidden = true;
     }
 
     private bool showCyberChefDialog;
@@ -163,5 +215,6 @@
     {
         ThemeState.OnChange -= OnThemeStateChanged;
         FrontendSettings.OnChange -= OnFrontendSettingsChanged;
+        KeyboardShortcuts.OnShortcutTriggered -= OnShortcutTriggered;
     }
 }

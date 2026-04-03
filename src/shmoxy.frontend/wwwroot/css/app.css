@@ -314,3 +314,28 @@ body:not([data-theme="dark"]) .reconnect-card button:hover {
 #components-reconnect-modal.components-reconnect-rejected .reconnect-rejected {
     display: contents;
 }
+
+.shortcuts-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.shortcuts-table td {
+    padding: 0.4rem 0.75rem;
+    border-bottom: 1px solid var(--neutral-stroke-divider-rest);
+}
+
+.shortcut-key {
+    width: 1%;
+    white-space: nowrap;
+}
+
+.shortcuts-table kbd {
+    display: inline-block;
+    padding: 2px 8px;
+    font-family: monospace;
+    font-size: 0.85rem;
+    background: var(--neutral-fill-secondary-rest);
+    border: 1px solid var(--neutral-stroke-rest);
+    border-radius: 4px;
+}

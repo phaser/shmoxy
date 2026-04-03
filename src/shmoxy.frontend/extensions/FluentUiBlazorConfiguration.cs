@@ -31,6 +31,7 @@ public static class FluentUiBlazorConfiguration
         services.AddScoped<FrontendSettings>();
         services.AddSingleton<InspectionDataService>();
         services.AddSingleton<ProxyStatusService>();
+        services.AddScoped<KeyboardShortcutService>();
 
         return services;
     }

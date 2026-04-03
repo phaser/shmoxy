@@ -37,6 +37,86 @@ window.downloadFile = function (fileName, mimeType, content) {
     URL.revokeObjectURL(url);
 };
 
+window.keyboardShortcuts = {
+    _dotnetRef: null,
+    _handler: null,
+
+    init: function (dotnetRef) {
+        this._dotnetRef = dotnetRef;
+        var self = this;
+        this._handler = function (e) {
+            if (!self._dotnetRef) return;
+
+            var tag = e.target.tagName;
+            var isInput = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || e.target.isContentEditable;
+
+            if (e.key === '?' && !isInput && !e.ctrlKey && !e.metaKey) {
+                e.preventDefault();
+                self._dotnetRef.invokeMethodAsync('OnShortcut', 'help');
+                return;
+            }
+            if (e.key === '/' && !isInput && !e.ctrlKey && !e.metaKey) {
+                e.preventDefault();
+                self._dotnetRef.invokeMethodAsync('OnShortcut', 'focus-search');
+                return;
+            }
+            if ((e.ctrlKey || e.metaKey) && e.key === 'k' && !e.shiftKey) {
+                e.preventDefault();
+                self._dotnetRef.invokeMethodAsync('OnShortcut', 'clear');
+                return;
+            }
+            if ((e.ctrlKey || e.metaKey) && e.key === 'e' && !e.shiftKey) {
+                e.preventDefault();
+                self._dotnetRef.invokeMethodAsync('OnShortcut', 'toggle-capture');
+                return;
+            }
+            if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'C') {
+                e.preventDefault();
+                self._dotnetRef.invokeMethodAsync('OnShortcut', 'copy-curl');
+                return;
+            }
+            if (e.key === 'Escape' && !isInput) {
+                self._dotnetRef.invokeMethodAsync('OnShortcut', 'close-detail');
+                return;
+            }
+            if (e.key === 'Enter' && !isInput && !e.ctrlKey && !e.metaKey) {
+                e.preventDefault();
+                self._dotnetRef.invokeMethodAsync('OnShortcut', 'open-detail');
+                return;
+            }
+            if (e.key === 'Tab' && !isInput && !e.ctrlKey && !e.metaKey) {
+                e.preventDefault();
+                self._dotnetRef.invokeMethodAsync('OnShortcut', 'switch-tab');
+                return;
+            }
+            if (e.key === 'b' && !isInput && !e.ctrlKey && !e.metaKey) {
+                e.preventDefault();
+                self._dotnetRef.invokeMethodAsync('OnShortcut', 'breakpoint');
+                return;
+            }
+            if (e.key === 'r' && !isInput && !e.ctrlKey && !e.metaKey) {
+                e.preventDefault();
+                self._dotnetRef.invokeMethodAsync('OnShortcut', 'resend');
+                return;
+            }
+        };
+        document.addEventListener('keydown', this._handler);
+    },
+
+    dispose: function () {
+        if (this._handler) {
+            document.removeEventListener('keydown', this._handler);
+            this._handler = null;
+        }
+        this._dotnetRef = null;
+    },
+
+    focusElement: function (selector) {
+        var el = document.querySelector(selector);
+        if (el) el.focus();
+    }
+};
+
 window.inspectionAutoScroll = {
     _listeners: {},
 

@@ -2,8 +2,10 @@
 @inject FrontendSettings FrontendSettings
 @inject NavigationManager NavigationManager
 @inject ApiClient ApiClient
+@inject KeyboardShortcutService KeyboardShortcuts
 @using shmoxy.frontend.services
 @using shmoxy.shared
+@implements IDisposable
 
 <div class="detail-overlay" @onclick="OnClose" @onkeydown="HandleKeyDown" tabindex="0" @ref="overlayRef">
     <div class="detail-panel" @onclick:stopPropagation="true">
@@ -364,6 +366,12 @@
         await HighlightCode();
     }
 
+    protected override void OnInitialized()
+    {
+        KeyboardShortcuts.OnShortcutTriggered += OnGlobalShortcut;
+        KeyboardShortcuts.OnResendRequested += OnResendShortcut;
+    }
+
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (firstRender)
@@ -375,6 +383,26 @@
             catch (JSDisconnectedException) { }
             await HighlightCode();
         }
+    }
+
+    private void OnGlobalShortcut(string action)
+    {
+        if (action == "switch-tab")
+        {
+            InvokeAsync(async () =>
+            {
+                await SetTab(activeTab == "request" ? "response" : "request");
+            });
+        }
+    }
+
+    private void OnResendShortcut()
+    {
+        InvokeAsync(() =>
+        {
+            OpenResendEditor();
+            StateHasChanged();
+        });
     }
 
     private async Task HandleKeyDown(KeyboardEventArgs e)
@@ -642,6 +670,12 @@
         {
             // Silently fail — UI won't show active state
         }
+    }
+
+    public void Dispose()
+    {
+        KeyboardShortcuts.OnShortcutTriggered -= OnGlobalShortcut;
+        KeyboardShortcuts.OnResendRequested -= OnResendShortcut;
     }
 }
 
