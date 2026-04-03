@@ -27,7 +27,7 @@ public class InspectionPageTests
 
         var headers = page.Locator(".inspection-table th");
         var count = await headers.CountAsync();
-        Assert.Equal(6, count);
+        Assert.Equal(7, count);
 
         var headerTexts = new List<string>();
         for (var i = 0; i < count; i++)
@@ -41,7 +41,8 @@ public class InspectionPageTests
         Assert.Equal("Method", headerTexts[2]);
         Assert.Equal("URL", headerTexts[3]);
         Assert.Equal("Status", headerTexts[4]);
-        Assert.Equal("Duration", headerTexts[5]);
+        Assert.Equal("Size", headerTexts[5]);
+        Assert.Equal("Duration", headerTexts[6]);
     }
 
     [Fact]
