@@ -43,6 +43,17 @@ public class ProxyConfig
     public bool ValidateUpstreamCertificates { get; set; }
 
     /// <summary>
+    /// Maximum number of idle connections to keep per upstream host.
+    /// Set to 0 to disable connection pooling (creates a new connection per request).
+    /// </summary>
+    public int ConnectionPoolSizePerHost { get; set; } = 4;
+
+    /// <summary>
+    /// Time in seconds before an idle pooled connection is evicted.
+    /// </summary>
+    public int ConnectionPoolIdleTimeoutSeconds { get; set; } = 60;
+
+    /// <summary>
     /// Logging levels.
     /// </summary>
     public enum LogLevelEnum
