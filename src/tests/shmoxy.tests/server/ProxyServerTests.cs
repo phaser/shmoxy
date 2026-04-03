@@ -317,11 +317,142 @@ public class ProxyServerTests : IClassFixture<ProxyTestFixture>, IDisposable
         Assert.Contains("b=2", setCookieHeaders);
     }
 
+    [Fact]
+    public async Task ReadUntilHeadersCompleteAsync_SingleRead()
+    {
+        var data = "GET / HTTP/1.1\r\nHost: example.com\r\n\r\n"u8.ToArray();
+        using var stream = new MemoryStream(data);
+
+        var result = await ProxyServer.ReadUntilHeadersCompleteAsync(stream);
+
+        Assert.NotNull(result);
+        var text = System.Text.Encoding.Latin1.GetString(result.Value.Buffer, 0, result.Value.BytesRead);
+        Assert.Contains("\r\n\r\n", text);
+        Assert.Contains("Host: example.com", text);
+    }
+
+    [Fact]
+    public async Task ReadUntilHeadersCompleteAsync_SplitAcrossReads()
+    {
+        // Simulate TCP delivering the request in two small segments
+        var fullRequest = "GET / HTTP/1.1\r\nHost: example.com\r\n\r\n"u8.ToArray();
+        var stream = new SlowStream(fullRequest, chunkSize: 10);
+
+        var result = await ProxyServer.ReadUntilHeadersCompleteAsync(stream);
+
+        Assert.NotNull(result);
+        var text = System.Text.Encoding.Latin1.GetString(result.Value.Buffer, 0, result.Value.BytesRead);
+        Assert.Contains("\r\n\r\n", text);
+        Assert.Equal("GET / HTTP/1.1\r\nHost: example.com\r\n\r\n", text);
+    }
+
+    [Fact]
+    public async Task ReadUntilHeadersCompleteAsync_HeadersWithBody()
+    {
+        var data = "POST / HTTP/1.1\r\nHost: example.com\r\nContent-Length: 5\r\n\r\nHello"u8.ToArray();
+        using var stream = new MemoryStream(data);
+
+        var result = await ProxyServer.ReadUntilHeadersCompleteAsync(stream);
+
+        Assert.NotNull(result);
+        var text = System.Text.Encoding.Latin1.GetString(result.Value.Buffer, 0, result.Value.BytesRead);
+        Assert.Contains("\r\n\r\n", text);
+        // May include some or all of the body depending on stream buffering
+    }
+
+    [Fact]
+    public async Task ReadUntilHeadersCompleteAsync_EmptyStream()
+    {
+        using var stream = new MemoryStream(Array.Empty<byte>());
+
+        var result = await ProxyServer.ReadUntilHeadersCompleteAsync(stream);
+
+        Assert.Null(result);
+    }
+
+    [Fact]
+    public async Task ReadUntilHeadersCompleteAsync_StreamClosesBeforeHeaders()
+    {
+        // Data without \r\n\r\n terminator
+        var data = "GET / HTTP/1.1\r\nHost: example.com\r\n"u8.ToArray();
+        using var stream = new MemoryStream(data);
+
+        var result = await ProxyServer.ReadUntilHeadersCompleteAsync(stream);
+
+        // Should return partial data since stream closed
+        Assert.NotNull(result);
+        Assert.Equal(data.Length, result.Value.BytesRead);
+    }
+
+    [Fact]
+    public async Task ReadUntilHeadersCompleteAsync_LargeHeaders()
+    {
+        // Headers larger than the initial 8KB buffer
+        var largeHeader = "X-Large: " + new string('A', 9000);
+        var fullRequest = $"GET / HTTP/1.1\r\n{largeHeader}\r\n\r\n";
+        var data = System.Text.Encoding.Latin1.GetBytes(fullRequest);
+        using var stream = new MemoryStream(data);
+
+        var result = await ProxyServer.ReadUntilHeadersCompleteAsync(stream);
+
+        Assert.NotNull(result);
+        var text = System.Text.Encoding.Latin1.GetString(result.Value.Buffer, 0, result.Value.BytesRead);
+        Assert.Contains("\r\n\r\n", text);
+        Assert.Contains(largeHeader, text);
+    }
+
+    [Fact]
+    public async Task ReadUntilHeadersCompleteAsync_TerminatorSplitAcrossBoundary()
+    {
+        // The \r\n\r\n is split exactly at the chunk boundary
+        var request = "GET / HTTP/1.1\r\nHost: x\r\n\r\n";
+        var data = System.Text.Encoding.Latin1.GetBytes(request);
+        // Chunk size that causes \r\n\r\n to span two reads
+        var splitPoint = request.IndexOf("\r\n\r\n") + 2; // split in the middle of \r\n\r\n
+        var stream = new SlowStream(data, chunkSize: splitPoint);
+
+        var result = await ProxyServer.ReadUntilHeadersCompleteAsync(stream);
+
+        Assert.NotNull(result);
+        var text = System.Text.Encoding.Latin1.GetString(result.Value.Buffer, 0, result.Value.BytesRead);
+        Assert.Contains("\r\n\r\n", text);
+    }
+
     public void Dispose()
     {
         if (_disposed) return;
 
         _httpClient.Dispose();
         _disposed = true;
+    }
+}
+
+/// <summary>
+/// Test helper that delivers data in small chunks to simulate TCP segmentation.
+/// </summary>
+internal class SlowStream : MemoryStream
+{
+    private readonly int _chunkSize;
+
+    public SlowStream(byte[] data, int chunkSize) : base(data)
+    {
+        _chunkSize = chunkSize;
+    }
+
+    public override int Read(byte[] buffer, int offset, int count)
+    {
+        return base.Read(buffer, offset, Math.Min(count, _chunkSize));
+    }
+
+    public override Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken)
+    {
+        return base.ReadAsync(buffer, offset, Math.Min(count, _chunkSize), cancellationToken);
+    }
+
+    public override ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
+    {
+        if (buffer.Length > _chunkSize)
+            buffer = buffer[.._chunkSize];
+        return base.ReadAsync(buffer, cancellationToken);
     }
 }
