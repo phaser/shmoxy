@@ -41,6 +41,7 @@ public class InspectionDataService : IDisposable
     public string MethodFilter { get; set; } = "";
     public string ProtocolFilter { get; set; } = "all";
     public bool ApiOnlyFilter { get; set; }
+    public bool SearchInBodies { get; set; }
     public HashSet<string> SelectedDomains { get; } = new(StringComparer.OrdinalIgnoreCase);
     public bool AllDomainsSelected { get; set; } = true;
 
