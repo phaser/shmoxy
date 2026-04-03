@@ -97,7 +97,8 @@ public class HttpAdminTests : IAsyncLifetime
             _cts.Dispose();
         }
 
-        _server?.Dispose();
+        if (_server != null)
+            await _server.DisposeAsync();
     }
 
     [Fact]

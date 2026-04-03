@@ -61,7 +61,8 @@ public sealed class ProxyTestFixture : IAsyncLifetime
             _cts.Dispose();
         }
 
-        _server?.Dispose();
+        if (_server != null)
+            await _server.DisposeAsync();
     }
 
     /// <summary>

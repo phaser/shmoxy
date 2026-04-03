@@ -41,7 +41,8 @@ public class ResponseInspectionTests : IAsyncLifetime
             await _cts.CancelAsync();
             _cts.Dispose();
         }
-        _server?.Dispose();
+        if (_server != null)
+            await _server.DisposeAsync();
         _inspectionHook?.Dispose();
     }
 
