@@ -36,6 +36,10 @@
                     <FluentIcon Value="@(new Icons.Regular.Size20.Server())" />
                     <span>Proxy</span>
                 </NavLink>
+                <NavLink href="/breakpoints" Match="NavLinkMatch.Prefix" class="nav-item" title="Breakpoints">
+                    <FluentIcon Value="@(new Icons.Regular.Size20.PauseCircle())" />
+                    <span>Breakpoints</span>
+                </NavLink>
                 @if (FrontendSettings.EnableCyberChef)
                 {
                     <NavLink href="/cyberchef" Match="NavLinkMatch.Prefix" class="nav-item" title="CyberChef">

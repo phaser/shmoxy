@@ -1,0 +1,514 @@
+@page "/breakpoints"
+@inject ApiClient ApiClient
+@implements IDisposable
+@using shmoxy.frontend.models
+@using shmoxy.frontend.services
+
+<div class="breakpoints-container">
+    <div class="breakpoints-header">
+        <h2>Breakpoints</h2>
+        <div class="header-actions">
+            <FluentButton Appearance="@(breakpointsEnabled ? Appearance.Accent : Appearance.Outline)"
+                          OnClick="@ToggleBreakpoints">
+                @(breakpointsEnabled ? "Enabled" : "Disabled")
+            </FluentButton>
+        </div>
+    </div>
+
+    <div class="breakpoints-section">
+        <div class="section-header">
+            <h3>Rules</h3>
+        </div>
+
+        <div class="add-rule-form">
+            <FluentSelect TOption="string" @bind-Value="newRuleMethod" Label="Method">
+                <FluentOption TOption="string" Value="@("")">Any</FluentOption>
+                <FluentOption TOption="string" Value="GET">GET</FluentOption>
+                <FluentOption TOption="string" Value="POST">POST</FluentOption>
+                <FluentOption TOption="string" Value="PUT">PUT</FluentOption>
+                <FluentOption TOption="string" Value="DELETE">DELETE</FluentOption>
+                <FluentOption TOption="string" Value="PATCH">PATCH</FluentOption>
+            </FluentSelect>
+            <FluentTextField @bind-Value="newRulePattern" Placeholder="URL pattern (e.g., /api/users)" Label="URL Pattern" />
+            <FluentButton Appearance="Appearance.Accent"
+                          Disabled="@(string.IsNullOrWhiteSpace(newRulePattern))"
+                          OnClick="@AddRule">
+                Add Rule
+            </FluentButton>
+        </div>
+
+        @if (rules.Count == 0)
+        {
+            <div class="empty-state">No breakpoint rules configured. Add a rule above or use the "Break" button in the inspection detail panel.</div>
+        }
+        else
+        {
+            <table class="rules-table">
+                <thead>
+                    <tr>
+                        <th>Method</th>
+                        <th>URL Pattern</th>
+                        <th class="col-actions"></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var rule in rules)
+                    {
+                        <tr>
+                            <td><span class="method-badge">@(rule.Method ?? "Any")</span></td>
+                            <td class="pattern-cell">@rule.UrlPattern</td>
+                            <td>
+                                <button class="delete-button" @onclick="() => DeleteRule(rule.Id)" title="Delete rule">&times;</button>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+    </div>
+
+    <div class="breakpoints-section">
+        <div class="section-header">
+            <h3>Paused Requests</h3>
+            <FluentButton Appearance="Appearance.Stealth" OnClick="@RefreshPaused" title="Refresh">
+                <FluentIcon Value="@(new Icons.Regular.Size16.ArrowSync())" />
+            </FluentButton>
+        </div>
+
+        @if (pausedRequests.Count == 0)
+        {
+            <div class="empty-state">No paused requests. When breakpoint rules match incoming requests, they will appear here.</div>
+        }
+        else
+        {
+            @foreach (var req in pausedRequests)
+            {
+                <div class="paused-request @(expandedRequest == req.CorrelationId ? "expanded" : "")">
+                    <div class="paused-request-header" @onclick="() => ToggleExpand(req.CorrelationId)">
+                        <div class="paused-request-info">
+                            <span class="method-badge method-@req.Method.ToLowerInvariant()">@req.Method</span>
+                            <span class="paused-url" title="@req.Url">@req.Url</span>
+                            <span class="paused-time">@req.PausedAt.ToLocalTime().ToString("HH:mm:ss")</span>
+                        </div>
+                        <div class="paused-request-actions">
+                            <FluentButton Appearance="Appearance.Accent" OnClick="@(() => ReleaseRequest(req))" OnClick:stopPropagation="true">
+                                Forward
+                            </FluentButton>
+                            <FluentButton Appearance="Appearance.Outline" OnClick="@(() => DropRequest(req.CorrelationId))" OnClick:stopPropagation="true">
+                                Drop
+                            </FluentButton>
+                        </div>
+                    </div>
+
+                    @if (expandedRequest == req.CorrelationId)
+                    {
+                        <div class="paused-request-detail">
+                            @if (req.Headers.Count > 0)
+                            {
+                                <h4>Headers</h4>
+                                <table class="headers-table">
+                                    @foreach (var header in req.Headers)
+                                    {
+                                        <tr>
+                                            <td class="header-name">@header.Key</td>
+                                            <td class="header-value">@header.Value</td>
+                                        </tr>
+                                    }
+                                </table>
+                            }
+
+                            @if (!string.IsNullOrEmpty(req.Body))
+                            {
+                                <h4>Body</h4>
+                                <textarea class="body-editor" @bind="editedBodies[req.CorrelationId]" rows="6"></textarea>
+                            }
+                        </div>
+                    }
+                </div>
+            }
+        }
+    </div>
+
+    @if (errorMessage is not null)
+    {
+        <div class="error-message">@errorMessage</div>
+    }
+</div>
+
+@code {
+    private List<BreakpointRuleDto> rules = new();
+    private List<PausedRequestDto> pausedRequests = new();
+    private Dictionary<string, string> editedBodies = new();
+    private bool breakpointsEnabled;
+    private string newRuleMethod = "";
+    private string newRulePattern = "";
+    private string? expandedRequest;
+    private string? errorMessage;
+    private Timer? _pollTimer;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            await RefreshAll();
+            _pollTimer = new Timer(async _ =>
+            {
+                await RefreshPaused();
+                await InvokeAsync(StateHasChanged);
+            }, null, TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(2));
+            StateHasChanged();
+        }
+    }
+
+    private async Task RefreshAll()
+    {
+        try
+        {
+            rules = await ApiClient.GetBreakpointRulesAsync();
+            pausedRequests = await ApiClient.GetPausedRequestsAsync();
+            InitializeEditedBodies();
+            breakpointsEnabled = rules.Count > 0;
+            errorMessage = null;
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Failed to load breakpoint data: {ex.Message}";
+        }
+    }
+
+    private async Task RefreshPaused()
+    {
+        try
+        {
+            pausedRequests = await ApiClient.GetPausedRequestsAsync();
+            InitializeEditedBodies();
+            errorMessage = null;
+        }
+        catch
+        {
+            // Silently fail on poll — avoid spamming errors
+        }
+    }
+
+    private void InitializeEditedBodies()
+    {
+        foreach (var req in pausedRequests)
+        {
+            editedBodies.TryAdd(req.CorrelationId, req.Body ?? "");
+        }
+    }
+
+    private async Task ToggleBreakpoints()
+    {
+        try
+        {
+            if (breakpointsEnabled)
+            {
+                await ApiClient.DisableBreakpointsAsync();
+                breakpointsEnabled = false;
+            }
+            else
+            {
+                await ApiClient.EnableBreakpointsAsync();
+                breakpointsEnabled = true;
+            }
+            errorMessage = null;
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Failed to toggle breakpoints: {ex.Message}";
+        }
+    }
+
+    private async Task AddRule()
+    {
+        if (string.IsNullOrWhiteSpace(newRulePattern)) return;
+
+        try
+        {
+            await ApiClient.AddBreakpointRuleAsync(
+                string.IsNullOrEmpty(newRuleMethod) ? null : newRuleMethod,
+                newRulePattern);
+            newRulePattern = "";
+            newRuleMethod = "";
+            breakpointsEnabled = true;
+            rules = await ApiClient.GetBreakpointRulesAsync();
+            errorMessage = null;
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Failed to add rule: {ex.Message}";
+        }
+    }
+
+    private async Task DeleteRule(string id)
+    {
+        try
+        {
+            await ApiClient.DeleteBreakpointRuleAsync(id);
+            rules = await ApiClient.GetBreakpointRulesAsync();
+            errorMessage = null;
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Failed to delete rule: {ex.Message}";
+        }
+    }
+
+    private async Task ReleaseRequest(PausedRequestDto req)
+    {
+        try
+        {
+            string? modifiedBody = null;
+            if (editedBodies.TryGetValue(req.CorrelationId, out var edited) && edited != req.Body)
+            {
+                modifiedBody = edited;
+            }
+            await ApiClient.ReleaseRequestWithBodyAsync(req.CorrelationId, modifiedBody);
+            editedBodies.Remove(req.CorrelationId);
+            pausedRequests.RemoveAll(r => r.CorrelationId == req.CorrelationId);
+            errorMessage = null;
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Failed to release request: {ex.Message}";
+        }
+    }
+
+    private async Task DropRequest(string correlationId)
+    {
+        try
+        {
+            await ApiClient.DropRequestAsync(correlationId);
+            editedBodies.Remove(correlationId);
+            pausedRequests.RemoveAll(r => r.CorrelationId == correlationId);
+            errorMessage = null;
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Failed to drop request: {ex.Message}";
+        }
+    }
+
+    private void ToggleExpand(string correlationId)
+    {
+        expandedRequest = expandedRequest == correlationId ? null : correlationId;
+    }
+
+    public void Dispose()
+    {
+        _pollTimer?.Dispose();
+    }
+}
+
+<style>
+.breakpoints-container {
+    padding: 1rem 1.5rem;
+    max-width: 900px;
+}
+
+.breakpoints-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1.5rem;
+}
+
+.breakpoints-header h2 {
+    margin: 0;
+    font-size: 1.3rem;
+}
+
+.breakpoints-section {
+    margin-bottom: 2rem;
+}
+
+.section-header {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 0.75rem;
+}
+
+.section-header h3 {
+    margin: 0;
+    font-size: 1rem;
+}
+
+.add-rule-form {
+    display: flex;
+    gap: 0.75rem;
+    align-items: flex-end;
+    margin-bottom: 1rem;
+}
+
+.add-rule-form fluent-text-field {
+    flex: 1;
+}
+
+.empty-state {
+    color: var(--neutral-foreground-hint);
+    font-size: 0.9rem;
+    padding: 1rem 0;
+}
+
+.rules-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.rules-table th,
+.rules-table td {
+    padding: 0.5rem 0.75rem;
+    text-align: left;
+    border-bottom: 1px solid var(--neutral-stroke-divider-rest);
+}
+
+.rules-table th {
+    font-weight: 600;
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    color: var(--neutral-foreground-hint);
+}
+
+.col-actions {
+    width: 3rem;
+}
+
+.pattern-cell {
+    font-family: var(--font-family-monospace, monospace);
+    font-size: 0.85rem;
+}
+
+.method-badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    background: var(--neutral-fill-secondary-rest);
+}
+
+.method-get { color: #61affe; }
+.method-post { color: #49cc90; }
+.method-put { color: #fca130; }
+.method-delete { color: #f93e3e; }
+.method-patch { color: #50e3c2; }
+
+.delete-button {
+    background: transparent;
+    border: none;
+    color: var(--neutral-foreground-hint);
+    cursor: pointer;
+    font-size: 1.2rem;
+    padding: 2px 6px;
+    border-radius: 4px;
+}
+
+.delete-button:hover {
+    background: var(--neutral-fill-hover);
+    color: #f93e3e;
+}
+
+.paused-request {
+    border: 1px solid var(--neutral-stroke-rest);
+    border-radius: 6px;
+    margin-bottom: 0.5rem;
+    overflow: hidden;
+}
+
+.paused-request.expanded {
+    border-color: var(--accent-fill-rest);
+}
+
+.paused-request-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.75rem 1rem;
+    cursor: pointer;
+}
+
+.paused-request-header:hover {
+    background: var(--neutral-fill-hover);
+}
+
+.paused-request-info {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    min-width: 0;
+}
+
+.paused-url {
+    font-family: var(--font-family-monospace, monospace);
+    font-size: 0.85rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.paused-time {
+    color: var(--neutral-foreground-hint);
+    font-size: 0.8rem;
+    white-space: nowrap;
+}
+
+.paused-request-actions {
+    display: flex;
+    gap: 0.5rem;
+    flex-shrink: 0;
+}
+
+.paused-request-detail {
+    padding: 0 1rem 1rem;
+    border-top: 1px solid var(--neutral-stroke-divider-rest);
+}
+
+.paused-request-detail h4 {
+    margin: 0.75rem 0 0.5rem;
+    font-size: 0.85rem;
+    color: var(--neutral-foreground-hint);
+}
+
+.headers-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.85rem;
+}
+
+.headers-table td {
+    padding: 0.25rem 0.5rem;
+    border-bottom: 1px solid var(--neutral-stroke-divider-rest);
+}
+
+.header-name {
+    font-weight: 600;
+    white-space: nowrap;
+    width: 1%;
+}
+
+.header-value {
+    word-break: break-all;
+    font-family: var(--font-family-monospace, monospace);
+}
+
+.body-editor {
+    width: 100%;
+    font-family: var(--font-family-monospace, monospace);
+    font-size: 0.85rem;
+    background: var(--neutral-fill-input-rest);
+    color: var(--neutral-foreground-rest);
+    border: 1px solid var(--neutral-stroke-rest);
+    border-radius: 4px;
+    padding: 0.5rem;
+    resize: vertical;
+}
+
+.error-message {
+    color: #f93e3e;
+    padding: 0.5rem;
+    margin-top: 1rem;
+    font-size: 0.9rem;
+}
+</style>

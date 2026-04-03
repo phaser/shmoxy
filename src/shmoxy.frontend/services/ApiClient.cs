@@ -237,6 +237,35 @@ public class ApiClient(HttpClient httpClient)
         await EnsureSuccessOrThrowWithBody(response);
     }
 
+    public async Task<List<BreakpointRuleDto>> GetBreakpointRulesAsync()
+    {
+        var response = await _httpClient.GetAsync("/api/breakpoints/rules");
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<List<BreakpointRuleDto>>() ?? [];
+    }
+
+    public async Task DeleteBreakpointRuleAsync(string id)
+    {
+        var response = await _httpClient.DeleteAsync($"/api/breakpoints/rules/{id}");
+        await EnsureSuccessOrThrowWithBody(response);
+    }
+
+    public async Task ReleaseRequestWithBodyAsync(string correlationId, string? modifiedBody)
+    {
+        HttpResponseMessage response;
+        if (modifiedBody != null)
+        {
+            response = await _httpClient.PostAsync(
+                $"/api/breakpoints/paused/{correlationId}/release",
+                new StringContent(modifiedBody, System.Text.Encoding.UTF8, "text/plain"));
+        }
+        else
+        {
+            response = await _httpClient.PostAsync($"/api/breakpoints/paused/{correlationId}/release", null);
+        }
+        await EnsureSuccessOrThrowWithBody(response);
+    }
+
     public async IAsyncEnumerable<InspectionEventDto> StreamInspectionEventsAsync(
         string proxyId = "local",
         [EnumeratorCancellation] CancellationToken ct = default)
