@@ -77,6 +77,8 @@ public class ProxyTestFixture : IAsyncLifetime, IDisposable
 
         _cts.Cancel();
         _cts.Dispose();
+        // DisposeAsync is preferred; sync Dispose is kept for xUnit IDisposable contract.
+        // StopAsync is already called in DisposeAsync() above, so just clean up resources here.
         Server.Dispose();
         _disposed = true;
     }

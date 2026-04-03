@@ -79,7 +79,8 @@ public class IpcApiTests : IAsyncLifetime
             _cts.Dispose();
         }
 
-        _server?.Dispose();
+        if (_server != null)
+            await _server.DisposeAsync();
 
         if (!string.IsNullOrEmpty(_socketPath) && File.Exists(_socketPath))
         {

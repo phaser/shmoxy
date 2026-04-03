@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Net.Sockets;
 using System.Security.Authentication;
 using System.Security.Cryptography.X509Certificates;
@@ -16,14 +17,14 @@ namespace shmoxy.server;
 /// <summary>
 /// Core proxy server that handles HTTP/HTTPS requests with TLS termination.
 /// </summary>
-public class ProxyServer : IDisposable
+public class ProxyServer : IAsyncDisposable, IDisposable
 {
     private readonly TcpListener _listener;
     private readonly TlsHandler _tlsHandler;
     private readonly IInterceptHook _interceptor;
     private readonly ProxyConfig _config;
     private readonly ILogger<ProxyServer> _logger;
-    private readonly SemaphoreSlim _connectionSemaphore;
+    private readonly ConcurrentDictionary<Task, byte> _activeConnections = new();
     private CancellationTokenSource? _cts;
     private bool _disposed;
     private volatile bool _isListening;
@@ -102,7 +103,6 @@ public class ProxyServer : IDisposable
         _listener = TcpListener.Create(config.Port);
         _tlsHandler = new TlsHandler(config.CertStoragePath);
         _rootCert = _tlsHandler.GetRootCertificate();
-        _connectionSemaphore = new SemaphoreSlim(config.MaxConcurrentConnections);
 
         _logger.LogInformation("Proxy server initialized on port {Port}", config.Port);
         _logger.LogInformation("Certificate storage: {CertStoragePath}", config.CertStoragePath);
@@ -135,24 +135,9 @@ public class ProxyServer : IDisposable
                 if (clientTask.Status == TaskStatus.RanToCompletion && !combinedCts.Token.IsCancellationRequested)
                 {
                     var client = await clientTask;
-
-                    await _connectionSemaphore.WaitAsync(combinedCts.Token);
-
-                    _ = Task.Run(async () =>
-                    {
-                        try
-                        {
-                            await HandleConnectionAsync(client);
-                        }
-                        catch (Exception ex) when (ex is not OperationCanceledException)
-                        {
-                            _logger.LogError(ex, "Unhandled exception in connection handler");
-                        }
-                        finally
-                        {
-                            _connectionSemaphore.Release();
-                        }
-                    });
+                    var connectionTask = Task.Run(() => HandleConnectionAsync(client));
+                    _activeConnections.TryAdd(connectionTask, 0);
+                    _ = connectionTask.ContinueWith(t => _activeConnections.TryRemove(t, out _), TaskContinuationOptions.ExecuteSynchronously);
                 }
             }
         }
@@ -174,12 +159,23 @@ public class ProxyServer : IDisposable
     /// <summary>
     /// Stops the proxy server.
     /// </summary>
+    /// <summary>
+    /// Timeout for waiting on active connections to complete during shutdown.
+    /// </summary>
+    private static readonly TimeSpan ShutdownTimeout = TimeSpan.FromSeconds(5);
+
     public async Task StopAsync()
     {
         _cts?.Cancel();
         _listener.Stop();
         _isListening = false;
-        await Task.Delay(100); // Allow pending connections to complete
+
+        var activeTasks = _activeConnections.Keys.ToArray();
+        if (activeTasks.Length > 0)
+        {
+            _logger.LogDebug("Waiting for {Count} active connections to complete", activeTasks.Length);
+            await Task.WhenAny(Task.WhenAll(activeTasks), Task.Delay(ShutdownTimeout));
+        }
     }
 
     /// <summary>
@@ -1237,13 +1233,23 @@ public class ProxyServer : IDisposable
         catch (IOException) { }
     }
 
+    public async ValueTask DisposeAsync()
+    {
+        if (_disposed) return;
+
+        await StopAsync();
+        _tlsHandler.Dispose();
+        _disposed = true;
+    }
+
     public void Dispose()
     {
         if (_disposed) return;
 
-        StopAsync().Wait();
+        _cts?.Cancel();
+        _listener.Stop();
+        _isListening = false;
         _tlsHandler.Dispose();
-        _connectionSemaphore.Dispose();
         _disposed = true;
     }
 }
