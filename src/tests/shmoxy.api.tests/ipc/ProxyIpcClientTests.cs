@@ -64,7 +64,7 @@ public class ProxyIpcClientTests
     [Fact]
     public async Task GetConfigAsync_ReturnsConfig()
     {
-        var json = """{"port":8080,"certPath":null,"keyPath":null,"logLevel":1,"maxConcurrentConnections":8,"certStoragePath":"/tmp"}""";
+        var json = """{"port":8080,"certPath":null,"keyPath":null,"logLevel":1,"certStoragePath":"/tmp"}""";
         var client = CreateClientWithResponse(json, HttpStatusCode.OK);
 
         var config = await client.GetConfigAsync();
@@ -77,7 +77,7 @@ public class ProxyIpcClientTests
     public async Task UpdateConfigAsync_SendsConfig()
     {
         var requestConfig = new ProxyConfig { Port = 9090, LogLevel = ProxyConfig.LogLevelEnum.Debug };
-        var responseJson = """{"port":9090,"certPath":null,"keyPath":null,"logLevel":0,"maxConcurrentConnections":8,"certStoragePath":"/tmp"}""";
+        var responseJson = """{"port":9090,"certPath":null,"keyPath":null,"logLevel":0,"certStoragePath":"/tmp"}""";
 
         var capturedRequests = new List<HttpRequestMessage>();
         var handler = new FakeHttpMessageHandler(request =>
