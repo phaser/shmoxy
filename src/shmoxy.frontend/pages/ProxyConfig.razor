@@ -23,8 +23,6 @@
                 <FluentOption TOption="string" Value="Error">Error</FluentOption>
             </FluentSelect>
 
-            <FluentNumberField Label="Max Concurrent Connections" Min="1" TValue="int" @bind-Value="config.MaxConcurrentConnections" />
-
             <FluentTextField Label="Certificate Path (optional)" Placeholder="/path/to/cert.pem" @bind-Value="config.CertPath" />
 
             <FluentTextField Label="Key Path (optional)" Placeholder="/path/to/key.pem" @bind-Value="config.KeyPath" />

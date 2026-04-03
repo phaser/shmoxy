@@ -140,7 +140,6 @@ public class IpcApiTests : IAsyncLifetime
         {
             port = 9999,
             logLevel = 2, // Warn
-            maxConcurrentConnections = 42,
             passthroughHosts = new[] { "example.com", "*.test.com" }
         };
         var content = new StringContent(JsonSerializer.Serialize(newConfig), System.Text.Encoding.UTF8, "application/json");
@@ -154,7 +153,6 @@ public class IpcApiTests : IAsyncLifetime
 
         Assert.Equal(9999, updated.GetProperty("port").GetInt32());
         Assert.Equal(2, updated.GetProperty("logLevel").GetInt32());
-        Assert.Equal(42, updated.GetProperty("maxConcurrentConnections").GetInt32());
 
         var hosts = updated.GetProperty("passthroughHosts").EnumerateArray().Select(e => e.GetString()).ToList();
         Assert.Contains("example.com", hosts);

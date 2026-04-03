@@ -63,8 +63,8 @@ public class ConfigController : ControllerBase
     {
         if (!ValidateConfig(config, out var errorMessage))
         {
-            _logger.LogWarning("Config validation failed for proxy {ProxyId}: {Error}. Config: Port={Port}, LogLevel={LogLevel}, MaxConcurrentConnections={MaxConn}",
-                proxyId, errorMessage, config.Port, config.LogLevel, config.MaxConcurrentConnections);
+            _logger.LogWarning("Config validation failed for proxy {ProxyId}: {Error}. Config: Port={Port}, LogLevel={LogLevel}",
+                proxyId, errorMessage, config.Port, config.LogLevel);
             return BadRequest(new { Message = errorMessage });
         }
 
@@ -167,12 +167,6 @@ public class ConfigController : ControllerBase
         if (config.Port < 1 || config.Port > 65535)
         {
             errorMessage = "Port must be between 1 and 65535";
-            return false;
-        }
-
-        if (config.MaxConcurrentConnections < 1)
-        {
-            errorMessage = "MaxConcurrentConnections must be at least 1";
             return false;
         }
 

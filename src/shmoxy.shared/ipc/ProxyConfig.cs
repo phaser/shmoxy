@@ -13,7 +13,6 @@ public class ProxyConfig
     public string? CertPath { get; set; }
     public string? KeyPath { get; set; }
     public LogLevelEnum LogLevel { get; set; } = LogLevelEnum.Info;
-    public int MaxConcurrentConnections { get; set; } = Environment.ProcessorCount * 4;
 
     /// <summary>
     /// Directory where the root CA certificate is persisted.

@@ -53,7 +53,6 @@ public static class ProxyControlApi
             config.CertPath = newConfig.CertPath;
             config.KeyPath = newConfig.KeyPath;
             config.LogLevel = newConfig.LogLevel;
-            config.MaxConcurrentConnections = newConfig.MaxConcurrentConnections;
             config.PassthroughHosts = newConfig.PassthroughHosts;
 
             // Sync session logging setting

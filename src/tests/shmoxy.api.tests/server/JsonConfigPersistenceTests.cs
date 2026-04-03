@@ -38,7 +38,6 @@ public class JsonConfigPersistenceTests : IDisposable
         {
             Port = 9999,
             LogLevel = ProxyConfig.LogLevelEnum.Warn,
-            MaxConcurrentConnections = 42,
             PassthroughHosts = ["example.com", "*.test.com"]
         };
 
@@ -48,7 +47,6 @@ public class JsonConfigPersistenceTests : IDisposable
         Assert.NotNull(loaded);
         Assert.Equal(9999, loaded.Port);
         Assert.Equal(ProxyConfig.LogLevelEnum.Warn, loaded.LogLevel);
-        Assert.Equal(42, loaded.MaxConcurrentConnections);
         Assert.Equal(["example.com", "*.test.com"], loaded.PassthroughHosts);
     }
 
