@@ -173,11 +173,14 @@ public class ProxyServer : IDisposable
             try
             {
                 var stream = client.GetStream();
-                var buffer = new byte[8192];
 
-                // Read the first request to determine if it's CONNECT or HTTP
-                var bytesRead = await stream.ReadAsync(buffer, 0, buffer.Length);
-                if (bytesRead == 0) return;
+                // Read until the full HTTP headers are received (\r\n\r\n terminator).
+                // A single ReadAsync cannot be relied upon — TCP may deliver data
+                // across multiple segments.
+                var headerResult = await ReadUntilHeadersCompleteAsync(stream);
+                if (headerResult == null) return;
+
+                var (buffer, bytesRead) = headerResult.Value;
 
                 var requestLine = Encoding.Latin1.GetString(buffer, 0, bytesRead).Split('\r')[0];
                 var parts = requestLine.Split(' ');
@@ -648,21 +651,22 @@ public class ProxyServer : IDisposable
     /// </summary>
     private async Task HandleTunnelRequestsAsync(Stream clientStream, string host, int port)
     {
-        var buf = new byte[8192];
-
         // Handle multiple requests on the same connection (HTTP keep-alive)
         while (true)
         {
-            int read;
+            // Read until the full HTTP headers are received (\r\n\r\n terminator).
+            (byte[] buf, int read)? headerResult;
             try
             {
-                read = await clientStream.ReadAsync(buf, 0, buf.Length);
+                headerResult = await ReadUntilHeadersCompleteAsync(clientStream);
             }
             catch (IOException)
             {
                 break;
             }
-            if (read == 0) break;
+            if (headerResult == null) break;
+
+            var (buf, read) = headerResult.Value;
 
             var requestText = Encoding.Latin1.GetString(buf, 0, read);
             var lines = requestText.Split("\r\n");
@@ -870,6 +874,67 @@ public class ProxyServer : IDisposable
         var stream = client.GetStream();
         await stream.WriteAsync(bytes, 0, bytes.Length);
         await stream.FlushAsync();
+    }
+
+    /// <summary>
+    /// Maximum allowed size for HTTP request headers (64 KB).
+    /// Requests with headers exceeding this limit are rejected.
+    /// </summary>
+    private const int MaxHeaderSize = 65536;
+
+    /// <summary>
+    /// Reads from the stream until the complete HTTP headers are received
+    /// (i.e., the \r\n\r\n terminator is found). TCP is a stream protocol and
+    /// a single ReadAsync call may not return the full headers.
+    /// Returns (buffer, totalBytesRead) or null if the stream closed before headers completed.
+    /// </summary>
+    internal static async Task<(byte[] Buffer, int BytesRead)?> ReadUntilHeadersCompleteAsync(Stream stream)
+    {
+        var buffer = new byte[8192];
+        var totalRead = 0;
+
+        while (true)
+        {
+            if (totalRead == buffer.Length)
+            {
+                if (buffer.Length >= MaxHeaderSize)
+                    return null; // Headers too large
+
+                var newBuffer = new byte[Math.Min(buffer.Length * 2, MaxHeaderSize)];
+                Buffer.BlockCopy(buffer, 0, newBuffer, 0, totalRead);
+                buffer = newBuffer;
+            }
+
+            var bytesRead = await stream.ReadAsync(buffer, totalRead, buffer.Length - totalRead);
+            if (bytesRead == 0)
+            {
+                // Stream closed — return what we have if anything was read
+                return totalRead > 0 ? (buffer, totalRead) : null;
+            }
+
+            totalRead += bytesRead;
+
+            // Check if the header terminator \r\n\r\n exists in what we've read so far.
+            // Only need to search the region that could span the boundary of the new data.
+            var searchStart = Math.Max(0, totalRead - bytesRead - 3);
+            if (FindHeaderTerminator(buffer, searchStart, totalRead) >= 0)
+                return (buffer, totalRead);
+        }
+    }
+
+    /// <summary>
+    /// Searches for the \r\n\r\n header terminator in a byte buffer.
+    /// Returns the index of the first \r in the sequence, or -1 if not found.
+    /// </summary>
+    private static int FindHeaderTerminator(byte[] buffer, int start, int end)
+    {
+        for (var i = start; i <= end - 4; i++)
+        {
+            if (buffer[i] == (byte)'\r' && buffer[i + 1] == (byte)'\n' &&
+                buffer[i + 2] == (byte)'\r' && buffer[i + 3] == (byte)'\n')
+                return i;
+        }
+        return -1;
     }
 
     /// <summary>
