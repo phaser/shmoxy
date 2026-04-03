@@ -26,7 +26,8 @@ public class IpcApiTests : IAsyncLifetime
 
         var config = new ProxyConfig { Port = 0, LogLevel = ProxyConfig.LogLevelEnum.Debug };
         _inspectionHook = new InspectionHook();
-        var hookChain = new InterceptHookChain().Add(_inspectionHook);
+        var breakpointHook = new BreakpointHook();
+        var hookChain = new InterceptHookChain().Add(_inspectionHook).Add(breakpointHook);
 
         _server = new ProxyServer(config, hookChain);
         _cts = new CancellationTokenSource();
@@ -41,7 +42,7 @@ public class IpcApiTests : IAsyncLifetime
 
         Console.WriteLine($"Proxy started on port {_server.ListeningPort}");
 
-        var stateService = new ProxyStateService(_server, _inspectionHook);
+        var stateService = new ProxyStateService(_server, _inspectionHook, breakpointHook: breakpointHook);
 
         _ipcHost = ShmoxyHost.CreateIpcHost(stateService, config, _socketPath);
 
