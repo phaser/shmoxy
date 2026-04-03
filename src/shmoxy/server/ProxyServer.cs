@@ -23,6 +23,7 @@ public class ProxyServer : IDisposable
     private readonly IInterceptHook _interceptor;
     private readonly ProxyConfig _config;
     private readonly ILogger<ProxyServer> _logger;
+    private readonly SemaphoreSlim _connectionSemaphore;
     private CancellationTokenSource? _cts;
     private bool _disposed;
     private volatile bool _isListening;
@@ -101,6 +102,7 @@ public class ProxyServer : IDisposable
         _listener = TcpListener.Create(config.Port);
         _tlsHandler = new TlsHandler(config.CertStoragePath);
         _rootCert = _tlsHandler.GetRootCertificate();
+        _connectionSemaphore = new SemaphoreSlim(config.MaxConcurrentConnections);
 
         _logger.LogInformation("Proxy server initialized on port {Port}", config.Port);
         _logger.LogInformation("Certificate storage: {CertStoragePath}", config.CertStoragePath);
@@ -133,7 +135,24 @@ public class ProxyServer : IDisposable
                 if (clientTask.Status == TaskStatus.RanToCompletion && !combinedCts.Token.IsCancellationRequested)
                 {
                     var client = await clientTask;
-                    _ = Task.Run(() => HandleConnectionAsync(client));
+
+                    await _connectionSemaphore.WaitAsync(combinedCts.Token);
+
+                    _ = Task.Run(async () =>
+                    {
+                        try
+                        {
+                            await HandleConnectionAsync(client);
+                        }
+                        catch (Exception ex) when (ex is not OperationCanceledException)
+                        {
+                            _logger.LogError(ex, "Unhandled exception in connection handler");
+                        }
+                        finally
+                        {
+                            _connectionSemaphore.Release();
+                        }
+                    });
                 }
             }
         }
@@ -1160,6 +1179,7 @@ public class ProxyServer : IDisposable
 
         StopAsync().Wait();
         _tlsHandler.Dispose();
+        _connectionSemaphore.Dispose();
         _disposed = true;
     }
 }
