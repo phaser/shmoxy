@@ -30,6 +30,9 @@
             <button class="tab @(activeTab == "request" ? "active" : "")" @onclick='() => SetTab("request")'>Request</button>
             <button class="tab @(activeTab == "response" ? "active" : "")" @onclick='() => SetTab("response")'>Response</button>
             <div class="tab-actions">
+                <button class="copy-curl-button" @onclick="CopyAsCurl" title="Copy as cURL command">
+                    @(_curlCopied ? "Copied!" : "Copy as cURL")
+                </button>
                 <button class="resend-button" @onclick="OpenResendEditor">Resend</button>
                 <button class="break-button @(_breakConfirmed ? "active" : "")" @onclick="OnBreakClick" title="Break on requests matching this URL">
                     @(_breakConfirmed ? "Breaking" : "Break")
@@ -493,6 +496,56 @@
         _ => "unknown"
     };
 
+    private bool _curlCopied;
+
+    private async Task CopyAsCurl()
+    {
+        var curl = GenerateCurlCommand(Row);
+        try
+        {
+            await JS.InvokeVoidAsync("clipboard.copyText", curl);
+            _curlCopied = true;
+            StateHasChanged();
+            await Task.Delay(2000);
+            _curlCopied = false;
+            StateHasChanged();
+        }
+        catch (JSDisconnectedException)
+        {
+            // Circuit disconnected
+        }
+    }
+
+    private static string GenerateCurlCommand(InspectionRow row)
+    {
+        var sb = new System.Text.StringBuilder();
+        sb.Append("curl");
+
+        if (row.Method != "GET")
+        {
+            sb.Append($" -X {row.Method}");
+        }
+
+        sb.Append($" '{EscapeSingleQuote(row.Url)}'");
+
+        foreach (var header in row.RequestHeaders)
+        {
+            sb.Append($" \\\n  -H '{EscapeSingleQuote(header.Key)}: {EscapeSingleQuote(header.Value)}'");
+        }
+
+        if (!string.IsNullOrEmpty(row.RequestBody))
+        {
+            sb.Append($" \\\n  -d '{EscapeSingleQuote(row.RequestBody)}'");
+        }
+
+        return sb.ToString();
+    }
+
+    private static string EscapeSingleQuote(string value)
+    {
+        return value.Replace("'", "'\\''");
+    }
+
     // Resend editor state
     private bool _showResendEditor;
     private string _resendMethod = "GET";
@@ -905,6 +958,20 @@
     margin-left: auto;
     display: flex;
     align-items: center;
+}
+
+.copy-curl-button {
+    background: transparent;
+    color: var(--neutral-foreground-rest);
+    border: 1px solid var(--neutral-stroke-rest);
+    border-radius: 4px;
+    padding: 4px 12px;
+    cursor: pointer;
+    font-size: 0.8rem;
+}
+
+.copy-curl-button:hover {
+    background: var(--neutral-fill-hover);
 }
 
 .resend-button {

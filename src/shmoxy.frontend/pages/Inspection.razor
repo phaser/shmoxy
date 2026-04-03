@@ -107,6 +107,12 @@
                 </FluentButton>
             }
 
+            <FluentButton Appearance="Appearance.Outline"
+                          Disabled="@(InspectionService.GetRows().Count == 0)"
+                          OnClick="@ExportAsHar">
+                Export HAR
+            </FluentButton>
+
             @if (!showSaveDialog)
             {
                 <FluentButton Appearance="Appearance.Outline"
@@ -564,6 +570,16 @@
     {
         showSaveDialog = false;
         sessionName = "";
+    }
+
+    private async Task ExportAsHar()
+    {
+        var rows = InspectionService.GetRows();
+        if (rows.Count == 0) return;
+
+        var har = HarExporter.Export(rows);
+        var fileName = $"shmoxy-export-{DateTime.Now:yyyyMMdd-HHmmss}.har";
+        await JS.InvokeVoidAsync("downloadFile", fileName, "application/json", har);
     }
 
     private async Task SaveSession()

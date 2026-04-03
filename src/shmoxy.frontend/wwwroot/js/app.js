@@ -25,6 +25,18 @@ window.clipboard = {
     }
 };
 
+window.downloadFile = function (fileName, mimeType, content) {
+    var blob = new Blob([content], { type: mimeType });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = fileName;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+};
+
 window.inspectionAutoScroll = {
     _listeners: {},
 
