@@ -34,6 +34,11 @@
             API only
         </label>
 
+        <label class="api-filter-toggle">
+            <input type="checkbox" @bind="InspectionService.SearchInBodies" @bind:after="ApplyFilters" />
+            Search in bodies
+        </label>
+
         <div class="domain-filter-container">
             <button class="domain-filter-button" @onclick="ToggleDomainDropdown" @onclick:stopPropagation="true">
                 @if (InspectionService.AllDomainsSelected)
@@ -327,10 +332,7 @@
         }
 
         filteredRows = rows
-            .Where(r =>
-                string.IsNullOrEmpty(InspectionService.SearchQuery) ||
-                r.Url.Contains(InspectionService.SearchQuery, StringComparison.OrdinalIgnoreCase) ||
-                r.Method.Contains(InspectionService.SearchQuery, StringComparison.OrdinalIgnoreCase))
+            .Where(r => MatchesSearch(r, InspectionService.SearchQuery, InspectionService.SearchInBodies))
             .Where(r =>
                 string.IsNullOrEmpty(InspectionService.MethodFilter) || r.Method == InspectionService.MethodFilter)
             .Where(r =>
@@ -354,6 +356,35 @@
             return uri.Host;
         }
         return null;
+    }
+
+    private static bool MatchesSearch(InspectionRow row, string query, bool searchInBodies)
+    {
+        if (string.IsNullOrEmpty(query)) return true;
+
+        if (row.Url.Contains(query, StringComparison.OrdinalIgnoreCase) ||
+            row.Method.Contains(query, StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        if (searchInBodies)
+        {
+            if (row.RequestBody?.Contains(query, StringComparison.OrdinalIgnoreCase) == true)
+                return true;
+            if (row.ResponseBody?.Contains(query, StringComparison.OrdinalIgnoreCase) == true)
+                return true;
+            if (row.RequestHeaders.Any(h =>
+                    h.Key.Contains(query, StringComparison.OrdinalIgnoreCase) ||
+                    h.Value.Contains(query, StringComparison.OrdinalIgnoreCase)))
+                return true;
+            if (row.ResponseHeaders.Any(h =>
+                    h.Key.Contains(query, StringComparison.OrdinalIgnoreCase) ||
+                    h.Value.Contains(query, StringComparison.OrdinalIgnoreCase)))
+                return true;
+        }
+
+        return false;
     }
 
     private void SelectRow(InspectionRow row)
