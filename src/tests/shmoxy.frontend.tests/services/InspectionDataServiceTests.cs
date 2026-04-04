@@ -998,6 +998,12 @@ public class InspectionDataServiceTests
         Assert.Null(row.Timing);
     }
 
+    [Fact]
+    public void MaxRows_Is10000()
+    {
+        Assert.Equal(10_000, InspectionDataService.MaxRows);
+    }
+
     private class TestHostApplicationLifetime : IHostApplicationLifetime
     {
         private readonly CancellationTokenSource _stoppingCts = new();

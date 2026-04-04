@@ -26,7 +26,7 @@ public class InspectionDataService : IDisposable
     private int _nextId = 1;
     private bool _disposed;
 
-    public const int MaxRows = 1000;
+    public const int MaxRows = 10_000;
     private const int MaxRetries = 5;
     private const int InitialDelaySeconds = 1;
     private const int MaxDelaySeconds = 30;
