@@ -439,6 +439,20 @@ public class ProxyServerTests : IClassFixture<ProxyTestFixture>, IDisposable
     }
 
     [Fact]
+    public async Task ReadUntilHeadersCompleteAsync_ExceedingMaxSizeReturnsNullWithoutLogger()
+    {
+        // Same oversized headers but without a logger — exercises the null-conditional path
+        var hugeHeader = "X-Huge: " + new string('A', 70000);
+        var fullRequest = $"GET / HTTP/1.1\r\n{hugeHeader}\r\n\r\n";
+        var data = System.Text.Encoding.Latin1.GetBytes(fullRequest);
+        using var stream = new MemoryStream(data);
+
+        var result = await ProxyServer.ReadUntilHeadersCompleteAsync(stream);
+
+        Assert.Null(result);
+    }
+
+    [Fact]
     public void FindHeaderEndIndex_FindsSeparator()
     {
         var data = "HTTP/1.1 200 OK\r\nContent-Length: 4\r\n\r\nBody"u8.ToArray();
@@ -520,6 +534,65 @@ public class ProxyServerTests : IClassFixture<ProxyTestFixture>, IDisposable
         Assert.Equal(expected, ProxyServer.IsCachingHeader(headerName));
     }
 
+    [Fact]
+    public void DisableCaching_StripsHeadersAndInjectsNoCache()
+    {
+        // Simulate the exact header-building logic from ProxyServer.HandleHttpRequestAsync
+        var headers = new List<KeyValuePair<string, string>>
+        {
+            new("Host", "example.com"),
+            new("Accept", "text/html"),
+            new("If-Modified-Since", "Thu, 01 Jan 2026 00:00:00 GMT"),
+            new("If-None-Match", "\"abc123\""),
+            new("Cache-Control", "max-age=0"),
+            new("User-Agent", "TestClient"),
+            new("Connection", "keep-alive"),
+            new("Content-Length", "0"),
+            new("If-Match", "\"xyz\""),
+            new("If-Unmodified-Since", "Thu, 01 Jan 2026 00:00:00 GMT"),
+        };
+
+        var disableCaching = true;
+
+        // This reproduces the LINQ chain from ProxyServer lines 614-622
+        var outgoing = new System.Text.StringBuilder();
+        foreach (var header in headers
+            .Where(h => !h.Key.Equals("Host", StringComparison.OrdinalIgnoreCase)
+                     && !h.Key.Equals("Connection", StringComparison.OrdinalIgnoreCase)
+                     && !h.Key.Equals("Proxy-Connection", StringComparison.OrdinalIgnoreCase)
+                     && !h.Key.Equals("Content-Length", StringComparison.OrdinalIgnoreCase)
+                     && !(disableCaching && ProxyServer.IsCachingHeader(h.Key))))
+        {
+            outgoing.Append($"{header.Key}: {header.Value}\r\n");
+        }
+
+        if (disableCaching)
+            outgoing.Append("Cache-Control: no-cache\r\n");
+
+        var result = outgoing.ToString();
+
+        // Caching headers must be stripped
+        Assert.DoesNotContain("If-Modified-Since", result);
+        Assert.DoesNotContain("If-None-Match", result);
+        Assert.DoesNotContain("max-age=0", result);
+        Assert.DoesNotContain("If-Match", result);
+        Assert.DoesNotContain("If-Unmodified-Since", result);
+
+        // Non-caching headers preserved
+        Assert.Contains("Accept: text/html", result);
+        Assert.Contains("User-Agent: TestClient", result);
+
+        // Injected Cache-Control: no-cache present exactly once
+        Assert.Contains("Cache-Control: no-cache", result);
+        var cacheControlCount = result.Split("Cache-Control").Length - 1;
+        Assert.Equal(1, cacheControlCount);
+
+        // Excluded headers (Host, Connection, Content-Length) must not appear
+        Assert.DoesNotContain("Host:", result);
+        Assert.DoesNotContain("Connection:", result);
+        Assert.DoesNotContain("Content-Length:", result);
+    }
+
     public void Dispose()
     {
         if (_disposed) return;
@@ -530,7 +603,7 @@ public class ProxyServerTests : IClassFixture<ProxyTestFixture>, IDisposable
 }
 
 /// <summary>
-/// Test helper that delivers data in small chunks to simulate TCP segmentation.
+/// Minimal ILogger implementation that captures log entries for test assertions.
 /// </summary>
 internal sealed class CapturingLogger : ILogger
 {
@@ -546,6 +619,9 @@ internal sealed class CapturingLogger : ILogger
     }
 }
 
+/// <summary>
+/// Test helper that delivers data in small chunks to simulate TCP segmentation.
+/// </summary>
 internal class SlowStream : MemoryStream
 {
     private readonly int _chunkSize;

@@ -31,8 +31,8 @@
                 @(config.SessionLoggingEnabled ? "Enabled" : "Disabled")
             </FluentSwitch>
 
-            <FluentSwitch @bind-Value="config.DisableCaching" Label="Disable Caching">
-                @(config.DisableCaching ? "Enabled" : "Disabled")
+            <FluentSwitch @bind-Value="config.DisableCaching" Label="Caching">
+                @(config.DisableCaching ? "Disabled" : "Enabled")
             </FluentSwitch>
         </div>
 
