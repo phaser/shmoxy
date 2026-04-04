@@ -43,6 +43,13 @@ public class ProxyConfig
     public bool ValidateUpstreamCertificates { get; set; }
 
     /// <summary>
+    /// When enabled, strips caching-related headers from outgoing requests
+    /// (If-Modified-Since, If-None-Match) and replaces Cache-Control with no-cache
+    /// to force fresh responses from upstream servers.
+    /// </summary>
+    public bool DisableCaching { get; set; }
+
+    /// <summary>
     /// Maximum number of idle connections to keep per upstream host.
     /// Set to 0 to disable connection pooling (creates a new connection per request).
     /// </summary>

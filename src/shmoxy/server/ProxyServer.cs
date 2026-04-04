@@ -615,10 +615,14 @@ public class ProxyServer : IAsyncDisposable, IDisposable
                 .Where(h => !h.Key.Equals("Host", StringComparison.OrdinalIgnoreCase)
                          && !h.Key.Equals("Connection", StringComparison.OrdinalIgnoreCase)
                          && !h.Key.Equals("Proxy-Connection", StringComparison.OrdinalIgnoreCase)
-                         && !h.Key.Equals("Content-Length", StringComparison.OrdinalIgnoreCase)))
+                         && !h.Key.Equals("Content-Length", StringComparison.OrdinalIgnoreCase)
+                         && !(_config.DisableCaching && IsCachingHeader(h.Key))))
             {
                 outgoing.Append($"{header.Key}: {header.Value}\r\n");
             }
+
+            if (_config.DisableCaching)
+                outgoing.Append("Cache-Control: no-cache\r\n");
 
             var useKeepAlive = pooledConn != null;
             outgoing.Append(useKeepAlive ? "Connection: keep-alive\r\n" : "Connection: close\r\n");
@@ -855,10 +859,14 @@ public class ProxyServer : IAsyncDisposable, IDisposable
                         .Where(h => !h.Key.Equals("Host", StringComparison.OrdinalIgnoreCase)
                                  && !h.Key.Equals("Connection", StringComparison.OrdinalIgnoreCase)
                                  && !h.Key.Equals("Proxy-Connection", StringComparison.OrdinalIgnoreCase)
-                                 && !h.Key.Equals("Content-Length", StringComparison.OrdinalIgnoreCase)))
+                                 && !h.Key.Equals("Content-Length", StringComparison.OrdinalIgnoreCase)
+                                 && !(_config.DisableCaching && IsCachingHeader(h.Key))))
                     {
                         outgoing.Append($"{header.Key}: {header.Value}\r\n");
                     }
+
+                    if (_config.DisableCaching)
+                        outgoing.Append("Cache-Control: no-cache\r\n");
 
                     outgoing.Append(useKeepAlive ? "Connection: keep-alive\r\n" : "Connection: close\r\n");
 
@@ -1235,6 +1243,17 @@ public class ProxyServer : IAsyncDisposable, IDisposable
             && data[end - 2] == '\r'
             && data[end - 1] == '\n';
     }
+
+    /// <summary>
+    /// Checks whether the given header name is a caching-related header that should be
+    /// stripped when the DisableCaching option is enabled.
+    /// </summary>
+    internal static bool IsCachingHeader(string headerName) =>
+        headerName.Equals("If-Modified-Since", StringComparison.OrdinalIgnoreCase)
+        || headerName.Equals("If-None-Match", StringComparison.OrdinalIgnoreCase)
+        || headerName.Equals("Cache-Control", StringComparison.OrdinalIgnoreCase)
+        || headerName.Equals("If-Match", StringComparison.OrdinalIgnoreCase)
+        || headerName.Equals("If-Unmodified-Since", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
     /// Checks whether the response indicates the server will keep the connection open.

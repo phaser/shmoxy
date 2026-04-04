@@ -504,6 +504,22 @@ public class ProxyServerTests : IClassFixture<ProxyTestFixture>, IDisposable
         Assert.False(ProxyServer.IsKeepAliveResponse(data));
     }
 
+    [Theory]
+    [InlineData("If-Modified-Since", true)]
+    [InlineData("If-None-Match", true)]
+    [InlineData("Cache-Control", true)]
+    [InlineData("If-Match", true)]
+    [InlineData("If-Unmodified-Since", true)]
+    [InlineData("if-modified-since", true)]
+    [InlineData("CACHE-CONTROL", true)]
+    [InlineData("Host", false)]
+    [InlineData("Content-Type", false)]
+    [InlineData("Authorization", false)]
+    public void IsCachingHeader_IdentifiesCachingHeaders(string headerName, bool expected)
+    {
+        Assert.Equal(expected, ProxyServer.IsCachingHeader(headerName));
+    }
+
     public void Dispose()
     {
         if (_disposed) return;
