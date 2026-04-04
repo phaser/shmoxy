@@ -27,6 +27,19 @@ public class InspectionFilterTests
     [InlineData(301, "errors", false)]
     [InlineData(null, "2xx", false)]
     [InlineData(null, "errors", false)]
+    // Edge cases: informational and boundary status codes
+    [InlineData(100, "all", true)]
+    [InlineData(100, "2xx", false)]
+    [InlineData(100, "errors", false)]
+    [InlineData(199, "2xx", false)]
+    [InlineData(599, "5xx", true)]
+    // Non-standard codes above 599 are treated as 5xx (>= 500, no upper bound)
+    [InlineData(600, "5xx", true)]
+    [InlineData(999, "5xx", true)]
+    [InlineData(600, "errors", true)]
+    // Unknown/empty filter returns all
+    [InlineData(200, "unknown", true)]
+    [InlineData(null, "unknown", true)]
     public void MatchesStatusCodeFilter_FiltersCorrectly(int? statusCode, string filter, bool expected)
     {
         Assert.Equal(expected, Inspection.MatchesStatusCodeFilter(statusCode, filter));

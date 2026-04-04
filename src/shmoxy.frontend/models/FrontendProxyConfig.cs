@@ -11,6 +11,8 @@ public class FrontendProxyConfig
     public bool SessionLoggingEnabled { get; set; }
     public bool ValidateUpstreamCertificates { get; set; }
     public bool DisableCaching { get; set; }
+    public int ConnectionPoolSizePerHost { get; set; } = 4;
+    public int ConnectionPoolIdleTimeoutSeconds { get; set; } = 60;
 
     public static FrontendProxyConfig Default => new();
 }
