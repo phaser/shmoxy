@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using shmoxy.models.dto;
 using shmoxy.server.hooks;
 
@@ -366,5 +367,152 @@ public class BreakpointHookTests
 
         Assert.NotEqual(rule1.Id, rule2.Id);
         Assert.Equal(2, hook.GetRules().Count);
+    }
+
+    [Fact]
+    public async Task OnRequestAsync_RegexRule_MatchesPattern()
+    {
+        var hook = new BreakpointHook { Enabled = true, TimeoutMs = 5000 };
+        hook.AddRule(null, @"^http://example\.com/api/v2/", isRegex: true);
+
+        // Should match — URL starts with /api/v2/
+        var matchRequest = new InterceptedRequest
+        {
+            Method = "GET",
+            Url = new Uri("http://example.com/api/v2/users"),
+            CorrelationId = "regex-match"
+        };
+
+        var pauseTask = hook.OnRequestAsync(matchRequest);
+        await Task.Delay(50);
+        Assert.False(pauseTask.IsCompleted);
+        hook.Release("regex-match");
+        await pauseTask;
+
+        // Should NOT match — /api/v2/ is not at the start
+        var noMatchRequest = new InterceptedRequest
+        {
+            Method = "GET",
+            Url = new Uri("http://example.com/docs/api/v2/guide"),
+            CorrelationId = "regex-nomatch"
+        };
+
+        var result = await hook.OnRequestAsync(noMatchRequest);
+        Assert.Same(noMatchRequest, result);
+    }
+
+    [Fact]
+    public async Task OnRequestAsync_RegexRule_CaseInsensitive()
+    {
+        var hook = new BreakpointHook { Enabled = true, TimeoutMs = 5000 };
+        hook.AddRule(null, "/api/users", isRegex: true);
+
+        var request = new InterceptedRequest
+        {
+            Method = "GET",
+            Url = new Uri("http://example.com/API/USERS/123"),
+            CorrelationId = "regex-case"
+        };
+
+        var pauseTask = hook.OnRequestAsync(request);
+        await Task.Delay(50);
+        Assert.False(pauseTask.IsCompleted);
+
+        hook.Release("regex-case");
+        await pauseTask;
+    }
+
+    [Fact]
+    public async Task OnRequestAsync_RegexRule_WithAlternation()
+    {
+        var hook = new BreakpointHook { Enabled = true, TimeoutMs = 5000 };
+        hook.AddRule(null, @"/users/(create|update)", isRegex: true);
+
+        var createRequest = new InterceptedRequest
+        {
+            Method = "POST",
+            Url = new Uri("http://example.com/users/create"),
+            CorrelationId = "regex-alt-create"
+        };
+
+        var pauseTask = hook.OnRequestAsync(createRequest);
+        await Task.Delay(50);
+        Assert.False(pauseTask.IsCompleted);
+        hook.Release("regex-alt-create");
+        await pauseTask;
+
+        var updateRequest = new InterceptedRequest
+        {
+            Method = "PUT",
+            Url = new Uri("http://example.com/users/update"),
+            CorrelationId = "regex-alt-update"
+        };
+
+        var pauseTask2 = hook.OnRequestAsync(updateRequest);
+        await Task.Delay(50);
+        Assert.False(pauseTask2.IsCompleted);
+        hook.Release("regex-alt-update");
+        await pauseTask2;
+
+        // Should NOT match /users/delete
+        var deleteRequest = new InterceptedRequest
+        {
+            Method = "DELETE",
+            Url = new Uri("http://example.com/users/delete"),
+            CorrelationId = "regex-alt-nomatch"
+        };
+
+        var result = await hook.OnRequestAsync(deleteRequest);
+        Assert.Same(deleteRequest, result);
+    }
+
+    [Fact]
+    public void OnRequestAsync_InvalidRegex_ThrowsArgumentException()
+    {
+        var hook = new BreakpointHook();
+
+        // RegexParseException inherits from ArgumentException
+        Assert.ThrowsAny<ArgumentException>(() => hook.AddRule(null, "[invalid(", isRegex: true));
+    }
+
+    [Fact]
+    public async Task OnRequestAsync_RegexTimeout_DoesNotHang()
+    {
+        var hook = new BreakpointHook { Enabled = true, TimeoutMs = 5000 };
+        // Catastrophic backtracking pattern with a short timeout (inherited from the 1s default)
+        hook.AddRule(null, @"(a+)+$", isRegex: true);
+
+        // Long string of 'a's + 'b' triggers catastrophic backtracking
+        var evilInput = new string('a', 30) + "b";
+        var request = new InterceptedRequest
+        {
+            Method = "GET",
+            Url = new Uri($"http://example.com/{evilInput}"),
+            CorrelationId = "regex-timeout"
+        };
+
+        // Should NOT hang — the RegexMatchTimeoutException should be caught and treated as non-match
+        var result = await hook.OnRequestAsync(request);
+        Assert.Same(request, result);
+    }
+
+    [Fact]
+    public void AddRule_IsRegex_CompilesPattern()
+    {
+        var hook = new BreakpointHook();
+        var rule = hook.AddRule("GET", @"^/api/v\d+/", isRegex: true);
+
+        Assert.True(rule.IsRegex);
+        Assert.NotNull(rule.CompiledRegex);
+    }
+
+    [Fact]
+    public void AddRule_NotRegex_CompiledRegexIsNull()
+    {
+        var hook = new BreakpointHook();
+        var rule = hook.AddRule("GET", "/api/users");
+
+        Assert.False(rule.IsRegex);
+        Assert.Null(rule.CompiledRegex);
     }
 }

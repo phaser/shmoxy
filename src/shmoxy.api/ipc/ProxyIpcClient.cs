@@ -272,12 +272,12 @@ public class ProxyIpcClient : IProxyIpcClient, IDisposable
         return await response.Content.ReadAsStringAsync(cts.Token);
     }
 
-    public async Task<string> AddBreakpointRuleAsync(string? method, string urlPattern, CancellationToken ct = default)
+    public async Task<string> AddBreakpointRuleAsync(string? method, string urlPattern, bool isRegex = false, CancellationToken ct = default)
     {
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
         cts.CancelAfter(IpcTimeouts.Small);
         var body = new StringContent(
-            System.Text.Json.JsonSerializer.Serialize(new { method, urlPattern }),
+            System.Text.Json.JsonSerializer.Serialize(new { method, urlPattern, isRegex }),
             System.Text.Encoding.UTF8, "application/json");
         var response = await _httpClient.PostAsync("/ipc/breakpoints/rules", body, cts.Token);
         response.EnsureSuccessStatusCode();

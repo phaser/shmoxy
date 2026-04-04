@@ -78,7 +78,7 @@ public class BreakpointsController : ControllerBase
     public async Task<ActionResult> AddRule([FromBody] AddBreakpointRuleRequest request, CancellationToken ct)
     {
         var client = _processManager.GetIpcClient();
-        var json = await client.AddBreakpointRuleAsync(request.Method, request.UrlPattern, ct);
+        var json = await client.AddBreakpointRuleAsync(request.Method, request.UrlPattern, request.IsRegex, ct);
         return Content(json, "application/json");
     }
 
@@ -95,4 +95,5 @@ public class AddBreakpointRuleRequest
 {
     public string? Method { get; set; }
     public string UrlPattern { get; set; } = string.Empty;
+    public bool IsRegex { get; set; }
 }

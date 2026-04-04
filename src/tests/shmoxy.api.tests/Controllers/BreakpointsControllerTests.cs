@@ -151,7 +151,7 @@ public class BreakpointsControllerTests
     public async Task AddRule_CallsIpcClient_ReturnsJsonContent()
     {
         var ruleJson = "{\"id\":\"rule-new\",\"method\":\"POST\",\"urlPattern\":\"/api/test\"}";
-        _mockIpcClient.Setup(m => m.AddBreakpointRuleAsync("POST", "/api/test", It.IsAny<CancellationToken>()))
+        _mockIpcClient.Setup(m => m.AddBreakpointRuleAsync("POST", "/api/test", false, It.IsAny<CancellationToken>()))
             .ReturnsAsync(ruleJson);
 
         var request = new AddBreakpointRuleRequest { Method = "POST", UrlPattern = "/api/test" };
@@ -167,7 +167,7 @@ public class BreakpointsControllerTests
     public async Task AddRule_WithNullMethod_CallsIpcClient()
     {
         var ruleJson = "{\"id\":\"rule-2\",\"method\":null,\"urlPattern\":\"/api\"}";
-        _mockIpcClient.Setup(m => m.AddBreakpointRuleAsync(null, "/api", It.IsAny<CancellationToken>()))
+        _mockIpcClient.Setup(m => m.AddBreakpointRuleAsync(null, "/api", false, It.IsAny<CancellationToken>()))
             .ReturnsAsync(ruleJson);
 
         var request = new AddBreakpointRuleRequest { Method = null, UrlPattern = "/api" };

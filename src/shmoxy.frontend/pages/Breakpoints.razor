@@ -30,6 +30,7 @@
                 <FluentOption TOption="string" Value="PATCH">PATCH</FluentOption>
             </FluentSelect>
             <FluentTextField @bind-Value="newRulePattern" Placeholder="URL pattern (e.g., /api/users)" Label="URL Pattern" />
+            <FluentCheckbox @bind-Value="newRuleIsRegex" Label="Regex" />
             <FluentButton Appearance="Appearance.Accent"
                           Disabled="@(string.IsNullOrWhiteSpace(newRulePattern))"
                           OnClick="@AddRule">
@@ -56,7 +57,10 @@
                     {
                         <tr>
                             <td><span class="method-badge">@(rule.Method ?? "Any")</span></td>
-                            <td class="pattern-cell">@rule.UrlPattern</td>
+                            <td class="pattern-cell">
+                                @if (rule.IsRegex) { <span class="regex-badge">regex</span> }
+                                @rule.UrlPattern
+                            </td>
                             <td>
                                 <button class="delete-button" @onclick="() => DeleteRule(rule.Id)" title="Delete rule">&times;</button>
                             </td>
@@ -142,6 +146,7 @@
     private bool breakpointsEnabled;
     private string newRuleMethod = "";
     private string newRulePattern = "";
+    private bool newRuleIsRegex;
     private string? expandedRequest;
     private string? errorMessage;
     private Timer? _pollTimer;
@@ -228,9 +233,11 @@
         {
             await ApiClient.AddBreakpointRuleAsync(
                 string.IsNullOrEmpty(newRuleMethod) ? null : newRuleMethod,
-                newRulePattern);
+                newRulePattern,
+                newRuleIsRegex);
             newRulePattern = "";
             newRuleMethod = "";
+            newRuleIsRegex = false;
             breakpointsEnabled = true;
             rules = await ApiClient.GetBreakpointRulesAsync();
             errorMessage = null;
@@ -378,6 +385,17 @@
 .pattern-cell {
     font-family: var(--font-family-monospace, monospace);
     font-size: 0.85rem;
+}
+
+.regex-badge {
+    display: inline-block;
+    font-size: 0.7rem;
+    font-family: monospace;
+    color: var(--neutral-foreground-hint);
+    background: rgba(156, 39, 176, 0.15);
+    padding: 1px 6px;
+    border-radius: 3px;
+    margin-right: 6px;
 }
 
 .method-badge {

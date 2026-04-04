@@ -296,7 +296,8 @@ public static class ProxyControlApi
             var method = body.TryGetProperty("method", out var m) ? m.GetString() : null;
             var urlPattern = body.TryGetProperty("urlPattern", out var u) ? u.GetString() ?? "" : "";
 
-            var rule = stateService.BreakpointHook.AddRule(method, urlPattern);
+            var isRegex = body.TryGetProperty("isRegex", out var r) && r.GetBoolean();
+            var rule = stateService.BreakpointHook.AddRule(method, urlPattern, isRegex);
             return Results.Json(rule);
         });
 
