@@ -23,6 +23,7 @@ public static class WebSocketFrameReader
             throw new InvalidOperationException("Unexpected end of stream reading frame header");
 
         bool fin = (header[0] & 0x80) != 0;
+        bool rsv1 = (header[0] & 0x40) != 0;
         var opcode = (WebSocketOpcode)(header[0] & 0x0F);
         bool masked = (header[1] & 0x80) != 0;
         ulong payloadLength = (ulong)(header[1] & 0x7F);
@@ -64,6 +65,7 @@ public static class WebSocketFrameReader
         return new WebSocketFrame
         {
             Fin = fin,
+            Rsv1 = rsv1,
             Opcode = opcode,
             Payload = payload,
             IsMasked = masked
@@ -77,7 +79,7 @@ public static class WebSocketFrameReader
     /// </summary>
     public static async Task WriteFrameAsync(Stream stream, WebSocketFrame frame, CancellationToken ct, bool mask = false)
     {
-        byte firstByte = (byte)((frame.Fin ? 0x80 : 0x00) | (byte)frame.Opcode);
+        byte firstByte = (byte)((frame.Fin ? 0x80 : 0x00) | (frame.Rsv1 ? 0x40 : 0x00) | (byte)frame.Opcode);
         await stream.WriteAsync(new[] { firstByte }, ct);
 
         int length = frame.Payload.Length;

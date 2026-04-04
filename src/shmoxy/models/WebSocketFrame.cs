@@ -6,6 +6,7 @@ namespace shmoxy.models;
 public record WebSocketFrame
 {
     public bool Fin { get; init; }
+    public bool Rsv1 { get; init; }
     public WebSocketOpcode Opcode { get; init; }
     public byte[] Payload { get; init; } = Array.Empty<byte>();
     public bool IsMasked { get; init; }

@@ -24,6 +24,7 @@ public class WebSocketFrameReaderTests
         // Assert
         Assert.NotNull(frame);
         Assert.True(frame.Fin);
+        Assert.False(frame.Rsv1);
         Assert.Equal(WebSocketOpcode.Text, frame.Opcode);
         Assert.False(frame.IsMasked);
         Assert.Equal(payload, frame.Payload);
@@ -332,5 +333,81 @@ public class WebSocketFrameReaderTests
         var roundTripped = await WebSocketFrameReader.ReadFrameAsync(stream, CancellationToken.None);
         Assert.NotNull(roundTripped);
         Assert.Equal(payload, roundTripped.Payload);
+    }
+
+    [Fact]
+    public async Task ReadFrame_ParsesFrameWithRsv1Bit()
+    {
+        // Arrange: FIN=1, RSV1=1, opcode=Text(1), unmasked, payload="compressed"
+        var payload = "compressed"u8.ToArray();
+        var frameBytes = new byte[2 + payload.Length];
+        frameBytes[0] = 0xC1; // FIN(0x80) | RSV1(0x40) | Text(0x01)
+        frameBytes[1] = (byte)payload.Length;
+        Array.Copy(payload, 0, frameBytes, 2, payload.Length);
+
+        using var stream = new MemoryStream(frameBytes);
+
+        // Act
+        var frame = await WebSocketFrameReader.ReadFrameAsync(stream, CancellationToken.None);
+
+        // Assert
+        Assert.NotNull(frame);
+        Assert.True(frame.Fin);
+        Assert.True(frame.Rsv1);
+        Assert.Equal(WebSocketOpcode.Text, frame.Opcode);
+        Assert.Equal(payload, frame.Payload);
+    }
+
+    [Fact]
+    public async Task ReadFrame_NoRsv1_DefaultsFalse()
+    {
+        // Arrange: FIN=1, RSV1=0, opcode=Text(1) — standard non-compressed frame
+        var payload = "hello"u8.ToArray();
+        var frameBytes = new byte[2 + payload.Length];
+        frameBytes[0] = 0x81; // FIN | Text (no RSV1)
+        frameBytes[1] = (byte)payload.Length;
+        Array.Copy(payload, 0, frameBytes, 2, payload.Length);
+
+        using var stream = new MemoryStream(frameBytes);
+
+        // Act
+        var frame = await WebSocketFrameReader.ReadFrameAsync(stream, CancellationToken.None);
+
+        // Assert
+        Assert.NotNull(frame);
+        Assert.False(frame.Rsv1);
+    }
+
+    [Fact]
+    public async Task WriteFrame_WithRsv1_PreservesBit()
+    {
+        // Arrange: frame with RSV1 set
+        var original = new WebSocketFrame
+        {
+            Fin = true,
+            Rsv1 = true,
+            Opcode = WebSocketOpcode.Text,
+            Payload = "test data"u8.ToArray(),
+            IsMasked = false
+        };
+
+        using var stream = new MemoryStream();
+
+        // Act: write then read back
+        await WebSocketFrameReader.WriteFrameAsync(stream, original, CancellationToken.None);
+        stream.Position = 0;
+        var roundTripped = await WebSocketFrameReader.ReadFrameAsync(stream, CancellationToken.None);
+
+        // Assert: RSV1 is preserved through round-trip
+        Assert.NotNull(roundTripped);
+        Assert.True(roundTripped.Rsv1);
+        Assert.True(roundTripped.Fin);
+        Assert.Equal(WebSocketOpcode.Text, roundTripped.Opcode);
+        Assert.Equal(original.Payload, roundTripped.Payload);
+
+        // Also verify raw first byte has RSV1 bit set
+        stream.Position = 0;
+        var firstByte = stream.ReadByte();
+        Assert.Equal(0xC1, firstByte); // FIN(0x80) | RSV1(0x40) | Text(0x01)
     }
 }
