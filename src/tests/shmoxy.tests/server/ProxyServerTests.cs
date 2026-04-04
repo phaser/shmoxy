@@ -1,4 +1,5 @@
 using System.Net;
+using Microsoft.Extensions.Logging;
 using shmoxy.server;
 using shmoxy.shared.ipc;
 
@@ -419,6 +420,25 @@ public class ProxyServerTests : IClassFixture<ProxyTestFixture>, IDisposable
     }
 
     [Fact]
+    public async Task ReadUntilHeadersCompleteAsync_ExceedingMaxSizeReturnsNullAndLogs()
+    {
+        // Create headers that exceed the 64KB limit (no \r\n\r\n terminator within limit)
+        var hugeHeader = "X-Huge: " + new string('A', 70000);
+        var fullRequest = $"GET / HTTP/1.1\r\n{hugeHeader}\r\n\r\n";
+        var data = System.Text.Encoding.Latin1.GetBytes(fullRequest);
+        using var stream = new MemoryStream(data);
+
+        var logger = new CapturingLogger();
+        var result = await ProxyServer.ReadUntilHeadersCompleteAsync(stream, logger, "127.0.0.1:12345");
+
+        Assert.Null(result);
+        Assert.Single(logger.Entries);
+        Assert.Equal(LogLevel.Warning, logger.Entries[0].LogLevel);
+        Assert.Contains("65536", logger.Entries[0].Message);
+        Assert.Contains("127.0.0.1:12345", logger.Entries[0].Message);
+    }
+
+    [Fact]
     public void FindHeaderEndIndex_FindsSeparator()
     {
         var data = "HTTP/1.1 200 OK\r\nContent-Length: 4\r\n\r\nBody"u8.ToArray();
@@ -496,6 +516,20 @@ public class ProxyServerTests : IClassFixture<ProxyTestFixture>, IDisposable
 /// <summary>
 /// Test helper that delivers data in small chunks to simulate TCP segmentation.
 /// </summary>
+internal sealed class CapturingLogger : ILogger
+{
+    public List<(LogLevel LogLevel, string Message)> Entries { get; } = [];
+
+    public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+    public bool IsEnabled(LogLevel logLevel) => true;
+
+    public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception,
+        Func<TState, Exception?, string> formatter)
+    {
+        Entries.Add((logLevel, formatter(state, exception)));
+    }
+}
+
 internal class SlowStream : MemoryStream
 {
     private readonly int _chunkSize;
