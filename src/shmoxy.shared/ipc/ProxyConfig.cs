@@ -10,6 +10,15 @@ public class ProxyConfig
         "shmoxy");
 
     public int Port { get; set; } = 8080;
+
+    /// <summary>
+    /// Optional HTTPS port for the proxy listener. When set to a non-zero value along with
+    /// CertPath and KeyPath, the proxy accepts TLS-encrypted connections on this port.
+    /// Clients connecting to this port communicate over TLS directly with the proxy.
+    /// Set to 0 to disable (default).
+    /// </summary>
+    public int HttpsPort { get; set; }
+
     public string? CertPath { get; set; }
     public string? KeyPath { get; set; }
     public LogLevelEnum LogLevel { get; set; } = LogLevelEnum.Info;

@@ -5,6 +5,7 @@ namespace shmoxy.frontend.services;
 public class FrontendProxyConfig
 {
     public int Port { get; set; } = 8080;
+    public int HttpsPort { get; set; }
     public string? CertPath { get; set; }
     public string? KeyPath { get; set; }
     public string LogLevel { get; set; } = "Info";

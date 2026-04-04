@@ -118,4 +118,85 @@ public class ConfigControllerTests
         var config = Assert.IsType<ProxyConfig>(okResult.Value);
         Assert.Equal(8080, config.Port); // default
     }
+
+    [Fact]
+    public async Task UpdateConfig_HttpsPortNegative_Returns400()
+    {
+        var config = new ProxyConfig { Port = 8080, HttpsPort = -1 };
+
+        _mockProcessManager.Setup(m => m.GetStateAsync())
+            .ReturnsAsync(new ProxyInstanceState { State = ProxyProcessState.Running });
+
+        var result = await _controller.UpdateConfig("local", config, CancellationToken.None);
+
+        Assert.IsType<BadRequestObjectResult>(result.Result);
+    }
+
+    [Fact]
+    public async Task UpdateConfig_HttpsPortSameAsPort_Returns400()
+    {
+        var config = new ProxyConfig { Port = 8080, HttpsPort = 8080 };
+
+        _mockProcessManager.Setup(m => m.GetStateAsync())
+            .ReturnsAsync(new ProxyInstanceState { State = ProxyProcessState.Running });
+
+        var result = await _controller.UpdateConfig("local", config, CancellationToken.None);
+
+        Assert.IsType<BadRequestObjectResult>(result.Result);
+    }
+
+    [Fact]
+    public async Task UpdateConfig_HttpsPortWithoutCerts_Returns400()
+    {
+        var config = new ProxyConfig { Port = 8080, HttpsPort = 8443 };
+
+        _mockProcessManager.Setup(m => m.GetStateAsync())
+            .ReturnsAsync(new ProxyInstanceState { State = ProxyProcessState.Running });
+
+        var result = await _controller.UpdateConfig("local", config, CancellationToken.None);
+
+        Assert.IsType<BadRequestObjectResult>(result.Result);
+    }
+
+    [Fact]
+    public async Task UpdateConfig_HttpsPortWithCerts_Succeeds()
+    {
+        var config = new ProxyConfig
+        {
+            Port = 8080,
+            HttpsPort = 8443,
+            CertPath = "/path/to/cert.pem",
+            KeyPath = "/path/to/key.pem"
+        };
+        var appliedConfig = new ProxyConfig { Port = 8080, HttpsPort = 8443 };
+
+        _mockProcessManager.Setup(m => m.GetStateAsync())
+            .ReturnsAsync(new ProxyInstanceState { State = ProxyProcessState.Running });
+        _mockProcessManager.Setup(m => m.RestartAsync(8080, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ProxyInstanceState { State = ProxyProcessState.Running, Port = 8080 });
+        _mockIpcClient.Setup(m => m.GetConfigAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(appliedConfig);
+
+        var result = await _controller.UpdateConfig("local", config, CancellationToken.None);
+
+        Assert.IsType<OkObjectResult>(result.Result);
+    }
+
+    [Fact]
+    public async Task UpdateConfig_HttpsPortZero_NoCertsRequired()
+    {
+        var config = new ProxyConfig { Port = 8080, HttpsPort = 0 };
+        var appliedConfig = new ProxyConfig { Port = 8080, HttpsPort = 0 };
+
+        _mockProcessManager.Setup(m => m.GetStateAsync())
+            .ReturnsAsync(new ProxyInstanceState { State = ProxyProcessState.Running });
+        _mockProcessManager.Setup(m => m.RestartAsync(8080, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ProxyInstanceState { State = ProxyProcessState.Running, Port = 8080 });
+        _mockIpcClient.Setup(m => m.GetConfigAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(appliedConfig);
+
+        var result = await _controller.UpdateConfig("local", config, CancellationToken.None);
+
+        Assert.IsType<OkObjectResult>(result.Result);
+    }
 }

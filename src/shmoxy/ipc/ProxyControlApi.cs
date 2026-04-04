@@ -50,6 +50,7 @@ public static class ProxyControlApi
         {
             // Update all config fields
             config.Port = newConfig.Port;
+            config.HttpsPort = newConfig.HttpsPort;
             config.CertPath = newConfig.CertPath;
             config.KeyPath = newConfig.KeyPath;
             config.LogLevel = newConfig.LogLevel;
