@@ -30,6 +30,10 @@
             <FluentSwitch @bind-Value="config.SessionLoggingEnabled" Label="Session Logging">
                 @(config.SessionLoggingEnabled ? "Enabled" : "Disabled")
             </FluentSwitch>
+
+            <FluentSwitch @bind-Value="config.DisableCaching" Label="Disable Caching">
+                @(config.DisableCaching ? "Enabled" : "Disabled")
+            </FluentSwitch>
         </div>
 
         <div class="card-footer">

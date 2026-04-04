@@ -10,6 +10,7 @@ public class FrontendProxyConfig
     public List<string> PassthroughHosts { get; set; } = new();
     public bool SessionLoggingEnabled { get; set; }
     public bool ValidateUpstreamCertificates { get; set; }
+    public bool DisableCaching { get; set; }
 
     public static FrontendProxyConfig Default => new();
 }
