@@ -5,6 +5,7 @@
 @inject KeyboardShortcutService KeyboardShortcuts
 @using shmoxy.frontend.services
 @using shmoxy.shared
+@using shmoxy.shared.ipc
 @implements IDisposable
 
 <div class="detail-overlay" @onclick="OnClose" @onkeydown="HandleKeyDown" tabindex="0" @ref="overlayRef">
@@ -26,6 +27,67 @@
                 <span class="detail-time">@Row.Timestamp.ToString("HH:mm:ss.fff")</span>
             </div>
             <button class="close-button" @onclick="OnClose" title="Close (Esc)">&times;</button>
+
+            @if (Row.Timing is { } t)
+            {
+                var total = (t.ConnectMs ?? 0) + (t.TlsMs ?? 0) + t.SendMs + t.WaitMs + t.ReceiveMs;
+                <div class="timing-breakdown">
+                    @if (t.Reused)
+                    {
+                        <span class="timing-reused-badge">reused</span>
+                    }
+                    <div class="timing-bar">
+                        @if (t.ConnectMs is > 0)
+                        {
+                            <div class="timing-segment timing-connect"
+                                 style="width: @(SegmentPercent(t.ConnectMs.Value, total))%"
+                                 title="Connect: @($"{t.ConnectMs:F1}") ms">
+                            </div>
+                        }
+                        @if (t.TlsMs is > 0)
+                        {
+                            <div class="timing-segment timing-tls"
+                                 style="width: @(SegmentPercent(t.TlsMs.Value, total))%"
+                                 title="TLS: @($"{t.TlsMs:F1}") ms">
+                            </div>
+                        }
+                        @if (t.SendMs > 0)
+                        {
+                            <div class="timing-segment timing-send"
+                                 style="width: @(SegmentPercent(t.SendMs, total))%"
+                                 title="Send: @($"{t.SendMs:F1}") ms">
+                            </div>
+                        }
+                        @if (t.WaitMs > 0)
+                        {
+                            <div class="timing-segment timing-wait"
+                                 style="width: @(SegmentPercent(t.WaitMs, total))%"
+                                 title="Wait (TTFB): @($"{t.WaitMs:F1}") ms">
+                            </div>
+                        }
+                        @if (t.ReceiveMs > 0)
+                        {
+                            <div class="timing-segment timing-receive"
+                                 style="width: @(SegmentPercent(t.ReceiveMs, total))%"
+                                 title="Receive: @($"{t.ReceiveMs:F1}") ms">
+                            </div>
+                        }
+                    </div>
+                    <div class="timing-legend">
+                        @if (t.ConnectMs.HasValue)
+                        {
+                            <span class="timing-legend-item"><span class="timing-dot timing-connect"></span>Connect @($"{t.ConnectMs:F1}") ms</span>
+                        }
+                        @if (t.TlsMs.HasValue)
+                        {
+                            <span class="timing-legend-item"><span class="timing-dot timing-tls"></span>TLS @($"{t.TlsMs:F1}") ms</span>
+                        }
+                        <span class="timing-legend-item"><span class="timing-dot timing-send"></span>Send @($"{t.SendMs:F1}") ms</span>
+                        <span class="timing-legend-item"><span class="timing-dot timing-wait"></span>Wait @($"{t.WaitMs:F1}") ms</span>
+                        <span class="timing-legend-item"><span class="timing-dot timing-receive"></span>Receive @($"{t.ReceiveMs:F1}") ms</span>
+                    </div>
+                </div>
+            }
         </div>
 
         <div class="detail-tabs">
@@ -513,6 +575,15 @@
         StateHasChanged();
         await Task.Yield();
         await HighlightCode();
+    }
+
+    private static string SegmentPercent(double value, double total)
+    {
+        if (total <= 0) return "0";
+        var pct = value / total * 100;
+        // Ensure visible segments get at least 2% width
+        if (pct > 0 && pct < 2) pct = 2;
+        return pct.ToString("F1", System.Globalization.CultureInfo.InvariantCulture);
     }
 
     private static string GetStatusClass(int statusCode) => statusCode switch
@@ -1180,4 +1251,74 @@
     border-radius: 4px;
     font-size: 0.85rem;
 }
+
+/* Timing breakdown */
+.timing-breakdown {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding-top: 4px;
+}
+
+.timing-reused-badge {
+    display: inline-block;
+    font-size: 0.7rem;
+    font-family: monospace;
+    color: var(--neutral-foreground-hint);
+    background: rgba(76, 175, 80, 0.15);
+    padding: 1px 6px;
+    border-radius: 3px;
+    width: fit-content;
+}
+
+.timing-bar {
+    display: flex;
+    height: 8px;
+    border-radius: 4px;
+    overflow: hidden;
+    background: var(--neutral-layer-3);
+    width: 100%;
+}
+
+.timing-segment {
+    min-width: 2px;
+    transition: width 0.2s ease;
+}
+
+.timing-connect { background: #4CAF50; }
+.timing-tls { background: #FF9800; }
+.timing-send { background: #2196F3; }
+.timing-wait { background: #9C27B0; }
+.timing-receive { background: #00BCD4; }
+
+.timing-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.timing-legend-item {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 0.7rem;
+    font-family: monospace;
+    color: var(--neutral-foreground-hint);
+    white-space: nowrap;
+}
+
+.timing-dot {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
+.timing-dot.timing-connect { background: #4CAF50; }
+.timing-dot.timing-tls { background: #FF9800; }
+.timing-dot.timing-send { background: #2196F3; }
+.timing-dot.timing-wait { background: #9C27B0; }
+.timing-dot.timing-receive { background: #00BCD4; }
 </style>

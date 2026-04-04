@@ -123,6 +123,12 @@ public partial class Program
             // so we catch and ignore errors for each.
             AddColumnIfMissing(dbContext, "InspectionSessionRows", "ResponseBodyBase64", "TEXT");
             AddColumnIfMissing(dbContext, "InspectionSessionRows", "ResponseContentType", "TEXT");
+            AddColumnIfMissing(dbContext, "InspectionSessionRows", "TimingConnectMs", "REAL");
+            AddColumnIfMissing(dbContext, "InspectionSessionRows", "TimingTlsMs", "REAL");
+            AddColumnIfMissing(dbContext, "InspectionSessionRows", "TimingSendMs", "REAL");
+            AddColumnIfMissing(dbContext, "InspectionSessionRows", "TimingWaitMs", "REAL");
+            AddColumnIfMissing(dbContext, "InspectionSessionRows", "TimingReceiveMs", "REAL");
+            AddColumnIfMissing(dbContext, "InspectionSessionRows", "TimingConnectionReused", "INTEGER");
         }
     }
 

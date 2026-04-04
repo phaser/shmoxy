@@ -1,3 +1,5 @@
+using shmoxy.shared.ipc;
+
 namespace shmoxy.models.dto;
 
 /// <summary>
@@ -19,4 +21,9 @@ public class InterceptedResponse
     /// Unique ID linking this response to its corresponding request for inspection.
     /// </summary>
     public string? CorrelationId { get; set; }
+
+    /// <summary>
+    /// Timing breakdown for the request/response cycle.
+    /// </summary>
+    public TimingInfo? Timing { get; set; }
 }

@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.Net.Sockets;
 using System.Security.Authentication;
 using System.Security.Cryptography.X509Certificates;
@@ -591,9 +592,17 @@ public class ProxyServer : IAsyncDisposable, IDisposable
         TcpClient? ownedClient = null;
         Stream targetStream;
 
+        // --- Timing: connection phase ---
+        var sw = Stopwatch.StartNew();
+        double? connectMs = null;
+        var reused = false;
+
         if (_connectionPool != null)
         {
             pooledConn = await _connectionPool.AcquireAsync(host, port, useTls: false);
+            reused = pooledConn.IsReused;
+            if (!reused)
+                connectMs = sw.Elapsed.TotalMilliseconds;
             targetStream = pooledConn.Stream;
         }
         else
@@ -601,6 +610,7 @@ public class ProxyServer : IAsyncDisposable, IDisposable
             ownedClient = new TcpClient();
             ownedClient.ReceiveTimeout = UpstreamReadTimeoutMs;
             await ownedClient.ConnectAsync(host, port);
+            connectMs = sw.Elapsed.TotalMilliseconds;
             targetStream = ownedClient.GetStream();
         }
 
@@ -632,6 +642,8 @@ public class ProxyServer : IAsyncDisposable, IDisposable
 
             outgoing.Append("\r\n");
 
+            // --- Timing: send phase ---
+            var sendStart = sw.Elapsed.TotalMilliseconds;
             var requestBytes = Encoding.Latin1.GetBytes(outgoing.ToString());
             await targetStream.WriteAsync(requestBytes, 0, requestBytes.Length);
 
@@ -639,28 +651,44 @@ public class ProxyServer : IAsyncDisposable, IDisposable
                 await targetStream.WriteAsync(request.Body, 0, request.Body.Length);
 
             await targetStream.FlushAsync();
+            var sendMs = sw.Elapsed.TotalMilliseconds - sendStart;
 
             // Stream the response from the target back to the client
             var clientStream = client.GetStream();
             byte[] responseBytes;
             var success = false;
+            double waitMs;
+            double receiveMs;
+
+            // --- Timing: wait (TTFB) + receive phases ---
+            var responseStart = sw.Elapsed.TotalMilliseconds;
 
             if (useKeepAlive)
             {
+                // ReadFramedHttpResponseAsync reads the entire response; treat as wait+receive combined
                 using var readCts = new CancellationTokenSource(UpstreamReadTimeoutMs);
                 responseBytes = await ReadFramedHttpResponseAsync(targetStream, clientStream, readCts.Token);
                 success = responseBytes.Length > 0;
+                waitMs = sw.Elapsed.TotalMilliseconds - responseStart;
+                receiveMs = 0;
             }
             else
             {
                 using var ms = new MemoryStream();
                 var responseBuffer = new byte[8192];
                 int read;
+                var firstByteReceived = false;
+                double firstByteTime = 0;
                 using var readCts = new CancellationTokenSource(UpstreamReadTimeoutMs);
                 try
                 {
                     while ((read = await targetStream.ReadAsync(responseBuffer, 0, responseBuffer.Length, readCts.Token)) > 0)
                     {
+                        if (!firstByteReceived)
+                        {
+                            firstByteTime = sw.Elapsed.TotalMilliseconds;
+                            firstByteReceived = true;
+                        }
                         await clientStream.WriteAsync(responseBuffer, 0, read);
                         ms.Write(responseBuffer, 0, read);
                         readCts.CancelAfter(UpstreamReadTimeoutMs);
@@ -676,7 +704,29 @@ public class ProxyServer : IAsyncDisposable, IDisposable
                 }
                 await clientStream.FlushAsync();
                 responseBytes = ms.ToArray();
+
+                if (firstByteReceived)
+                {
+                    waitMs = firstByteTime - responseStart;
+                    receiveMs = sw.Elapsed.TotalMilliseconds - firstByteTime;
+                }
+                else
+                {
+                    waitMs = sw.Elapsed.TotalMilliseconds - responseStart;
+                    receiveMs = 0;
+                }
             }
+
+            // Build timing info (no TLS for plain HTTP)
+            var timing = new TimingInfo
+            {
+                ConnectMs = connectMs,
+                TlsMs = null,
+                SendMs = sendMs,
+                WaitMs = waitMs,
+                ReceiveMs = receiveMs,
+                Reused = reused
+            };
 
             // Parse and capture response for inspection
             if (responseBytes.Length > 0)
@@ -695,7 +745,8 @@ public class ProxyServer : IAsyncDisposable, IDisposable
                     StatusCode = respStatusCode,
                     Headers = inspectionHeaders,
                     Body = inspectionBody,
-                    CorrelationId = request.CorrelationId
+                    CorrelationId = request.CorrelationId,
+                    Timing = timing
                 };
                 await _interceptor.OnResponseAsync(interceptedResponse);
             }
@@ -801,10 +852,19 @@ public class ProxyServer : IAsyncDisposable, IDisposable
             TcpClient? ownedTargetClient = null;
             try
             {
+                // --- Timing: connection phase ---
+                var sw = Stopwatch.StartNew();
+                double? connectMs = null;
+                double? tlsMs = null;
+                var reused = false;
+
                 Stream targetStream;
                 if (_connectionPool != null)
                 {
                     pooledConn = await _connectionPool.AcquireAsync(host, port, useTls: port == 443);
+                    reused = pooledConn.IsReused;
+                    if (!reused)
+                        connectMs = sw.Elapsed.TotalMilliseconds;
                     targetStream = pooledConn.Stream;
                 }
                 else
@@ -821,9 +881,11 @@ public class ProxyServer : IAsyncDisposable, IDisposable
                             "TCP connect failed for {Host}:{Port}: {ExceptionType}: {ErrorMessage}", host, port, connectEx.GetType().Name, connectEx.Message);
                         throw;
                     }
+                    connectMs = sw.Elapsed.TotalMilliseconds;
 
                     if (port == 443)
                     {
+                        var tlsStart = sw.Elapsed.TotalMilliseconds;
                         var sslTarget = new global::System.Net.Security.SslStream(
                             ownedTargetClient.GetStream(),
                             false,
@@ -838,6 +900,7 @@ public class ProxyServer : IAsyncDisposable, IDisposable
                                 "TLS handshake failed for {Host}:{Port}: {ExceptionType}: {ErrorMessage}", host, port, tlsEx.GetType().Name, tlsEx.Message);
                             throw;
                         }
+                        tlsMs = sw.Elapsed.TotalMilliseconds - tlsStart;
                         targetStream = sslTarget;
                     }
                     else
@@ -875,6 +938,8 @@ public class ProxyServer : IAsyncDisposable, IDisposable
 
                     outgoing.Append("\r\n");
 
+                    // --- Timing: send phase ---
+                    var sendStart = sw.Elapsed.TotalMilliseconds;
                     var requestBytes = Encoding.Latin1.GetBytes(outgoing.ToString());
                     await targetStream.WriteAsync(requestBytes, 0, requestBytes.Length);
 
@@ -882,27 +947,42 @@ public class ProxyServer : IAsyncDisposable, IDisposable
                         await targetStream.WriteAsync(result.Body, 0, result.Body.Length);
 
                     await targetStream.FlushAsync();
+                    var sendMs = sw.Elapsed.TotalMilliseconds - sendStart;
 
                     // Stream the response back to the client
                     byte[] responseBytes;
                     var success = false;
+                    double waitMs;
+                    double receiveMs;
+
+                    // --- Timing: wait (TTFB) + receive phases ---
+                    var responseStart = sw.Elapsed.TotalMilliseconds;
 
                     if (useKeepAlive)
                     {
                         using var readCts = new CancellationTokenSource(UpstreamReadTimeoutMs);
                         responseBytes = await ReadFramedHttpResponseAsync(targetStream, clientStream, readCts.Token);
                         success = responseBytes.Length > 0;
+                        waitMs = sw.Elapsed.TotalMilliseconds - responseStart;
+                        receiveMs = 0;
                     }
                     else
                     {
                         using var ms = new MemoryStream();
                         var responseBuf = new byte[8192];
                         int responseRead;
+                        var firstByteReceived = false;
+                        double firstByteTime = 0;
                         using var readCts = new CancellationTokenSource(UpstreamReadTimeoutMs);
                         try
                         {
                             while ((responseRead = await targetStream.ReadAsync(responseBuf, 0, responseBuf.Length, readCts.Token)) > 0)
                             {
+                                if (!firstByteReceived)
+                                {
+                                    firstByteTime = sw.Elapsed.TotalMilliseconds;
+                                    firstByteReceived = true;
+                                }
                                 await clientStream.WriteAsync(responseBuf, 0, responseRead);
                                 ms.Write(responseBuf, 0, responseRead);
                                 readCts.CancelAfter(UpstreamReadTimeoutMs);
@@ -918,7 +998,28 @@ public class ProxyServer : IAsyncDisposable, IDisposable
                         }
                         await clientStream.FlushAsync();
                         responseBytes = ms.ToArray();
+
+                        if (firstByteReceived)
+                        {
+                            waitMs = firstByteTime - responseStart;
+                            receiveMs = sw.Elapsed.TotalMilliseconds - firstByteTime;
+                        }
+                        else
+                        {
+                            waitMs = sw.Elapsed.TotalMilliseconds - responseStart;
+                            receiveMs = 0;
+                        }
                     }
+
+                    var timing = new TimingInfo
+                    {
+                        ConnectMs = connectMs,
+                        TlsMs = tlsMs,
+                        SendMs = sendMs,
+                        WaitMs = waitMs,
+                        ReceiveMs = receiveMs,
+                        Reused = reused
+                    };
 
                     // Parse response for intercept hook
                     if (responseBytes.Length > 0)
@@ -937,7 +1038,8 @@ public class ProxyServer : IAsyncDisposable, IDisposable
                             StatusCode = respStatusCode,
                             Headers = inspectionHeaders,
                             Body = inspectionBody,
-                            CorrelationId = correlationId
+                            CorrelationId = correlationId,
+                            Timing = timing
                         };
                         await _interceptor.OnResponseAsync(interceptedResponse);
 

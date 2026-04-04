@@ -1,3 +1,5 @@
+using shmoxy.shared.ipc;
+
 namespace shmoxy.frontend.models;
 
 public record InspectionEventDto(
@@ -11,5 +13,6 @@ public record InspectionEventDto(
     string? CorrelationId = null,
     string? FrameType = null,
     string? Direction = null,
-    bool? IsWebSocket = null
+    bool? IsWebSocket = null,
+    TimingInfo? Timing = null
 );

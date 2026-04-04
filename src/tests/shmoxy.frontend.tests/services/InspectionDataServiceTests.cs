@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Hosting;
 using shmoxy.frontend.models;
 using shmoxy.frontend.services;
+using shmoxy.shared.ipc;
 using Xunit;
 
 namespace shmoxy.frontend.tests.services;
@@ -919,6 +920,82 @@ public class InspectionDataServiceTests
     {
         var headers = new List<KeyValuePair<string, string>> { new("Content-Type", "Application/JSON") };
         Assert.Equal("application/json", InspectionDataService.GetContentType(headers));
+    }
+
+    [Fact]
+    public void ProcessEvent_Response_StoresTiming()
+    {
+        using var service = CreateService();
+        var now = DateTime.UtcNow;
+        var timing = new TimingInfo
+        {
+            ConnectMs = 12.5,
+            TlsMs = 30.0,
+            SendMs = 1.1,
+            WaitMs = 45.3,
+            ReceiveMs = 8.9,
+            Reused = false
+        };
+
+        service.ProcessEvent(new InspectionEventDto(now, "request", "GET", "https://example.com", null, CorrelationId: "corr-timing"));
+        service.ProcessEvent(new InspectionEventDto(now.AddMilliseconds(100), "response", "", "", 200, CorrelationId: "corr-timing", Timing: timing));
+
+        var rows = service.GetRows();
+        Assert.Single(rows);
+        Assert.NotNull(rows[0].Timing);
+        Assert.Equal(12.5, rows[0].Timing!.ConnectMs);
+        Assert.Equal(30.0, rows[0].Timing!.TlsMs);
+        Assert.Equal(1.1, rows[0].Timing!.SendMs);
+        Assert.Equal(45.3, rows[0].Timing!.WaitMs);
+        Assert.Equal(8.9, rows[0].Timing!.ReceiveMs);
+        Assert.False(rows[0].Timing!.Reused);
+    }
+
+    [Fact]
+    public void ProcessEvent_Response_NullTiming_LeavesTimingNull()
+    {
+        using var service = CreateService();
+        var now = DateTime.UtcNow;
+
+        service.ProcessEvent(new InspectionEventDto(now, "request", "GET", "https://example.com", null, CorrelationId: "corr-notiming"));
+        service.ProcessEvent(new InspectionEventDto(now.AddMilliseconds(50), "response", "", "", 200, CorrelationId: "corr-notiming"));
+
+        var rows = service.GetRows();
+        Assert.Single(rows);
+        Assert.Null(rows[0].Timing);
+    }
+
+    [Fact]
+    public void ProcessEvent_Response_ReusedConnectionTiming()
+    {
+        using var service = CreateService();
+        var now = DateTime.UtcNow;
+        var timing = new TimingInfo
+        {
+            ConnectMs = null,
+            TlsMs = null,
+            SendMs = 0.5,
+            WaitMs = 20.0,
+            ReceiveMs = 5.0,
+            Reused = true
+        };
+
+        service.ProcessEvent(new InspectionEventDto(now, "request", "GET", "https://example.com", null, CorrelationId: "corr-reused"));
+        service.ProcessEvent(new InspectionEventDto(now.AddMilliseconds(50), "response", "", "", 200, CorrelationId: "corr-reused", Timing: timing));
+
+        var rows = service.GetRows();
+        Assert.Single(rows);
+        Assert.NotNull(rows[0].Timing);
+        Assert.Null(rows[0].Timing!.ConnectMs);
+        Assert.Null(rows[0].Timing!.TlsMs);
+        Assert.True(rows[0].Timing!.Reused);
+    }
+
+    [Fact]
+    public void InspectionRow_Timing_DefaultsToNull()
+    {
+        var row = new InspectionRow { Method = "GET", Url = "https://example.com" };
+        Assert.Null(row.Timing);
     }
 
     private class TestHostApplicationLifetime : IHostApplicationLifetime

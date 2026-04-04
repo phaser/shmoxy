@@ -1,5 +1,6 @@
 using shmoxy.models.dto;
 using shmoxy.server.hooks;
+using shmoxy.shared.ipc;
 
 namespace shmoxy.tests.server.hooks;
 
@@ -167,5 +168,89 @@ public class InspectionHookTests
 
         var reader = hook.GetReader();
         Assert.False(reader.TryRead(out _));
+    }
+
+    [Fact]
+    public async Task OnResponseAsync_IncludesTiming_InEvent()
+    {
+        var hook = new InspectionHook();
+        var timing = new TimingInfo
+        {
+            ConnectMs = 10.5,
+            TlsMs = 25.3,
+            SendMs = 1.2,
+            WaitMs = 50.0,
+            ReceiveMs = 15.7,
+            Reused = false
+        };
+
+        var response = new InterceptedResponse
+        {
+            StatusCode = 200,
+            CorrelationId = "timing-test",
+            Timing = timing
+        };
+
+        await hook.OnResponseAsync(response);
+
+        var reader = hook.GetReader();
+        Assert.True(reader.TryRead(out var evt));
+        Assert.NotNull(evt.Timing);
+        Assert.Equal(10.5, evt.Timing.ConnectMs);
+        Assert.Equal(25.3, evt.Timing.TlsMs);
+        Assert.Equal(1.2, evt.Timing.SendMs);
+        Assert.Equal(50.0, evt.Timing.WaitMs);
+        Assert.Equal(15.7, evt.Timing.ReceiveMs);
+        Assert.False(evt.Timing.Reused);
+    }
+
+    [Fact]
+    public async Task OnResponseAsync_NullTiming_PropagatesNull()
+    {
+        var hook = new InspectionHook();
+
+        var response = new InterceptedResponse
+        {
+            StatusCode = 200,
+            CorrelationId = "no-timing",
+            Timing = null
+        };
+
+        await hook.OnResponseAsync(response);
+
+        var reader = hook.GetReader();
+        Assert.True(reader.TryRead(out var evt));
+        Assert.Null(evt.Timing);
+    }
+
+    [Fact]
+    public async Task OnResponseAsync_ReusedConnection_TimingHasNullConnectAndTls()
+    {
+        var hook = new InspectionHook();
+        var timing = new TimingInfo
+        {
+            ConnectMs = null,
+            TlsMs = null,
+            SendMs = 0.5,
+            WaitMs = 30.0,
+            ReceiveMs = 10.0,
+            Reused = true
+        };
+
+        var response = new InterceptedResponse
+        {
+            StatusCode = 200,
+            CorrelationId = "reused-conn",
+            Timing = timing
+        };
+
+        await hook.OnResponseAsync(response);
+
+        var reader = hook.GetReader();
+        Assert.True(reader.TryRead(out var evt));
+        Assert.NotNull(evt.Timing);
+        Assert.Null(evt.Timing.ConnectMs);
+        Assert.Null(evt.Timing.TlsMs);
+        Assert.True(evt.Timing.Reused);
     }
 }

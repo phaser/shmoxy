@@ -118,7 +118,13 @@ public class SessionsController : ControllerBase
         WebSocketClosed = row.WebSocketClosed,
         WebSocketFrames = row.WebSocketFrames.Count > 0
             ? row.WebSocketFrames.Select(ToFrameDto).ToList()
-            : null
+            : null,
+        TimingConnectMs = row.TimingConnectMs,
+        TimingTlsMs = row.TimingTlsMs,
+        TimingSendMs = row.TimingSendMs,
+        TimingWaitMs = row.TimingWaitMs,
+        TimingReceiveMs = row.TimingReceiveMs,
+        TimingConnectionReused = row.TimingConnectionReused
     };
 
     private static InspectionSessionRow ToEntity(SessionRowDto dto)
@@ -137,7 +143,13 @@ public class SessionsController : ControllerBase
             ResponseBodyBase64 = dto.ResponseBodyBase64,
             ResponseContentType = dto.ResponseContentType,
             IsWebSocket = dto.IsWebSocket,
-            WebSocketClosed = dto.WebSocketClosed
+            WebSocketClosed = dto.WebSocketClosed,
+            TimingConnectMs = dto.TimingConnectMs,
+            TimingTlsMs = dto.TimingTlsMs,
+            TimingSendMs = dto.TimingSendMs,
+            TimingWaitMs = dto.TimingWaitMs,
+            TimingReceiveMs = dto.TimingReceiveMs,
+            TimingConnectionReused = dto.TimingConnectionReused
         };
 
         if (dto.WebSocketFrames is { Count: > 0 })

@@ -2,6 +2,7 @@ using System.Text;
 using Microsoft.Extensions.Hosting;
 using shmoxy.frontend.models;
 using shmoxy.shared;
+using shmoxy.shared.ipc;
 
 namespace shmoxy.frontend.services;
 
@@ -261,6 +262,7 @@ public class InspectionDataService : IDisposable
                     _rows[rowIndex].ResponseHeaders = headers;
                     _rows[rowIndex].ResponseContentType = contentType;
                     _rows[rowIndex].ResponseBodySize = evt.Body?.Length;
+                    _rows[rowIndex].Timing = evt.Timing;
 
                     if (ImageContentTypeDetector.IsImageContentType(contentType) && evt.Body is { Length: > 0 })
                     {
@@ -388,6 +390,7 @@ public class InspectionRow
     public RowOrigin Origin { get; set; } = RowOrigin.Live;
     public bool IsPassthrough { get; set; }
     public bool IsWebSocket { get; set; }
+    public TimingInfo? Timing { get; set; }
     public List<WebSocketFrameInfo> WebSocketFrames { get; set; } = new();
     public bool WebSocketClosed { get; set; }
 }
