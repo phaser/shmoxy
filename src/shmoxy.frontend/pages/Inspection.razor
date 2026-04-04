@@ -93,6 +93,8 @@
             }
         </div>
 
+        <span class="row-count">@filteredRows.Count rows@(filteredRows.Count != InspectionService.GetRows().Count ? $" / {InspectionService.GetRows().Count} total" : "")</span>
+
         <div class="toolbar-spacer"></div>
 
         <div class="session-actions">
@@ -209,8 +211,7 @@
                 }
                 else
                 {
-                    @foreach (var row in filteredRows)
-                    {
+                    <Virtualize Items="filteredRows" Context="row" ItemSize="36" OverscanCount="20">
                         <tr class="clickable-row @(selectedRow?.Id == row.Id ? "selected-row" : "") @(row.Origin == RowOrigin.Loaded ? "loaded-row" : "") @GetRowColorClass(row)"
                             @onclick="() => SelectRow(row)">
                             <td>@row.Id</td>
@@ -240,7 +241,7 @@
                             <td class="size-cell">@FormatSize(row.ResponseBodySize)</td>
                             <td>@(row.Duration.HasValue ? $"{row.Duration.Value.TotalMilliseconds:F0} ms" : "-")</td>
                         </tr>
-                    }
+                    </Virtualize>
                 }
             </tbody>
         </table>
@@ -1056,6 +1057,14 @@
 
 .domain-label-all {
     font-weight: 600;
+}
+
+.row-count {
+    font-size: 0.8rem;
+    color: var(--neutral-foreground-hint);
+    font-family: monospace;
+    white-space: nowrap;
+    align-self: center;
 }
 
 .toolbar-spacer {
