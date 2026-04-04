@@ -16,4 +16,5 @@ public record InspectionEvent
     public string? FrameType { get; init; }
     public string? Direction { get; init; }
     public bool? IsWebSocket { get; init; }
+    public TimingInfo? Timing { get; init; }
 }

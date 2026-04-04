@@ -19,6 +19,7 @@ public sealed class PooledConnection : IDisposable
     public string Host { get; }
     public int Port { get; }
     public DateTime LastUsed { get; private set; }
+    public bool IsReused { get; internal set; }
 
     internal PooledConnection(ConnectionPool pool, TcpClient tcpClient, Stream stream, string host, int port)
     {
@@ -103,6 +104,7 @@ public sealed class ConnectionPool : IDisposable
         {
             if (IsHealthy(conn))
             {
+                conn.IsReused = true;
                 _logger.LogDebug("Reusing pooled connection to {Host}:{Port}", host, port);
                 return conn;
             }

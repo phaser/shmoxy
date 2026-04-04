@@ -1,4 +1,3 @@
-using System.Net.Security;
 using System.Net.Sockets;
 using Microsoft.Extensions.Logging.Abstractions;
 using shmoxy.server;
@@ -132,6 +131,31 @@ public class ConnectionPoolTests : IDisposable
         conn.Dispose();
         var ex = Record.Exception(() => conn.Dispose());
         Assert.Null(ex);
+    }
+
+    [Fact]
+    public async Task AcquireAsync_NewConnection_IsReusedFalse()
+    {
+        _server = StartTestServer(out var port);
+
+        var conn = await _pool.AcquireAsync("localhost", port, useTls: false);
+
+        Assert.False(conn.IsReused);
+        conn.Dispose();
+    }
+
+    [Fact]
+    public async Task AcquireAsync_ReusedConnection_IsReusedTrue()
+    {
+        _server = StartTestServer(out var port);
+
+        var conn1 = await _pool.AcquireAsync("localhost", port, useTls: false);
+        conn1.ReturnToPool();
+
+        var conn2 = await _pool.AcquireAsync("localhost", port, useTls: false);
+
+        Assert.True(conn2.IsReused);
+        conn2.Dispose();
     }
 
     public void Dispose()

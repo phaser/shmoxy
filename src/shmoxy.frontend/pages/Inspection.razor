@@ -7,6 +7,7 @@
 @implements IAsyncDisposable
 @using shmoxy.frontend.models
 @using shmoxy.frontend.services
+@using shmoxy.shared.ipc
 
 <div class="inspection-container">
     <div class="filters">
@@ -618,7 +619,18 @@
                     ? (long)(r.ResponseBodyBase64.Length * 3 / 4)
                     : r.ResponseBody != null
                         ? System.Text.Encoding.UTF8.GetByteCount(r.ResponseBody)
-                        : null
+                        : null,
+                Timing = r.TimingSendMs.HasValue
+                    ? new TimingInfo
+                    {
+                        ConnectMs = r.TimingConnectMs,
+                        TlsMs = r.TimingTlsMs,
+                        SendMs = r.TimingSendMs.Value,
+                        WaitMs = r.TimingWaitMs ?? 0,
+                        ReceiveMs = r.TimingReceiveMs ?? 0,
+                        Reused = r.TimingConnectionReused ?? false
+                    }
+                    : null
             }).ToList();
 
             InspectionService.LoadRows(rows, sessionId, sessionName);
@@ -657,7 +669,13 @@
                 RequestBody = r.RequestBody,
                 ResponseBody = r.ResponseBody,
                 ResponseBodyBase64 = r.ResponseBodyBase64,
-                ResponseContentType = r.ResponseContentType
+                ResponseContentType = r.ResponseContentType,
+                TimingConnectMs = r.Timing?.ConnectMs,
+                TimingTlsMs = r.Timing?.TlsMs,
+                TimingSendMs = r.Timing?.SendMs,
+                TimingWaitMs = r.Timing?.WaitMs,
+                TimingReceiveMs = r.Timing?.ReceiveMs,
+                TimingConnectionReused = r.Timing?.Reused
             }).ToList();
 
             var logEntries = await ApiClient.DrainSessionLogAsync();
@@ -738,7 +756,13 @@
                 RequestBody = r.RequestBody,
                 ResponseBody = r.ResponseBody,
                 ResponseBodyBase64 = r.ResponseBodyBase64,
-                ResponseContentType = r.ResponseContentType
+                ResponseContentType = r.ResponseContentType,
+                TimingConnectMs = r.Timing?.ConnectMs,
+                TimingTlsMs = r.Timing?.TlsMs,
+                TimingSendMs = r.Timing?.SendMs,
+                TimingWaitMs = r.Timing?.WaitMs,
+                TimingReceiveMs = r.Timing?.ReceiveMs,
+                TimingConnectionReused = r.Timing?.Reused
             }).ToList();
 
             var logEntries = await ApiClient.DrainSessionLogAsync();

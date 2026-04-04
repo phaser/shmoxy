@@ -73,7 +73,8 @@ public class InspectionHook : IInterceptHook, IDisposable
             StatusCode = response.StatusCode,
             Headers = response.Headers,
             Body = response.Body,
-            CorrelationId = response.CorrelationId
+            CorrelationId = response.CorrelationId,
+            Timing = response.Timing
         };
 
         _channel.Writer.TryWrite(evt);

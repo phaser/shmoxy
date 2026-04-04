@@ -22,6 +22,12 @@ public class SessionRowData
     public string? ResponseBody { get; set; }
     public string? ResponseBodyBase64 { get; set; }
     public string? ResponseContentType { get; set; }
+    public double? TimingConnectMs { get; set; }
+    public double? TimingTlsMs { get; set; }
+    public double? TimingSendMs { get; set; }
+    public double? TimingWaitMs { get; set; }
+    public double? TimingReceiveMs { get; set; }
+    public bool? TimingConnectionReused { get; set; }
 }
 
 public class SessionLogEntryData
