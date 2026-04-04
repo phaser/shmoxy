@@ -54,6 +54,7 @@ public static class ProxyControlApi
             config.KeyPath = newConfig.KeyPath;
             config.LogLevel = newConfig.LogLevel;
             config.PassthroughHosts = newConfig.PassthroughHosts;
+            config.ClientCertificates = newConfig.ClientCertificates;
 
             // Sync session logging setting
             config.SessionLoggingEnabled = newConfig.SessionLoggingEnabled;

@@ -50,6 +50,13 @@ public class ProxyConfig
     public bool DisableCaching { get; set; }
 
     /// <summary>
+    /// Client certificates for mTLS. Maps host patterns to PFX certificate paths.
+    /// When connecting to an upstream server matching a pattern, the proxy presents
+    /// the configured client certificate during the TLS handshake.
+    /// </summary>
+    public List<ClientCertConfig> ClientCertificates { get; set; } = new();
+
+    /// <summary>
     /// Maximum number of idle connections to keep per upstream host.
     /// Set to 0 to disable connection pooling (creates a new connection per request).
     /// </summary>

@@ -27,6 +27,7 @@ public class ProxyServer : IAsyncDisposable, IDisposable
     private readonly ILogger<ProxyServer> _logger;
     private readonly ConcurrentDictionary<Task, byte> _activeConnections = new();
     private readonly ConnectionPool? _connectionPool;
+    private readonly ClientCertificateProvider? _clientCertProvider;
     private CancellationTokenSource? _cts;
     private bool _disposed;
     private volatile bool _isListening;
@@ -106,6 +107,9 @@ public class ProxyServer : IAsyncDisposable, IDisposable
         _tlsHandler = new TlsHandler(config.CertStoragePath);
         _rootCert = _tlsHandler.GetRootCertificate();
 
+        if (config.ClientCertificates.Count > 0)
+            _clientCertProvider = new ClientCertificateProvider(config.ClientCertificates, logger);
+
         if (config.ConnectionPoolSizePerHost > 0)
         {
             _connectionPool = new ConnectionPool(
@@ -113,7 +117,8 @@ public class ProxyServer : IAsyncDisposable, IDisposable
                 TimeSpan.FromSeconds(config.ConnectionPoolIdleTimeoutSeconds),
                 UpstreamReadTimeoutMs,
                 ValidateCertificate,
-                logger);
+                logger,
+                _clientCertProvider);
             _logger.LogInformation("Connection pool enabled: {PoolSize} per host, {IdleTimeout}s idle timeout",
                 config.ConnectionPoolSizePerHost, config.ConnectionPoolIdleTimeoutSeconds);
         }
@@ -886,13 +891,31 @@ public class ProxyServer : IAsyncDisposable, IDisposable
                     if (port == 443)
                     {
                         var tlsStart = sw.Elapsed.TotalMilliseconds;
-                        var sslTarget = new global::System.Net.Security.SslStream(
-                            ownedTargetClient.GetStream(),
-                            false,
-                            ValidateCertificate);
+                        var clientCert = _clientCertProvider?.GetCertificateForHost(host);
+                        global::System.Net.Security.SslStream sslTarget;
                         try
                         {
-                            await sslTarget.AuthenticateAsClientAsync(host);
+                            if (clientCert != null)
+                            {
+                                sslTarget = new global::System.Net.Security.SslStream(
+                                    ownedTargetClient.GetStream(),
+                                    false);
+                                var options = new global::System.Net.Security.SslClientAuthenticationOptions
+                                {
+                                    TargetHost = host,
+                                    ClientCertificates = new X509CertificateCollection { clientCert },
+                                    RemoteCertificateValidationCallback = ValidateCertificate
+                                };
+                                await sslTarget.AuthenticateAsClientAsync(options);
+                            }
+                            else
+                            {
+                                sslTarget = new global::System.Net.Security.SslStream(
+                                    ownedTargetClient.GetStream(),
+                                    false,
+                                    ValidateCertificate);
+                                await sslTarget.AuthenticateAsClientAsync(host);
+                            }
                         }
                         catch (Exception tlsEx)
                         {
@@ -1638,6 +1661,7 @@ public class ProxyServer : IAsyncDisposable, IDisposable
 
         await StopAsync();
         _tlsHandler.Dispose();
+        _clientCertProvider?.Dispose();
         _disposed = true;
     }
 
@@ -1650,6 +1674,7 @@ public class ProxyServer : IAsyncDisposable, IDisposable
         _isListening = false;
         _connectionPool?.Dispose();
         _tlsHandler.Dispose();
+        _clientCertProvider?.Dispose();
         _disposed = true;
     }
 }
