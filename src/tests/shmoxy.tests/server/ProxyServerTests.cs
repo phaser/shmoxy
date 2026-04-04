@@ -1,4 +1,8 @@
 using System.Net;
+using System.Net.Security;
+using System.Net.Sockets;
+using System.Security.Cryptography;
+using System.Security.Cryptography.X509Certificates;
 using Microsoft.Extensions.Logging;
 using shmoxy.server;
 using shmoxy.shared.ipc;
@@ -591,6 +595,246 @@ public class ProxyServerTests : IClassFixture<ProxyTestFixture>, IDisposable
         Assert.DoesNotContain("Host:", result);
         Assert.DoesNotContain("Connection:", result);
         Assert.DoesNotContain("Content-Length:", result);
+    }
+
+    [Fact]
+    public void HttpsListeningPort_ReturnsZero_WhenNotConfigured()
+    {
+        // The shared fixture doesn't configure an HTTPS listener
+        Assert.Equal(0, _fixture.Server.HttpsListeningPort);
+    }
+
+    [Fact]
+    public async Task HttpsListener_AcceptsTlsConnections()
+    {
+        // Arrange — create a self-signed cert in PEM format for the listener
+        using var rsa = RSA.Create(2048);
+        var req = new CertificateRequest("CN=localhost", rsa, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
+        using var cert = req.CreateSelfSigned(DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddYears(1));
+
+        var tempDir = Path.Combine(Path.GetTempPath(), $"shmoxy-test-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tempDir);
+        try
+        {
+            var certPath = Path.Combine(tempDir, "cert.pem");
+            var keyPath = Path.Combine(tempDir, "key.pem");
+            File.WriteAllText(certPath, cert.ExportCertificatePem());
+            File.WriteAllText(keyPath, rsa.ExportRSAPrivateKeyPem());
+
+            var config = new ProxyConfig
+            {
+                Port = 0,
+                HttpsPort = GetFreePort(),
+                CertPath = certPath,
+                KeyPath = keyPath,
+                LogLevel = ProxyConfig.LogLevelEnum.Warn
+            };
+
+            await using var server = new ProxyServer(config);
+            using var cts = new CancellationTokenSource();
+            var serverTask = server.StartAsync(cts.Token);
+
+            var deadline = DateTime.UtcNow + ServerStartTimeout;
+            while (!server.IsListening && DateTime.UtcNow < deadline)
+                await Task.Delay(50);
+
+            Assert.True(server.IsListening, "Server should be listening");
+            Assert.True(server.HttpsListeningPort > 0, "HTTPS listener should be bound to a port");
+
+            // Act — connect to the HTTPS listener and perform a TLS handshake
+            using var tcpClient = new TcpClient();
+            await tcpClient.ConnectAsync("127.0.0.1", server.HttpsListeningPort);
+
+            using var sslStream = new SslStream(tcpClient.GetStream(), false,
+                (_, _, _, _) => true); // Accept self-signed cert
+            await sslStream.AuthenticateAsClientAsync("localhost");
+
+            // Send an HTTP request through the HTTPS listener to an external host.
+            // The proxy will attempt to forward it (and may fail upstream), but the
+            // key assertion is that it handled the TLS connection and parsed the HTTP
+            // request — we just need any HTTP response back.
+            var requestStr = $"GET http://httpbin.org/get HTTP/1.1\r\nHost: httpbin.org\r\nConnection: close\r\n\r\n";
+            await sslStream.WriteAsync(System.Text.Encoding.ASCII.GetBytes(requestStr));
+            await sslStream.FlushAsync();
+
+            // Read response
+            var buffer = new byte[8192];
+            var totalRead = 0;
+            using var readCts = new CancellationTokenSource(HttpRequestTimeout);
+            try
+            {
+                int read;
+                while ((read = await sslStream.ReadAsync(buffer.AsMemory(totalRead), readCts.Token)) > 0)
+                    totalRead += read;
+            }
+            catch (IOException) { /* Connection closed by proxy after response */ }
+
+            // Assert — should receive an HTTP response from the proxy
+            Assert.True(totalRead > 0, "Should receive a response from the HTTPS listener");
+            var responseText = System.Text.Encoding.ASCII.GetString(buffer, 0, totalRead);
+            Assert.StartsWith("HTTP/1.1", responseText);
+
+            await server.StopAsync();
+            cts.Cancel();
+        }
+        finally
+        {
+            Directory.Delete(tempDir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task HttpsListener_NotStarted_WhenHttpsPortIsZero()
+    {
+        // Arrange — config with HttpsPort = 0 (disabled)
+        var config = new ProxyConfig
+        {
+            Port = 0,
+            HttpsPort = 0,
+            LogLevel = ProxyConfig.LogLevelEnum.Warn
+        };
+
+        await using var server = new ProxyServer(config);
+        using var cts = new CancellationTokenSource();
+        var serverTask = server.StartAsync(cts.Token);
+
+        var deadline = DateTime.UtcNow + ServerStartTimeout;
+        while (!server.IsListening && DateTime.UtcNow < deadline)
+            await Task.Delay(50);
+
+        Assert.True(server.IsListening);
+        Assert.Equal(0, server.HttpsListeningPort);
+
+        await server.StopAsync();
+        cts.Cancel();
+    }
+
+    [Fact]
+    public async Task HttpsListener_NotStarted_WhenCertPathMissing()
+    {
+        // Arrange — HttpsPort set but no cert paths provided
+        var config = new ProxyConfig
+        {
+            Port = 0,
+            HttpsPort = 8443, // Non-zero but no certs — should be skipped
+            LogLevel = ProxyConfig.LogLevelEnum.Warn
+        };
+
+        await using var server = new ProxyServer(config);
+        using var cts = new CancellationTokenSource();
+        var serverTask = server.StartAsync(cts.Token);
+
+        var deadline = DateTime.UtcNow + ServerStartTimeout;
+        while (!server.IsListening && DateTime.UtcNow < deadline)
+            await Task.Delay(50);
+
+        // Should start fine, just without HTTPS listener
+        Assert.True(server.IsListening);
+        Assert.Equal(0, server.HttpsListeningPort);
+
+        await server.StopAsync();
+        cts.Cancel();
+    }
+
+    [Fact]
+    public async Task HttpsListener_BothListenersRunConcurrently()
+    {
+        // Arrange — create certs
+        using var rsa = RSA.Create(2048);
+        var req = new CertificateRequest("CN=localhost", rsa, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
+        using var cert = req.CreateSelfSigned(DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddYears(1));
+
+        var tempDir = Path.Combine(Path.GetTempPath(), $"shmoxy-test-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tempDir);
+        try
+        {
+            var certPath = Path.Combine(tempDir, "cert.pem");
+            var keyPath = Path.Combine(tempDir, "key.pem");
+            File.WriteAllText(certPath, cert.ExportCertificatePem());
+            File.WriteAllText(keyPath, rsa.ExportRSAPrivateKeyPem());
+
+            var config = new ProxyConfig
+            {
+                Port = 0,
+                HttpsPort = GetFreePort(),
+                CertPath = certPath,
+                KeyPath = keyPath,
+                LogLevel = ProxyConfig.LogLevelEnum.Warn
+            };
+
+            await using var server = new ProxyServer(config);
+            using var cts = new CancellationTokenSource();
+            var serverTask = server.StartAsync(cts.Token);
+
+            var deadline = DateTime.UtcNow + ServerStartTimeout;
+            while (!server.IsListening && DateTime.UtcNow < deadline)
+                await Task.Delay(50);
+
+            Assert.True(server.IsListening);
+            Assert.True(server.ListeningPort > 0);
+            Assert.True(server.HttpsListeningPort > 0);
+            Assert.NotEqual(server.ListeningPort, server.HttpsListeningPort);
+
+            // Act — connect to HTTP listener (use as a standard proxy with absolute URL)
+            var httpProxy = new WebProxy($"http://localhost:{server.ListeningPort}");
+            using var httpHandler = new HttpClientHandler { Proxy = httpProxy, UseProxy = true };
+            using var httpTestClient = new HttpClient(httpHandler) { Timeout = HttpRequestTimeout };
+            HttpResponseMessage? httpResponse = null;
+            try
+            {
+                httpResponse = await httpTestClient.GetAsync("http://httpbin.org/get");
+            }
+            catch (HttpRequestException)
+            {
+                // Proxy accepted and handled the connection even if upstream failed
+            }
+
+            // The proxy should still be running after handling the HTTP request
+            Assert.True(server.IsListening, "Server should still be listening after HTTP request");
+
+            // Act — connect to HTTPS listener (TLS) and send an HTTP request through
+            using var httpsClient = new TcpClient();
+            await httpsClient.ConnectAsync("127.0.0.1", server.HttpsListeningPort);
+            using var sslStream = new SslStream(httpsClient.GetStream(), false,
+                (_, _, _, _) => true);
+            await sslStream.AuthenticateAsClientAsync("localhost");
+            var httpsRequestStr = "GET http://httpbin.org/get HTTP/1.1\r\nHost: httpbin.org\r\nConnection: close\r\n\r\n";
+            await sslStream.WriteAsync(System.Text.Encoding.ASCII.GetBytes(httpsRequestStr));
+            await sslStream.FlushAsync();
+            var httpsBuffer = new byte[8192];
+            var httpsRead = 0;
+            using var readCts = new CancellationTokenSource(HttpRequestTimeout);
+            try
+            {
+                int read;
+                while ((read = await sslStream.ReadAsync(httpsBuffer.AsMemory(httpsRead), readCts.Token)) > 0)
+                    httpsRead += read;
+            }
+            catch (IOException) { /* Connection closed */ }
+            Assert.True(httpsRead > 0, "HTTPS listener should respond");
+            var httpsResponse = System.Text.Encoding.ASCII.GetString(httpsBuffer, 0, httpsRead);
+            Assert.StartsWith("HTTP/1.1", httpsResponse);
+
+            await server.StopAsync();
+            cts.Cancel();
+        }
+        finally
+        {
+            Directory.Delete(tempDir, recursive: true);
+        }
+    }
+
+    /// <summary>
+    /// Finds a free TCP port by binding to port 0 and reading the assigned port.
+    /// The port is released immediately, so there is a small race window.
+    /// </summary>
+    private static int GetFreePort()
+    {
+        var listener = new TcpListener(IPAddress.Loopback, 0);
+        listener.Start();
+        var port = ((IPEndPoint)listener.LocalEndpoint).Port;
+        listener.Stop();
+        return port;
     }
 
     public void Dispose()

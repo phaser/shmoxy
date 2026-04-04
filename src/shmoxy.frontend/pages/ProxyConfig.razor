@@ -17,6 +17,8 @@
         <div class="form-content">
             <FluentNumberField Label="Port" Min="1" Max="65535" TValue="int" @bind-Value="config.Port" />
 
+            <FluentNumberField Label="HTTPS Port (0 = disabled)" Min="0" Max="65535" TValue="int" @bind-Value="config.HttpsPort" />
+
             <FluentSelect TOption="string" @bind-Value="config.LogLevel" Label="Log Level">
                 <FluentOption TOption="string" Value="Debug">Debug</FluentOption>
                 <FluentOption TOption="string" Value="Info">Info</FluentOption>

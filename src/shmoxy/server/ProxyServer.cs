@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
+using System.Net.Security;
 using System.Net.Sockets;
 using System.Security.Authentication;
 using System.Security.Cryptography.X509Certificates;
@@ -28,6 +29,8 @@ public class ProxyServer : IAsyncDisposable, IDisposable
     private readonly ConcurrentDictionary<Task, byte> _activeConnections = new();
     private readonly ConnectionPool? _connectionPool;
     private readonly ClientCertificateProvider? _clientCertProvider;
+    private readonly TcpListener? _httpsListener;
+    private readonly X509Certificate2? _listenerCert;
     private CancellationTokenSource? _cts;
     private bool _disposed;
     private volatile bool _isListening;
@@ -46,6 +49,14 @@ public class ProxyServer : IAsyncDisposable, IDisposable
     /// Only valid after <see cref="StartAsync"/> has been called.
     /// </summary>
     public int ListeningPort => ((System.Net.IPEndPoint)_listener.LocalEndpoint).Port;
+
+    /// <summary>
+    /// Gets the actual HTTPS port the server is listening on, or 0 if not configured.
+    /// Only valid after <see cref="StartAsync"/> has been called.
+    /// </summary>
+    public int HttpsListeningPort => _httpsListener != null
+        ? ((System.Net.IPEndPoint)_httpsListener.LocalEndpoint).Port
+        : 0;
 
     /// <summary>
     /// Gets the root CA certificate in PEM format.
@@ -123,6 +134,29 @@ public class ProxyServer : IAsyncDisposable, IDisposable
                 config.ConnectionPoolSizePerHost, config.ConnectionPoolIdleTimeoutSeconds);
         }
 
+        if (config.HttpsPort > 0
+            && !string.IsNullOrEmpty(config.CertPath)
+            && !string.IsNullOrEmpty(config.KeyPath))
+        {
+            try
+            {
+                _listenerCert = X509Certificate2.CreateFromPemFile(config.CertPath, config.KeyPath);
+                _httpsListener = TcpListener.Create(config.HttpsPort);
+                _logger.LogInformation(
+                    "HTTPS proxy listener configured on port {HttpsPort}", config.HttpsPort);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(
+                    "Failed to load HTTPS listener certificate from {CertPath}/{KeyPath}: {ErrorMessage}. " +
+                    "Ensure the files are in PEM format.",
+                    config.CertPath, config.KeyPath, ex.Message);
+                _listenerCert?.Dispose();
+                _listenerCert = null;
+                _httpsListener = null;
+            }
+        }
+
         _logger.LogInformation("Proxy server initialized on port {Port}", config.Port);
         _logger.LogInformation("Certificate storage: {CertStoragePath}", config.CertStoragePath);
     }
@@ -145,19 +179,19 @@ public class ProxyServer : IAsyncDisposable, IDisposable
             _isListening = true;
             _logger.LogInformation("Proxy server started on port {Port}", _config.Port);
 
-            while (!combinedCts.Token.IsCancellationRequested)
+            var httpTask = AcceptConnectionsAsync(_listener, isTls: false, combinedCts.Token);
+
+            if (_httpsListener != null)
             {
-                var clientTask = _listener.AcceptTcpClientAsync();
-
-                await Task.WhenAny(clientTask, Task.Delay(-1, combinedCts.Token));
-
-                if (clientTask.Status == TaskStatus.RanToCompletion && !combinedCts.Token.IsCancellationRequested)
-                {
-                    var client = await clientTask;
-                    var connectionTask = Task.Run(() => HandleConnectionAsync(client));
-                    _activeConnections.TryAdd(connectionTask, 0);
-                    _ = connectionTask.ContinueWith(t => _activeConnections.TryRemove(t, out _), TaskContinuationOptions.ExecuteSynchronously);
-                }
+                _httpsListener.Start();
+                _logger.LogInformation("HTTPS proxy listener started on port {HttpsPort}",
+                    ((System.Net.IPEndPoint)_httpsListener.LocalEndpoint).Port);
+                var httpsTask = AcceptConnectionsAsync(_httpsListener, isTls: true, combinedCts.Token);
+                await Task.WhenAll(httpTask, httpsTask);
+            }
+            else
+            {
+                await httpTask;
             }
         }
         catch (OperationCanceledException)
@@ -176,6 +210,31 @@ public class ProxyServer : IAsyncDisposable, IDisposable
     }
 
     /// <summary>
+    /// Accepts connections on the given listener and dispatches them for handling.
+    /// </summary>
+    private async Task AcceptConnectionsAsync(TcpListener listener, bool isTls, CancellationToken ct)
+    {
+        while (!ct.IsCancellationRequested)
+        {
+            var clientTask = listener.AcceptTcpClientAsync();
+
+            await Task.WhenAny(clientTask, Task.Delay(-1, ct));
+
+            if (clientTask.Status == TaskStatus.RanToCompletion && !ct.IsCancellationRequested)
+            {
+                var client = await clientTask;
+                var connectionTask = isTls
+                    ? Task.Run(() => HandleTlsListenerConnectionAsync(client))
+                    : Task.Run(() => HandleConnectionAsync(client));
+                _activeConnections.TryAdd(connectionTask, 0);
+                _ = connectionTask.ContinueWith(
+                    t => _activeConnections.TryRemove(t, out _),
+                    TaskContinuationOptions.ExecuteSynchronously);
+            }
+        }
+    }
+
+    /// <summary>
     /// Stops the proxy server.
     /// </summary>
     /// <summary>
@@ -187,6 +246,7 @@ public class ProxyServer : IAsyncDisposable, IDisposable
     {
         _cts?.Cancel();
         _listener.Stop();
+        _httpsListener?.Stop();
         _isListening = false;
 
         var activeTasks = _activeConnections.Keys.ToArray();
@@ -198,7 +258,7 @@ public class ProxyServer : IAsyncDisposable, IDisposable
     }
 
     /// <summary>
-    /// Handles an incoming client connection.
+    /// Handles an incoming plain TCP client connection.
     /// </summary>
     private async Task HandleConnectionAsync(TcpClient client)
     {
@@ -206,36 +266,7 @@ public class ProxyServer : IAsyncDisposable, IDisposable
         {
             try
             {
-                var stream = client.GetStream();
-
-                // Read until the full HTTP headers are received (\r\n\r\n terminator).
-                // A single ReadAsync cannot be relied upon — TCP may deliver data
-                // across multiple segments.
-                var clientEndpoint = client.Client.RemoteEndPoint?.ToString();
-                var headerResult = await ReadUntilHeadersCompleteAsync(stream, _logger, clientEndpoint);
-                if (headerResult == null) return;
-
-                var (buffer, bytesRead) = headerResult.Value;
-
-                var requestLine = Encoding.Latin1.GetString(buffer, 0, bytesRead).Split('\r')[0];
-                var parts = requestLine.Split(' ');
-
-                if (parts.Length < 2)
-                {
-                    _logger.LogError("Invalid request line");
-                    return;
-                }
-
-                var method = parts[0];
-
-                if (method.Equals("CONNECT", StringComparison.OrdinalIgnoreCase))
-                {
-                    await HandleConnectAsync(client, buffer, bytesRead);
-                }
-                else
-                {
-                    await HandleHttpRequestAsync(client, method, parts[1], buffer, bytesRead);
-                }
+                await HandleConnectionOnStreamAsync(client, client.GetStream());
             }
             catch (Exception ex) when (ex is not OperationCanceledException and not IOException)
             {
@@ -245,10 +276,80 @@ public class ProxyServer : IAsyncDisposable, IDisposable
     }
 
     /// <summary>
+    /// Handles an incoming TLS-encrypted client connection on the HTTPS listener port.
+    /// Performs the TLS handshake, then delegates to the same request handling as plain connections.
+    /// </summary>
+    private async Task HandleTlsListenerConnectionAsync(TcpClient client)
+    {
+        using (client)
+        {
+            try
+            {
+                var sslStream = new SslStream(client.GetStream(), leaveInnerStreamOpen: false);
+                await using (sslStream)
+                {
+                    await sslStream.AuthenticateAsServerAsync(_listenerCert!);
+                    _logger.LogDebug("HTTPS listener TLS handshake completed for {Endpoint}",
+                        client.Client.RemoteEndPoint);
+                    await HandleConnectionOnStreamAsync(client, sslStream);
+                }
+            }
+            catch (AuthenticationException ex)
+            {
+                _logger.LogDebug("HTTPS listener TLS handshake failed: {ErrorMessage}", ex.Message);
+            }
+            catch (IOException ex)
+            {
+                _logger.LogDebug("HTTPS listener connection closed: {ErrorMessage}", ex.Message);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                _logger.LogError("HTTPS listener connection error: {ErrorMessage}", ex.Message);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Core connection handler that works on any stream (plain TCP or TLS).
+    /// Reads the HTTP request line, then dispatches to CONNECT or HTTP request handling.
+    /// </summary>
+    private async Task HandleConnectionOnStreamAsync(TcpClient client, Stream clientStream)
+    {
+        // Read until the full HTTP headers are received (\r\n\r\n terminator).
+        // A single ReadAsync cannot be relied upon — TCP may deliver data
+        // across multiple segments.
+        var clientEndpoint = client.Client.RemoteEndPoint?.ToString();
+        var headerResult = await ReadUntilHeadersCompleteAsync(clientStream, _logger, clientEndpoint);
+        if (headerResult == null) return;
+
+        var (buffer, bytesRead) = headerResult.Value;
+
+        var requestLine = Encoding.Latin1.GetString(buffer, 0, bytesRead).Split('\r')[0];
+        var parts = requestLine.Split(' ');
+
+        if (parts.Length < 2)
+        {
+            _logger.LogError("Invalid request line");
+            return;
+        }
+
+        var method = parts[0];
+
+        if (method.Equals("CONNECT", StringComparison.OrdinalIgnoreCase))
+        {
+            await HandleConnectAsync(client, clientStream, buffer, bytesRead);
+        }
+        else
+        {
+            await HandleHttpRequestAsync(clientStream, method, parts[1], buffer, bytesRead);
+        }
+    }
+
+    /// <summary>
     /// Handles CONNECT requests for HTTPS tunnels with MITM interception.
     /// If the host matches the passthrough list, traffic is tunneled without TLS termination.
     /// </summary>
-    private async Task HandleConnectAsync(TcpClient client, byte[] buffer, int bytesRead)
+    private async Task HandleConnectAsync(TcpClient client, Stream clientStream, byte[] buffer, int bytesRead)
     {
         var request = Encoding.Latin1.GetString(buffer, 0, bytesRead);
         var hostPort = request.Split('\r')[0].Split(' ')[1];
@@ -263,7 +364,7 @@ public class ProxyServer : IAsyncDisposable, IDisposable
         // Check if host is configured for TLS passthrough
         if (_config.PassthroughHosts.Count > 0 && HostMatcher.IsMatch(host, _config.PassthroughHosts))
         {
-            await HandlePassthroughAsync(client, host, port);
+            await HandlePassthroughAsync(clientStream, host, port);
             return;
         }
 
@@ -271,12 +372,12 @@ public class ProxyServer : IAsyncDisposable, IDisposable
         var cert = _tlsHandler.GetCertificate(host);
 
         // Send success response
-        await SendResponseAsync(client, "HTTP/1.1 200 Connection Established\r\n\r\n");
+        await SendResponseAsync(clientStream, "HTTP/1.1 200 Connection Established\r\n\r\n");
 
         // Switch to TLS mode - encrypt all subsequent traffic
-        using (var sslStream = new global::System.Net.Security.SslStream(
-            client.GetStream(),
-            false,
+        using (var sslStream = new SslStream(
+            clientStream,
+            leaveInnerStreamOpen: true,
             ValidateCertificate,
             null))
         {
@@ -293,7 +394,7 @@ public class ProxyServer : IAsyncDisposable, IDisposable
     /// Handles a CONNECT request by tunneling raw TCP bytes without TLS termination.
     /// This preserves the client's original TLS fingerprint (JA3/JA4).
     /// </summary>
-    private async Task HandlePassthroughAsync(TcpClient client, string host, int port)
+    private async Task HandlePassthroughAsync(Stream clientStream, string host, int port)
     {
         _logger.LogInformation("TLS passthrough for {Host}:{Port}", host, port);
 
@@ -302,13 +403,12 @@ public class ProxyServer : IAsyncDisposable, IDisposable
         await upstream.ConnectAsync(host, port);
 
         // Send 200 to the client so it starts the TLS handshake
-        await SendResponseAsync(client, "HTTP/1.1 200 Connection Established\r\n\r\n");
+        await SendResponseAsync(clientStream, "HTTP/1.1 200 Connection Established\r\n\r\n");
 
         // Emit a passthrough event for inspection
         await _interceptor.OnPassthroughAsync(host, port);
 
-        // Bidirectional raw TCP relay — no decryption
-        var clientStream = client.GetStream();
+        // Bidirectional raw relay — no decryption
         var upstreamStream = upstream.GetStream();
 
         using var cts = new CancellationTokenSource(TimeSpan.FromMinutes(5));
@@ -327,7 +427,7 @@ public class ProxyServer : IAsyncDisposable, IDisposable
     /// <summary>
     /// Copies data from source to destination until either side closes or cancellation is requested.
     /// </summary>
-    private static async Task RelayAsync(NetworkStream source, NetworkStream destination, CancellationToken ct)
+    private static async Task RelayAsync(Stream source, Stream destination, CancellationToken ct)
     {
         var buffer = new byte[8192];
         try
@@ -348,7 +448,7 @@ public class ProxyServer : IAsyncDisposable, IDisposable
     /// Handles regular HTTP requests (not CONNECT).
     /// The full initial request is already in buffer[0..bytesRead].
     /// </summary>
-    private async Task HandleHttpRequestAsync(TcpClient client, string method, string path, byte[] buffer, int bytesRead)
+    private async Task HandleHttpRequestAsync(Stream clientStream, string method, string path, byte[] buffer, int bytesRead)
     {
         try
         {
@@ -403,17 +503,17 @@ public class ProxyServer : IAsyncDisposable, IDisposable
             {
                 if (path.Equals("/root-ca.pem", StringComparison.OrdinalIgnoreCase))
                 {
-                    await ServeRootCertificatePemAsync(client);
+                    await ServeRootCertificatePemAsync(clientStream);
                     return;
                 }
                 if (path.Equals("/root-ca.der", StringComparison.OrdinalIgnoreCase))
                 {
-                    await ServeRootCertificateDerAsync(client);
+                    await ServeRootCertificateDerAsync(clientStream);
                     return;
                 }
                 if (path.Equals("/") || string.IsNullOrEmpty(path))
                 {
-                    await ServeInfoPageAsync(client, method, path);
+                    await ServeInfoPageAsync(clientStream, method, path);
                     return;
                 }
             }
@@ -441,7 +541,7 @@ public class ProxyServer : IAsyncDisposable, IDisposable
                 Buffer.BlockCopy(buffer, headerEndIndex + 4, body, 0, body.Length);
             }
 
-            body = await ReadFullBodyAsync(client.GetStream(), body, headersDict);
+            body = await ReadFullBodyAsync(clientStream, body, headersDict);
 
             // Intercept request
             var interceptedRequest = new InterceptedRequest
@@ -460,7 +560,7 @@ public class ProxyServer : IAsyncDisposable, IDisposable
             if (result == null || result.Cancel) return;
 
             // Forward the request to the target server via a new TCP connection
-            await ForwardHttpRequestAsync(client, result, host, port);
+            await ForwardHttpRequestAsync(clientStream, result, host, port);
         }
         catch (Exception ex) when (ex is not OperationCanceledException and not IOException)
         {
@@ -477,57 +577,56 @@ public class ProxyServer : IAsyncDisposable, IDisposable
                        || host.Equals("127.0.0.1", StringComparison.OrdinalIgnoreCase)
                        || host.Equals("::1", StringComparison.OrdinalIgnoreCase);
 
-        return isLocalhost && port == ListeningPort;
+        return isLocalhost && (port == ListeningPort || (HttpsListeningPort > 0 && port == HttpsListeningPort));
     }
 
     /// <summary>
     /// Serves the root CA certificate in PEM format.
     /// </summary>
-    private async Task ServeRootCertificatePemAsync(TcpClient client)
+    private async Task ServeRootCertificatePemAsync(Stream clientStream)
     {
         try
         {
             var pem = GetRootCertificatePem();
             var response = $"HTTP/1.1 200 OK\r\nContent-Type: application/x-pem-file\r\nContent-Length: {Encoding.UTF8.GetByteCount(pem)}\r\nContent-Disposition: attachment; filename=\"shmoxy-root-ca.pem\"\r\nConnection: close\r\n\r\n{pem}";
-            await SendResponseAsync(client, response);
+            await SendResponseAsync(clientStream, response);
         }
         catch (Exception ex)
         {
             var error = $"HTTP/1.1 500 Internal Server Error\r\nContent-Type: text/plain\r\n\r\nError: {ex.Message}";
-            await SendResponseAsync(client, error);
+            await SendResponseAsync(clientStream, error);
         }
     }
 
     /// <summary>
     /// Serves the root CA certificate in DER format.
     /// </summary>
-    private async Task ServeRootCertificateDerAsync(TcpClient client)
+    private async Task ServeRootCertificateDerAsync(Stream clientStream)
     {
         try
         {
             var der = GetRootCertificateDer();
             var header = $"HTTP/1.1 200 OK\r\nContent-Type: application/x-x509-ca-cert\r\nContent-Length: {der.Length}\r\nContent-Disposition: attachment; filename=\"shmoxy-root-ca.der\"\r\nConnection: close\r\n\r\n";
             var headerBytes = Encoding.Latin1.GetBytes(header);
-            var stream = client.GetStream();
-            await stream.WriteAsync(headerBytes, 0, headerBytes.Length);
-            await stream.WriteAsync(der, 0, der.Length);
-            await stream.FlushAsync();
+            await clientStream.WriteAsync(headerBytes, 0, headerBytes.Length);
+            await clientStream.WriteAsync(der, 0, der.Length);
+            await clientStream.FlushAsync();
         }
         catch (Exception ex)
         {
             var error = $"HTTP/1.1 500 Internal Server Error\r\nContent-Type: text/plain\r\n\r\nError: {ex.Message}";
-            await SendResponseAsync(client, error);
+            await SendResponseAsync(clientStream, error);
         }
     }
 
     /// <summary>
     /// Serves an HTML info page for requests directed to the proxy itself.
     /// </summary>
-    private async Task ServeInfoPageAsync(TcpClient client, string method, string path)
+    private async Task ServeInfoPageAsync(Stream clientStream, string method, string path)
     {
         if (!method.Equals("GET", StringComparison.OrdinalIgnoreCase))
         {
-            await SendResponseAsync(client, "HTTP/1.1 405 Method Not Allowed\r\nContent-Type: text/plain\r\n\r\nMethod Not Allowed");
+            await SendResponseAsync(clientStream, "HTTP/1.1 405 Method Not Allowed\r\nContent-Type: text/plain\r\n\r\nMethod Not Allowed");
             return;
         }
 
@@ -584,14 +683,14 @@ public class ProxyServer : IAsyncDisposable, IDisposable
 </html>";
 
         var response = $"HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: {Encoding.UTF8.GetByteCount(html)}\r\nConnection: close\r\n\r\n{html}";
-        await SendResponseAsync(client, response);
+        await SendResponseAsync(clientStream, response);
     }
 
     /// <summary>
     /// Forwards an intercepted HTTP request to the target server and relays the response back to the client.
     /// Opens a new TCP connection to the target rather than reusing the client connection.
     /// </summary>
-    private async Task ForwardHttpRequestAsync(TcpClient client, InterceptedRequest request, string host, int port)
+    private async Task ForwardHttpRequestAsync(Stream clientStream, InterceptedRequest request, string host, int port)
     {
         PooledConnection? pooledConn = null;
         TcpClient? ownedClient = null;
@@ -659,7 +758,6 @@ public class ProxyServer : IAsyncDisposable, IDisposable
             var sendMs = sw.Elapsed.TotalMilliseconds - sendStart;
 
             // Stream the response from the target back to the client
-            var clientStream = client.GetStream();
             byte[] responseBytes;
             var success = false;
             double waitMs;
@@ -1112,12 +1210,11 @@ public class ProxyServer : IAsyncDisposable, IDisposable
     /// <summary>
     /// Sends an HTTP response to the client.
     /// </summary>
-    private async Task SendResponseAsync(TcpClient client, string response)
+    private static async Task SendResponseAsync(Stream clientStream, string response)
     {
         var bytes = Encoding.UTF8.GetBytes(response);
-        var stream = client.GetStream();
-        await stream.WriteAsync(bytes, 0, bytes.Length);
-        await stream.FlushAsync();
+        await clientStream.WriteAsync(bytes, 0, bytes.Length);
+        await clientStream.FlushAsync();
     }
 
     /// <summary>
@@ -1662,6 +1759,7 @@ public class ProxyServer : IAsyncDisposable, IDisposable
         await StopAsync();
         _tlsHandler.Dispose();
         _clientCertProvider?.Dispose();
+        _listenerCert?.Dispose();
         _disposed = true;
     }
 
@@ -1671,10 +1769,12 @@ public class ProxyServer : IAsyncDisposable, IDisposable
 
         _cts?.Cancel();
         _listener.Stop();
+        _httpsListener?.Stop();
         _isListening = false;
         _connectionPool?.Dispose();
         _tlsHandler.Dispose();
         _clientCertProvider?.Dispose();
+        _listenerCert?.Dispose();
         _disposed = true;
     }
 }

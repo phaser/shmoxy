@@ -170,6 +170,25 @@ public class ConfigController : ControllerBase
             return false;
         }
 
+        if (config.HttpsPort < 0 || config.HttpsPort > 65535)
+        {
+            errorMessage = "HTTPS port must be between 0 and 65535 (0 to disable)";
+            return false;
+        }
+
+        if (config.HttpsPort > 0 && config.HttpsPort == config.Port)
+        {
+            errorMessage = "HTTPS port must be different from the HTTP port";
+            return false;
+        }
+
+        if (config.HttpsPort > 0
+            && (string.IsNullOrEmpty(config.CertPath) || string.IsNullOrEmpty(config.KeyPath)))
+        {
+            errorMessage = "CertPath and KeyPath are required when HTTPS port is enabled";
+            return false;
+        }
+
         if (!Enum.IsDefined(typeof(ProxyConfig.LogLevelEnum), config.LogLevel))
         {
             errorMessage = $"Invalid LogLevel. Must be one of: {string.Join(", ", Enum.GetNames(typeof(ProxyConfig.LogLevelEnum)))}";
