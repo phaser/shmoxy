@@ -30,6 +30,16 @@
             <FluentOption TOption="string" Value="ws">WebSocket</FluentOption>
         </FluentSelect>
 
+        <FluentSelect TOption="string" @bind-Value="InspectionService.StatusCodeFilter"
+                      @bind-Value:after="ApplyFilters" Label="Status">
+            <FluentOption TOption="string" Value="all">All Status</FluentOption>
+            <FluentOption TOption="string" Value="2xx">2xx Success</FluentOption>
+            <FluentOption TOption="string" Value="3xx">3xx Redirect</FluentOption>
+            <FluentOption TOption="string" Value="4xx">4xx Client Error</FluentOption>
+            <FluentOption TOption="string" Value="5xx">5xx Server Error</FluentOption>
+            <FluentOption TOption="string" Value="errors">Errors (4xx+5xx)</FluentOption>
+        </FluentSelect>
+
         <label class="api-filter-toggle">
             <input type="checkbox" @bind="InspectionService.ApiOnlyFilter" @bind:after="ApplyFilters" />
             API only
@@ -345,11 +355,22 @@
                 !InspectionService.ApiOnlyFilter ||
                 r.StatusCode is null ||
                 ContentTypeClassifier.IsApiCall(r.Url, r.RequestHeaders, r.ResponseHeaders, r.IsWebSocket))
+            .Where(r => MatchesStatusCodeFilter(r.StatusCode, InspectionService.StatusCodeFilter))
             .Where(r =>
                 InspectionService.AllDomainsSelected ||
                 (ExtractHost(r.Url) is { } host && InspectionService.SelectedDomains.Contains(host)))
             .ToList();
     }
+
+    internal static bool MatchesStatusCodeFilter(int? statusCode, string filter) => filter switch
+    {
+        "2xx" => statusCode is >= 200 and < 300,
+        "3xx" => statusCode is >= 300 and < 400,
+        "4xx" => statusCode is >= 400 and < 500,
+        "5xx" => statusCode is >= 500,
+        "errors" => statusCode is >= 400,
+        _ => true
+    };
 
     private static string? ExtractHost(string url)
     {
