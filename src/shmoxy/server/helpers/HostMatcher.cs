@@ -11,12 +11,7 @@ public static class HostMatcher
     /// </summary>
     public static bool IsMatch(string host, IReadOnlyList<string> patterns)
     {
-        for (var i = 0; i < patterns.Count; i++)
-        {
-            if (IsMatch(host, patterns[i]))
-                return true;
-        }
-        return false;
+        return patterns.Any(t => IsMatch(host, t));
     }
 
     /// <summary>

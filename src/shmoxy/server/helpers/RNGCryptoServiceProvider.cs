@@ -5,14 +5,15 @@ namespace shmoxy.server.helpers;
 /// <summary>
 /// Simple wrapper for random bytes generation.
 /// </summary>
+// ReSharper disable once InconsistentNaming
 internal static class RNGCryptoServiceProvider
 {
-    private static readonly RandomNumberGenerator _rng = RandomNumberGenerator.Create();
+    private static readonly RandomNumberGenerator Rng = RandomNumberGenerator.Create();
 
     public static byte[] GetRandomBytes(int count)
     {
         var buffer = new byte[count];
-        _rng.GetBytes(buffer);
+        Rng.GetBytes(buffer);
         return buffer;
     }
 }

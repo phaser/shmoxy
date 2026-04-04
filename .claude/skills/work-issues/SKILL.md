@@ -58,6 +58,7 @@ All work happens in the worktree — never modify main directly.
   - `dotnet test tests/shmoxy.tests`
   - `dotnet test tests/shmoxy.api.tests`
   - `dotnet test tests/shmoxy.frontend.tests` (includes both unit tests and Playwright e2e)
+- `./scripts/inspect.sh` — run ReSharper code inspections and fix any issues found in files you touched. Do not fix pre-existing issues in files you didn't modify (minimal diff principle). Use `--include` to scope to changed files if needed.
 - `nix build .#shmoxy` — must succeed
 
 ### 6. File Issues for Spotted Problems
