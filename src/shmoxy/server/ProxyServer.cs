@@ -205,7 +205,8 @@ public class ProxyServer : IAsyncDisposable, IDisposable
                 // Read until the full HTTP headers are received (\r\n\r\n terminator).
                 // A single ReadAsync cannot be relied upon — TCP may deliver data
                 // across multiple segments.
-                var headerResult = await ReadUntilHeadersCompleteAsync(stream);
+                var clientEndpoint = client.Client.RemoteEndPoint?.ToString();
+                var headerResult = await ReadUntilHeadersCompleteAsync(stream, _logger, clientEndpoint);
                 if (headerResult == null) return;
 
                 var (buffer, bytesRead) = headerResult.Value;
@@ -725,7 +726,7 @@ public class ProxyServer : IAsyncDisposable, IDisposable
             (byte[] buf, int read)? headerResult;
             try
             {
-                headerResult = await ReadUntilHeadersCompleteAsync(clientStream);
+                headerResult = await ReadUntilHeadersCompleteAsync(clientStream, _logger, $"{host}:{port}");
             }
             catch (IOException)
             {
@@ -997,7 +998,8 @@ public class ProxyServer : IAsyncDisposable, IDisposable
     /// a single ReadAsync call may not return the full headers.
     /// Returns (buffer, totalBytesRead) or null if the stream closed before headers completed.
     /// </summary>
-    internal static async Task<(byte[] Buffer, int BytesRead)?> ReadUntilHeadersCompleteAsync(Stream stream)
+    internal static async Task<(byte[] Buffer, int BytesRead)?> ReadUntilHeadersCompleteAsync(
+        Stream stream, ILogger? logger = null, string? clientEndpoint = null)
     {
         var buffer = new byte[8192];
         var totalRead = 0;
@@ -1007,7 +1009,12 @@ public class ProxyServer : IAsyncDisposable, IDisposable
             if (totalRead == buffer.Length)
             {
                 if (buffer.Length >= MaxHeaderSize)
+                {
+                    logger?.LogWarning(
+                        "Client {Client}: request headers exceeded {MaxBytes} bytes limit, closing connection",
+                        clientEndpoint ?? "unknown", MaxHeaderSize);
                     return null; // Headers too large
+                }
 
                 var newBuffer = new byte[Math.Min(buffer.Length * 2, MaxHeaderSize)];
                 Buffer.BlockCopy(buffer, 0, newBuffer, 0, totalRead);
