@@ -1,3 +1,5 @@
+using shmoxy.shared.ipc;
+
 namespace shmoxy.frontend.services;
 
 public class FrontendProxyConfig
@@ -11,6 +13,7 @@ public class FrontendProxyConfig
     public bool SessionLoggingEnabled { get; set; }
     public bool ValidateUpstreamCertificates { get; set; }
     public bool DisableCaching { get; set; }
+    public List<ClientCertConfig> ClientCertificates { get; set; } = new();
     public int ConnectionPoolSizePerHost { get; set; } = 4;
     public int ConnectionPoolIdleTimeoutSeconds { get; set; } = 60;
 

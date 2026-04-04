@@ -1,7 +1,9 @@
 using System.Collections.Concurrent;
 using System.Net.Security;
 using System.Net.Sockets;
+using System.Security.Cryptography.X509Certificates;
 using Microsoft.Extensions.Logging;
+using shmoxy.server.helpers;
 
 namespace shmoxy.server;
 
@@ -68,6 +70,7 @@ public sealed class ConnectionPool : IDisposable
     private readonly RemoteCertificateValidationCallback _certValidator;
     private readonly int _receiveTimeoutMs;
     private readonly ILogger _logger;
+    private readonly ClientCertificateProvider? _clientCertProvider;
     private readonly Timer _evictionTimer;
     private bool _disposed;
 
@@ -76,13 +79,15 @@ public sealed class ConnectionPool : IDisposable
         TimeSpan idleTimeout,
         int receiveTimeoutMs,
         RemoteCertificateValidationCallback certValidator,
-        ILogger logger)
+        ILogger logger,
+        ClientCertificateProvider? clientCertProvider = null)
     {
         _maxPerHost = maxPerHost;
         _idleTimeout = idleTimeout;
         _receiveTimeoutMs = receiveTimeoutMs;
         _certValidator = certValidator;
         _logger = logger;
+        _clientCertProvider = clientCertProvider;
 
         // Run eviction every 10 seconds
         _evictionTimer = new Timer(_ => EvictStale(), null, TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(10));
@@ -156,9 +161,25 @@ public sealed class ConnectionPool : IDisposable
         Stream stream = tcpClient.GetStream();
         if (useTls)
         {
-            var sslStream = new SslStream(stream, false, _certValidator);
-            await sslStream.AuthenticateAsClientAsync(host);
-            stream = sslStream;
+            var clientCert = _clientCertProvider?.GetCertificateForHost(host);
+            if (clientCert != null)
+            {
+                var sslStream = new SslStream(stream, false);
+                var options = new SslClientAuthenticationOptions
+                {
+                    TargetHost = host,
+                    ClientCertificates = new X509CertificateCollection { clientCert },
+                    RemoteCertificateValidationCallback = _certValidator
+                };
+                await sslStream.AuthenticateAsClientAsync(options);
+                stream = sslStream;
+            }
+            else
+            {
+                var sslStream = new SslStream(stream, false, _certValidator);
+                await sslStream.AuthenticateAsClientAsync(host);
+                stream = sslStream;
+            }
         }
 
         return new PooledConnection(this, tcpClient, stream, host, port);

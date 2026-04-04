@@ -1,4 +1,5 @@
 @page "/proxy-config"
+@using shmoxy.shared.ipc
 @inject ApiClient ApiClient
 @inject ProxyStatusService ProxyStatusService
 
@@ -90,6 +91,48 @@
             else
             {
                 <p class="no-items">No passthrough domains configured. All HTTPS traffic will be intercepted.</p>
+            }
+        </div>
+    </FluentCard>
+
+    <FluentCard>
+        <div class="card-header">
+            <FluentIcon Value="@(new Icons.Regular.Size20.Certificate())" />
+            <h2>Client Certificates (mTLS)</h2>
+        </div>
+
+        <div class="form-content">
+            <p class="description">Configure client certificates for mutual TLS authentication with upstream servers. The proxy will present the matching certificate during the TLS handshake. Certificates must be in PFX/PKCS#12 format.</p>
+
+            <div class="client-cert-input-row">
+                <FluentTextField @bind-Value="newCertHost" Placeholder="*.internal.corp" Label="Host Pattern" />
+                <FluentTextField @bind-Value="newCertPath" Placeholder="/path/to/client.pfx" Label="Certificate Path (PFX)" />
+                <FluentTextField @bind-Value="newCertPassword" Placeholder="(optional)" Label="Password" TextFieldType="TextFieldType.Password" />
+                <FluentButton Appearance="Appearance.Accent"
+                              OnClick="@AddClientCert"
+                              Disabled="@(string.IsNullOrWhiteSpace(newCertHost) || string.IsNullOrWhiteSpace(newCertPath))">
+                    Add
+                </FluentButton>
+            </div>
+
+            @if (config.ClientCertificates.Count > 0)
+            {
+                <div class="client-cert-list">
+                    @foreach (var cert in config.ClientCertificates)
+                    {
+                        <div class="client-cert-item">
+                            <span class="cert-pattern">@cert.HostPattern</span>
+                            <span class="cert-path">@cert.CertPath</span>
+                            <FluentButton Appearance="Appearance.Stealth" OnClick="@(() => RemoveClientCert(cert))">
+                                <FluentIcon Value="@(new Icons.Regular.Size16.Delete())" />
+                            </FluentButton>
+                        </div>
+                    }
+                </div>
+            }
+            else
+            {
+                <p class="no-items">No client certificates configured. Upstream connections will not use mTLS.</p>
             }
         </div>
     </FluentCard>
@@ -305,6 +348,29 @@
         }
     }
 
+    private string newCertHost = string.Empty;
+    private string newCertPath = string.Empty;
+    private string newCertPassword = string.Empty;
+
+    private void AddClientCert()
+    {
+        if (string.IsNullOrWhiteSpace(newCertHost) || string.IsNullOrWhiteSpace(newCertPath)) return;
+        config.ClientCertificates.Add(new ClientCertConfig
+        {
+            HostPattern = newCertHost.Trim(),
+            CertPath = newCertPath.Trim(),
+            Password = string.IsNullOrEmpty(newCertPassword) ? null : newCertPassword
+        });
+        newCertHost = string.Empty;
+        newCertPath = string.Empty;
+        newCertPassword = string.Empty;
+    }
+
+    private void RemoveClientCert(ClientCertConfig cert)
+    {
+        config.ClientCertificates.Remove(cert);
+    }
+
     private enum MessageType
     {
         Success,
@@ -448,6 +514,47 @@
 .no-items {
     color: var(--neutral-foreground-hint);
     font-size: 0.875rem;
+}
+
+.client-cert-input-row {
+    display: flex;
+    gap: 0.5rem;
+    align-items: flex-end;
+}
+
+.client-cert-input-row fluent-text-field {
+    flex: 1;
+}
+
+.client-cert-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+.client-cert-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.25rem 0.5rem;
+    border-radius: 4px;
+    background: var(--neutral-layer-2);
+}
+
+.client-cert-item .cert-pattern {
+    font-family: var(--font-family-monospace, monospace);
+    font-size: 0.875rem;
+    font-weight: 600;
+    min-width: 10rem;
+}
+
+.client-cert-item .cert-path {
+    font-family: var(--font-family-monospace, monospace);
+    font-size: 0.875rem;
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 </style>
