@@ -140,7 +140,7 @@ public class FakeProxyIpcClient : IProxyIpcClient
     public Task<string> GetBreakpointRulesAsync(CancellationToken ct = default)
         => Task.FromResult("[]");
 
-    public Task<string> AddBreakpointRuleAsync(string? method, string urlPattern, CancellationToken ct = default)
+    public Task<string> AddBreakpointRuleAsync(string? method, string urlPattern, bool isRegex = false, CancellationToken ct = default)
         => Task.FromResult("{}");
 
     public Task RemoveBreakpointRuleAsync(string id, CancellationToken ct = default)

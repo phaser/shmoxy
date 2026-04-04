@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Text.RegularExpressions;
 using shmoxy.models.dto;
 using shmoxy.server.interfaces;
 
@@ -33,13 +34,23 @@ public class BreakpointHook : IInterceptHook
     public IReadOnlyCollection<BreakpointRule> GetRules() =>
         _rules.Values.ToList().AsReadOnly();
 
-    public BreakpointRule AddRule(string? method, string urlPattern)
+    private static readonly TimeSpan RegexMatchTimeout = TimeSpan.FromSeconds(1);
+
+    public BreakpointRule AddRule(string? method, string urlPattern, bool isRegex = false)
     {
+        Regex? compiled = null;
+        if (isRegex)
+        {
+            compiled = new Regex(urlPattern, RegexOptions.IgnoreCase | RegexOptions.Compiled, RegexMatchTimeout);
+        }
+
         var rule = new BreakpointRule
         {
             Id = Guid.NewGuid().ToString(),
             Method = method,
-            UrlPattern = urlPattern
+            UrlPattern = urlPattern,
+            IsRegex = isRegex,
+            CompiledRegex = compiled
         };
         _rules[rule.Id] = rule;
         // Auto-enable when a rule is added
@@ -61,8 +72,24 @@ public class BreakpointHook : IInterceptHook
                 !rule.Method.Equals(request.Method, StringComparison.OrdinalIgnoreCase))
                 continue;
 
-            if (url.Contains(rule.UrlPattern, StringComparison.OrdinalIgnoreCase))
-                return true;
+            if (rule.IsRegex && rule.CompiledRegex != null)
+            {
+                try
+                {
+                    if (rule.CompiledRegex.IsMatch(url))
+                        return true;
+                }
+                catch (RegexMatchTimeoutException)
+                {
+                    // Pattern caused catastrophic backtracking — treat as non-match
+                    continue;
+                }
+            }
+            else
+            {
+                if (url.Contains(rule.UrlPattern, StringComparison.OrdinalIgnoreCase))
+                    return true;
+            }
         }
         return false;
     }
@@ -137,5 +164,9 @@ public class BreakpointHook : IInterceptHook
         public string Id { get; init; } = string.Empty;
         public string? Method { get; init; }
         public string UrlPattern { get; init; } = string.Empty;
+        public bool IsRegex { get; init; }
+
+        [System.Text.Json.Serialization.JsonIgnore]
+        public Regex? CompiledRegex { get; init; }
     }
 }

@@ -231,9 +231,9 @@ public class ApiClient(HttpClient httpClient)
         await EnsureSuccessOrThrowWithBody(response);
     }
 
-    public async Task AddBreakpointRuleAsync(string? method, string urlPattern)
+    public async Task AddBreakpointRuleAsync(string? method, string urlPattern, bool isRegex = false)
     {
-        var response = await _httpClient.PostAsJsonAsync("/api/breakpoints/rules", new { method, urlPattern });
+        var response = await _httpClient.PostAsJsonAsync("/api/breakpoints/rules", new { method, urlPattern, isRegex });
         await EnsureSuccessOrThrowWithBody(response);
     }
 

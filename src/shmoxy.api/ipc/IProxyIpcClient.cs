@@ -28,6 +28,6 @@ public interface IProxyIpcClient
     Task ReleaseRequestAsync(string correlationId, string? modifiedBody = null, CancellationToken ct = default);
     Task DropRequestAsync(string correlationId, CancellationToken ct = default);
     Task<string> GetBreakpointRulesAsync(CancellationToken ct = default);
-    Task<string> AddBreakpointRuleAsync(string? method, string urlPattern, CancellationToken ct = default);
+    Task<string> AddBreakpointRuleAsync(string? method, string urlPattern, bool isRegex = false, CancellationToken ct = default);
     Task RemoveBreakpointRuleAsync(string id, CancellationToken ct = default);
 }
