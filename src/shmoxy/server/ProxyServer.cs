@@ -1046,8 +1046,9 @@ public class ProxyServer : IAsyncDisposable, IDisposable
                         // WebSocket upgrade: switch to frame relay
                         if (respStatusCode == 101 && IsWebSocketUpgrade(respHeaders))
                         {
-                            _logger.LogInformation("WebSocket upgrade for {Host}:{Port}{Path}", host, port, result.Path);
-                            await HandleWebSocketRelayAsync(clientStream, targetStream, host, port, result.Path, correlationId);
+                            var useDeflate = WebSocketDeflateDecompressor.IsDeflateNegotiated(respHeaders);
+                            _logger.LogInformation("WebSocket upgrade for {Host}:{Port}{Path} (deflate={Deflate})", host, port, result.Path, useDeflate);
+                            await HandleWebSocketRelayAsync(clientStream, targetStream, host, port, result.Path, correlationId, useDeflate);
                             return;
                         }
                     }
@@ -1574,14 +1575,14 @@ public class ProxyServer : IAsyncDisposable, IDisposable
         return hasUpgrade && hasConnection;
     }
 
-    private async Task HandleWebSocketRelayAsync(Stream clientStream, Stream serverStream, string host, int port, string path, string correlationId)
+    private async Task HandleWebSocketRelayAsync(Stream clientStream, Stream serverStream, string host, int port, string path, string correlationId, bool useDeflate)
     {
         await _interceptor.OnWebSocketOpenAsync(host, path, correlationId);
 
         using var cts = new CancellationTokenSource();
 
-        var clientToServer = RelayWebSocketFramesAsync(clientStream, serverStream, "client", host, port, correlationId, cts);
-        var serverToClient = RelayWebSocketFramesAsync(serverStream, clientStream, "server", host, port, correlationId, cts);
+        var clientToServer = RelayWebSocketFramesAsync(clientStream, serverStream, "client", host, port, correlationId, cts, useDeflate);
+        var serverToClient = RelayWebSocketFramesAsync(serverStream, clientStream, "server", host, port, correlationId, cts, useDeflate);
 
         await Task.WhenAny(clientToServer, serverToClient);
         await cts.CancelAsync();
@@ -1592,7 +1593,7 @@ public class ProxyServer : IAsyncDisposable, IDisposable
 
     private async Task RelayWebSocketFramesAsync(
         Stream source, Stream destination, string direction, string host, int port,
-        string correlationId, CancellationTokenSource cts)
+        string correlationId, CancellationTokenSource cts, bool useDeflate)
     {
         try
         {
@@ -1602,9 +1603,20 @@ public class ProxyServer : IAsyncDisposable, IDisposable
                 if (frame == null)
                     break;
 
-                await _interceptor.OnWebSocketFrameAsync(correlationId, frame, direction);
+                // Decompress for inspection if this is a compressed data frame
+                var inspectionFrame = frame;
+                if (useDeflate && frame.Rsv1 && frame.Payload.Length > 0)
+                {
+                    var decompressed = WebSocketDeflateDecompressor.TryDecompress(frame.Payload);
+                    if (decompressed != null)
+                    {
+                        inspectionFrame = frame with { Payload = decompressed, Rsv1 = false };
+                    }
+                }
 
-                // RFC 6455 §5.1: client-to-server frames must be masked
+                await _interceptor.OnWebSocketFrameAsync(correlationId, inspectionFrame, direction);
+
+                // Forward ORIGINAL compressed frame to preserve protocol correctness
                 var maskFrame = direction == "client";
                 await WebSocketFrameReader.WriteFrameAsync(destination, frame, cts.Token, mask: maskFrame);
                 await destination.FlushAsync(cts.Token);
