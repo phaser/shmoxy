@@ -1,0 +1,24 @@
+default: ci
+
+pipelines:
+  ci:
+    repo: https://github.com/phaser/shmoxy.git
+    ref: main
+    steps:
+      - bash: dotnet restore src/shmoxy.slnx
+        displayName: Restore packages
+        timeoutInMinutes: 5
+
+      - bash: dotnet build src/shmoxy.slnx --no-restore --configuration Release
+        displayName: Build
+        timeoutInMinutes: 10
+
+      - bash: dotnet test src/shmoxy.slnx --no-build --configuration Release
+        displayName: Test
+        timeoutInMinutes: 15
+
+      - bash: |
+          VERSION=$(grep '^version:' dist.yaml | awk '{print $2}')
+          docker build -t shmoxy:$VERSION -t shmoxy:latest .
+        displayName: Build Docker image
+        timeoutInMinutes: 10
