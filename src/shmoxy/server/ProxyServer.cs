@@ -36,7 +36,7 @@ public class ProxyServer : IAsyncDisposable, IDisposable
     private volatile bool _isListening;
     private X509Certificate2? _rootCert;
 
-    private const int UpstreamReadTimeoutMs = 30000;
+    private const int UpstreamReadTimeoutMs = 60000;
 
     /// <summary>
     /// Gets whether the server is currently listening for connections.
@@ -381,7 +381,15 @@ public class ProxyServer : IAsyncDisposable, IDisposable
             ValidateCertificate,
             null))
         {
-            await sslStream.AuthenticateAsServerAsync(cert);
+            var serverOptions = new SslServerAuthenticationOptions
+            {
+                ServerCertificate = cert,
+                ApplicationProtocols = new List<SslApplicationProtocol>
+                {
+                    SslApplicationProtocol.Http11
+                }
+            };
+            await sslStream.AuthenticateAsServerAsync(serverOptions);
 
             _logger.LogInformation("TLS tunnel established to {Host}:{Port}", host, port);
 
@@ -738,7 +746,10 @@ public class ProxyServer : IAsyncDisposable, IDisposable
             if (_config.DisableCaching)
                 outgoing.Append("Cache-Control: no-cache\r\n");
 
-            var useKeepAlive = pooledConn != null;
+            var clientWantsClose = request.Headers.Any(h =>
+                h.Key.Equals("Connection", StringComparison.OrdinalIgnoreCase) &&
+                h.Value.Contains("close", StringComparison.OrdinalIgnoreCase));
+            var useKeepAlive = pooledConn != null && !clientWantsClose;
             outgoing.Append(useKeepAlive ? "Connection: keep-alive\r\n" : "Connection: close\r\n");
 
             if (request.Body != null && request.Body.Length > 0)
@@ -770,8 +781,8 @@ public class ProxyServer : IAsyncDisposable, IDisposable
             {
                 // ReadFramedHttpResponseAsync reads the entire response; treat as wait+receive combined
                 using var readCts = new CancellationTokenSource(UpstreamReadTimeoutMs);
-                responseBytes = await ReadFramedHttpResponseAsync(targetStream, clientStream, readCts.Token);
-                success = responseBytes.Length > 0;
+                responseBytes = await ReadFramedHttpResponseAsync(targetStream, clientStream, readCts, UpstreamReadTimeoutMs);
+                success = responseBytes.Length > 0 && !readCts.IsCancellationRequested;
                 waitMs = sw.Elapsed.TotalMilliseconds - responseStart;
                 receiveMs = 0;
             }
@@ -884,7 +895,14 @@ public class ProxyServer : IAsyncDisposable, IDisposable
             (byte[] buf, int read)? headerResult;
             try
             {
-                headerResult = await ReadUntilHeadersCompleteAsync(clientStream, _logger, $"{host}:{port}");
+                using var idleCts = new CancellationTokenSource(UpstreamReadTimeoutMs);
+                var readTask = ReadUntilHeadersCompleteAsync(clientStream, _logger, $"{host}:{port}");
+                var finished = await Task.WhenAny(readTask, Task.Delay(-1, idleCts.Token));
+                if (finished != readTask)
+                {
+                    break; // Idle timeout — client didn't send a request
+                }
+                headerResult = await readTask;
             }
             catch (IOException)
             {
@@ -917,6 +935,10 @@ public class ProxyServer : IAsyncDisposable, IDisposable
                     headers.Add(new KeyValuePair<string, string>(key, value));
                 }
             }
+
+            var clientWantsClose = headers.Any(h =>
+                h.Key.Equals("Connection", StringComparison.OrdinalIgnoreCase) &&
+                h.Value.Contains("close", StringComparison.OrdinalIgnoreCase));
 
             // Parse body from the already-read buffer, then read remaining if needed
             var headerEnd = requestText.IndexOf("\r\n\r\n");
@@ -953,6 +975,7 @@ public class ProxyServer : IAsyncDisposable, IDisposable
             // Forward to upstream — activate temporary passthrough directly if the connection fails.
             PooledConnection? pooledConn = null;
             TcpClient? ownedTargetClient = null;
+            var success = false;
             try
             {
                 // --- Timing: connection phase ---
@@ -993,27 +1016,40 @@ public class ProxyServer : IAsyncDisposable, IDisposable
                         global::System.Net.Security.SslStream sslTarget;
                         try
                         {
-                            if (clientCert != null)
+                        if (clientCert != null)
+                        {
+                            sslTarget = new global::System.Net.Security.SslStream(
+                                ownedTargetClient.GetStream(),
+                                false);
+                            var options = new global::System.Net.Security.SslClientAuthenticationOptions
                             {
-                                sslTarget = new global::System.Net.Security.SslStream(
-                                    ownedTargetClient.GetStream(),
-                                    false);
-                                var options = new global::System.Net.Security.SslClientAuthenticationOptions
+                                TargetHost = host,
+                                ClientCertificates = new X509CertificateCollection { clientCert },
+                                RemoteCertificateValidationCallback = ValidateCertificate,
+                                ApplicationProtocols = new List<SslApplicationProtocol>
                                 {
-                                    TargetHost = host,
-                                    ClientCertificates = new X509CertificateCollection { clientCert },
-                                    RemoteCertificateValidationCallback = ValidateCertificate
-                                };
-                                await sslTarget.AuthenticateAsClientAsync(options);
-                            }
-                            else
+                                    SslApplicationProtocol.Http11
+                                }
+                            };
+                            await sslTarget.AuthenticateAsClientAsync(options);
+                        }
+                        else
+                        {
+                            sslTarget = new global::System.Net.Security.SslStream(
+                                ownedTargetClient.GetStream(),
+                                false,
+                                ValidateCertificate);
+                            var options = new global::System.Net.Security.SslClientAuthenticationOptions
                             {
-                                sslTarget = new global::System.Net.Security.SslStream(
-                                    ownedTargetClient.GetStream(),
-                                    false,
-                                    ValidateCertificate);
-                                await sslTarget.AuthenticateAsClientAsync(host);
-                            }
+                                TargetHost = host,
+                                RemoteCertificateValidationCallback = ValidateCertificate,
+                                ApplicationProtocols = new List<SslApplicationProtocol>
+                                {
+                                    SslApplicationProtocol.Http11
+                                }
+                            };
+                            await sslTarget.AuthenticateAsClientAsync(options);
+                        }
                         }
                         catch (Exception tlsEx)
                         {
@@ -1030,7 +1066,7 @@ public class ProxyServer : IAsyncDisposable, IDisposable
                     }
                 }
 
-                var useKeepAlive = pooledConn != null;
+                var useKeepAlive = pooledConn != null && !clientWantsClose;
 
                 try
                 {
@@ -1072,7 +1108,7 @@ public class ProxyServer : IAsyncDisposable, IDisposable
 
                     // Stream the response back to the client
                     byte[] responseBytes;
-                    var success = false;
+                    success = false;
                     double waitMs;
                     double receiveMs;
 
@@ -1082,7 +1118,7 @@ public class ProxyServer : IAsyncDisposable, IDisposable
                     if (useKeepAlive)
                     {
                         using var readCts = new CancellationTokenSource(UpstreamReadTimeoutMs);
-                        responseBytes = await ReadFramedHttpResponseAsync(targetStream, clientStream, readCts.Token);
+                        responseBytes = await ReadFramedHttpResponseAsync(targetStream, clientStream, readCts, UpstreamReadTimeoutMs);
                         success = responseBytes.Length > 0;
                         waitMs = sw.Elapsed.TotalMilliseconds - responseStart;
                         receiveMs = 0;
@@ -1202,8 +1238,12 @@ public class ProxyServer : IAsyncDisposable, IDisposable
                     "Upstream connection failed for {Host}:{Port}{Path}: {ExceptionType}: {ErrorMessage}{InnerException}", host, port, result.Path, ex.GetType().Name, ex.Message, inner);
             }
 
-            // Without pool, Connection: close means we're done after one request
-            if (_connectionPool == null) break;
+            // Without pool or if client wants to close, we're done after one request
+            if (_connectionPool == null || clientWantsClose) break;
+
+            // If the upstream response was truncated (timed out), close the tunnel
+            // so the browser doesn't wait indefinitely for the remaining bytes.
+            if (!success) break;
         }
     }
 
@@ -1326,9 +1366,11 @@ public class ProxyServer : IAsyncDisposable, IDisposable
     /// Reads a complete HTTP response from an upstream stream using proper framing
     /// (Content-Length or chunked Transfer-Encoding). Streams bytes to the client as
     /// they arrive. Returns all raw bytes for inspection parsing.
+    /// The timeout is reset after each successful read, so slow-but-streaming
+    /// responses can complete as long as data keeps arriving.
     /// </summary>
     private static async Task<byte[]> ReadFramedHttpResponseAsync(
-        Stream targetStream, Stream clientStream, CancellationToken ct)
+        Stream targetStream, Stream clientStream, CancellationTokenSource cts, int timeoutMs)
     {
         using var ms = new MemoryStream();
         var buffer = new byte[8192];
@@ -1337,16 +1379,17 @@ public class ProxyServer : IAsyncDisposable, IDisposable
         var headerEndByteIndex = -1;
         while (headerEndByteIndex < 0)
         {
+            cts.CancelAfter(timeoutMs);
             int read;
             try
             {
-                read = await targetStream.ReadAsync(buffer, 0, buffer.Length, ct);
+                read = await targetStream.ReadAsync(buffer, 0, buffer.Length, cts.Token);
             }
             catch (OperationCanceledException) { break; }
             catch (IOException) { break; }
 
             if (read == 0) break;
-            await clientStream.WriteAsync(buffer, 0, read, ct);
+            await clientStream.WriteAsync(buffer, 0, read, cts.Token);
             ms.Write(buffer, 0, read);
 
             // Search for \r\n\r\n in accumulated bytes
@@ -1373,16 +1416,17 @@ public class ProxyServer : IAsyncDisposable, IDisposable
             var remaining = contentLength - bodyBytesAlreadyRead;
             while (remaining > 0)
             {
+                cts.CancelAfter(timeoutMs);
                 var toRead = (int)Math.Min(remaining, buffer.Length);
                 int read;
                 try
                 {
-                    read = await targetStream.ReadAsync(buffer, 0, toRead, ct);
+                    read = await targetStream.ReadAsync(buffer, 0, toRead, cts.Token);
                 }
                 catch (OperationCanceledException) { break; }
                 catch (IOException) { break; }
                 if (read == 0) break;
-                await clientStream.WriteAsync(buffer, 0, read, ct);
+                await clientStream.WriteAsync(buffer, 0, read, cts.Token);
                 ms.Write(buffer, 0, read);
                 remaining -= read;
             }
@@ -1396,37 +1440,48 @@ public class ProxyServer : IAsyncDisposable, IDisposable
                 if (EndsWithChunkTerminator(data, bodyStartIndex))
                     break;
 
+                cts.CancelAfter(timeoutMs);
                 int read;
                 try
                 {
-                    read = await targetStream.ReadAsync(buffer, 0, buffer.Length, ct);
+                    read = await targetStream.ReadAsync(buffer, 0, buffer.Length, cts.Token);
                 }
                 catch (OperationCanceledException) { break; }
                 catch (IOException) { break; }
                 if (read == 0) break;
-                await clientStream.WriteAsync(buffer, 0, read, ct);
+                await clientStream.WriteAsync(buffer, 0, read, cts.Token);
                 ms.Write(buffer, 0, read);
             }
         }
         else
         {
-            // No Content-Length and not chunked — read until connection closes
-            while (true)
+            // No Content-Length and not chunked.
+            // If the server signals it will close, read until it closes.
+            // Otherwise, RFC 7230 section 3.3.3 requires either Content-Length
+            // or chunked encoding on a persistent connection — without either,
+            // there is no body and the response is complete after the headers.
+            var serverWillClose = headerStr.Contains("Connection: close", StringComparison.OrdinalIgnoreCase)
+                               || headerStr.Contains("connection: close", StringComparison.OrdinalIgnoreCase);
+            if (serverWillClose)
             {
-                int read;
-                try
+                while (true)
                 {
-                    read = await targetStream.ReadAsync(buffer, 0, buffer.Length, ct);
+                    cts.CancelAfter(timeoutMs);
+                    int read;
+                    try
+                    {
+                        read = await targetStream.ReadAsync(buffer, 0, buffer.Length, cts.Token);
+                    }
+                    catch (OperationCanceledException) { break; }
+                    catch (IOException) { break; }
+                    if (read == 0) break;
+                    await clientStream.WriteAsync(buffer, 0, read, cts.Token);
+                    ms.Write(buffer, 0, read);
                 }
-                catch (OperationCanceledException) { break; }
-                catch (IOException) { break; }
-                if (read == 0) break;
-                await clientStream.WriteAsync(buffer, 0, read, ct);
-                ms.Write(buffer, 0, read);
             }
         }
 
-        await clientStream.FlushAsync(ct);
+        await clientStream.FlushAsync(cts.Token);
         return ms.ToArray();
     }
 
@@ -1457,14 +1512,47 @@ public class ProxyServer : IAsyncDisposable, IDisposable
 
     internal static bool EndsWithChunkTerminator(byte[] data, int bodyStart)
     {
-        // Look for "0\r\n\r\n" at the end of the body section
-        if (data.Length - bodyStart < 5) return false;
+        if (data.Length - bodyStart < 3) return false;
+
         var end = data.Length;
-        return data[end - 5] == '0'
-            && data[end - 4] == '\r'
-            && data[end - 3] == '\n'
-            && data[end - 2] == '\r'
-            && data[end - 1] == '\n';
+
+        // Fast path: standard ending "0\r\n\r\n" (no trailers, no extensions)
+        if (end - bodyStart >= 5
+            && data[end - 5] == '0' && data[end - 4] == '\r'
+            && data[end - 3] == '\n' && data[end - 2] == '\r'
+            && data[end - 1] == '\n')
+            return true;
+
+        // Scan for the last chunk marker: a line starting with "\r\n0" where
+        // '0' is the full chunk-size (not just a prefix of a larger hex number).
+        // The last chunk is always size 0. After '0', there may be chunk
+        // extensions (";ext=val") or just "\r\n". Search backwards for the
+        // LAST occurrence (trailers follow the last chunk, not precede it).
+        for (int i = end - 2; i >= bodyStart + 2; i--)
+        {
+            if (data[i - 2] == '\r' && data[i - 1] == '\n' && data[i] == '0')
+            {
+                // '0' must be the full chunk-size (next char is \r or ;, not a hex digit)
+                if (i + 1 < end && IsHexDigit(data[i + 1]))
+                    continue;
+
+                // Verify the line ends with \r\n
+                var j = i + 1;
+                while (j < end && data[j] != '\r')
+                    j++;
+                if (j + 1 < end && data[j + 1] == '\n')
+                    return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool IsHexDigit(byte b)
+    {
+        return (b >= '0' && b <= '9')
+            || (b >= 'a' && b <= 'f')
+            || (b >= 'A' && b <= 'F');
     }
 
     /// <summary>
