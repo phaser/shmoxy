@@ -419,6 +419,7 @@
     private string activeTab = "request";
     private ElementReference overlayRef;
     private HashSet<string> jwtExpanded = new();
+    private InspectionRow? highlightedRow;
 
     private async Task SetTab(string tab)
     {
@@ -443,6 +444,13 @@
                 await overlayRef.FocusAsync();
             }
             catch (JSDisconnectedException) { }
+        }
+
+        // Re-highlight whenever the displayed row changes (initial open or
+        // prev/next arrow navigation, which reuses this component instance).
+        if (!ReferenceEquals(Row, highlightedRow))
+        {
+            highlightedRow = Row;
             await HighlightCode();
         }
     }
