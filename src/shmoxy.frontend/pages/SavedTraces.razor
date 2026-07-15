@@ -1,0 +1,515 @@
+@page "/saved-traces"
+@inject ApiClient ApiClient
+@inject InspectionDataService InspectionService
+@implements IDisposable
+@using shmoxy.frontend.models
+@using shmoxy.frontend.services
+@using shmoxy.shared.ipc
+
+<div class="saved-traces-container">
+    <div class="filters">
+        <FluentTextField Placeholder="Search saved traces..." @bind-Value="_searchQuery"
+                         @bind-Value:after="ApplyFilter" />
+        <span class="row-count">@_filteredTraces.Count traces@(_filteredTraces.Count != _traces.Count ? $" / {_traces.Count} total" : "")</span>
+    </div>
+
+    @if (_error is not null)
+    {
+        <div class="load-error">@_error</div>
+    }
+
+    <div class="scroll-container">
+        <table class="saved-traces-table">
+            <thead>
+                <tr>
+                    <th class="col-saved-at">Saved at</th>
+                    <th class="col-time">Captured at</th>
+                    <th class="col-method">Method</th>
+                    <th>URL</th>
+                    <th class="col-status">Status</th>
+                    <th class="col-size">Size</th>
+                    <th class="col-duration">Duration</th>
+                    <th class="col-note">Note</th>
+                    <th class="col-actions"></th>
+                </tr>
+            </thead>
+            <tbody>
+                @if (_loading)
+                {
+                    <tr>
+                        <td colspan="9" class="empty-state">Loading saved traces...</td>
+                    </tr>
+                }
+                else if (_filteredTraces.Count == 0)
+                {
+                    <tr>
+                        <td colspan="9" class="empty-state">
+                            @(_traces.Count == 0
+                                ? "No saved traces yet. Save a trace from the Inspection page with the Save button in the detail panel or the S shortcut."
+                                : "No saved traces match the search.")
+                        </td>
+                    </tr>
+                }
+                else
+                {
+                    <Virtualize Items="_filteredTraces" Context="trace" ItemSize="36" OverscanCount="20">
+                        <tr class="clickable-row @(_selectedTraceId == trace.Id ? "selected-row" : "")"
+                            @onclick="() => OpenDetail(trace)">
+                            <td class="time-cell">@trace.SavedAt.ToLocalTime().ToString("MMM d, HH:mm:ss")</td>
+                            <td class="time-cell">@trace.Timestamp.ToLocalTime().ToString("MMM d, HH:mm:ss")</td>
+                            <td>
+                                <span class="method-badge method-@trace.Method.ToLowerInvariant()">@trace.Method</span>
+                                @if (trace.IsWebSocket)
+                                {
+                                    <span class="ws-table-badge">WS</span>
+                                }
+                            </td>
+                            <td class="url-cell"><ColorizedUrl Url="@trace.Url" /></td>
+                            <td>
+                                @if (trace.StatusCode.HasValue)
+                                {
+                                    <span class="status-badge status-@GetStatusClass(trace.StatusCode.Value)">@trace.StatusCode</span>
+                                }
+                                else
+                                {
+                                    <span>-</span>
+                                }
+                            </td>
+                            <td class="size-cell">@FormatSize(trace.ResponseBodySize)</td>
+                            <td>@(trace.DurationMs.HasValue ? $"{trace.DurationMs} ms" : "-")</td>
+                            <td class="note-cell">
+                                @if (!string.IsNullOrEmpty(trace.Note))
+                                {
+                                    <span class="note-indicator" title="@trace.Note">&#128221;</span>
+                                    <span class="note-preview">@FirstLine(trace.Note)</span>
+                                }
+                            </td>
+                            <td class="actions-cell">
+                                <button class="unsave-button" title="Unsave trace"
+                                        @onclick="() => Unsave(trace)" @onclick:stopPropagation="true">&times;</button>
+                            </td>
+                        </tr>
+                    </Virtualize>
+                }
+            </tbody>
+        </table>
+    </div>
+</div>
+
+@if (_selectedRow is not null)
+{
+    @if (_selectedRow.IsWebSocket)
+    {
+        <WebSocketDetail Row="_selectedRow" OnClose="CloseDetail"
+                         FilteredRows="_filteredRows" OnNavigate="NavigateToRow"
+                         EnableNote="true" Note="@SelectedNote" OnNoteSaved="SaveNote" />
+    }
+    else
+    {
+        <InspectionDetail Row="_selectedRow" OnClose="CloseDetail"
+                          FilteredRows="_filteredRows" OnNavigate="NavigateToRow"
+                          EnableNote="true" Note="@SelectedNote" OnNoteSaved="SaveNote" />
+    }
+}
+
+@code {
+    private List<SavedTraceSummary> _traces = new();
+    private List<SavedTraceSummary> _filteredTraces = new();
+    private List<InspectionRow> _filteredRows = new();
+    private string _searchQuery = "";
+    private bool _loading = true;
+    private string? _error;
+
+    private InspectionRow? _selectedRow;
+    private string? _selectedTraceId;
+
+    private string? SelectedNote =>
+        _traces.FirstOrDefault(t => t.Id == _selectedTraceId)?.Note;
+
+    protected override async Task OnInitializedAsync()
+    {
+        InspectionService.OnSavedTracesChanged += OnSavedTracesChanged;
+        await LoadTraces();
+    }
+
+    private async Task LoadTraces()
+    {
+        _loading = true;
+        _error = null;
+        try
+        {
+            _traces = await ApiClient.ListSavedTracesAsync();
+        }
+        catch (Exception ex)
+        {
+            _traces = new();
+            _error = $"Failed to load saved traces: {ex.Message}";
+        }
+        finally
+        {
+            _loading = false;
+        }
+        ApplyFilter();
+    }
+
+    private void ApplyFilter()
+    {
+        _filteredTraces = _traces.Where(t => MatchesSearch(t, _searchQuery)).ToList();
+
+        // Lightweight navigation stubs so the detail panels' prev/next arrows
+        // walk the filtered list; full data is fetched per trace on navigation.
+        _filteredRows = _filteredTraces
+            .Select((t, i) => new InspectionRow
+            {
+                Id = i + 1,
+                Method = t.Method,
+                Url = t.Url,
+                StatusCode = t.StatusCode,
+                Timestamp = t.Timestamp,
+                IsWebSocket = t.IsWebSocket,
+                SavedTraceId = t.Id
+            })
+            .ToList();
+    }
+
+    internal static bool MatchesSearch(SavedTraceSummary trace, string query)
+    {
+        if (string.IsNullOrEmpty(query)) return true;
+
+        return trace.Url.Contains(query, StringComparison.OrdinalIgnoreCase)
+            || trace.Method.Contains(query, StringComparison.OrdinalIgnoreCase)
+            || (trace.StatusCode?.ToString().Contains(query, StringComparison.OrdinalIgnoreCase) ?? false)
+            || (trace.Note?.Contains(query, StringComparison.OrdinalIgnoreCase) ?? false);
+    }
+
+    private async Task OpenDetail(SavedTraceSummary trace)
+    {
+        var stub = _filteredRows.FirstOrDefault(r => r.SavedTraceId == trace.Id);
+        await LoadDetail(trace.Id, stub?.Id ?? 0);
+    }
+
+    private async Task NavigateToRow(InspectionRow stub)
+    {
+        if (stub.SavedTraceId is null)
+            return;
+        await LoadDetail(stub.SavedTraceId, stub.Id);
+    }
+
+    private async Task LoadDetail(string traceId, int rowId)
+    {
+        try
+        {
+            var data = await ApiClient.GetSavedTraceAsync(traceId);
+            _selectedRow = ToInspectionRow(data, rowId);
+            _selectedTraceId = traceId;
+            _error = null;
+        }
+        catch (Exception ex)
+        {
+            _error = $"Failed to load trace: {ex.Message}";
+        }
+    }
+
+    private void CloseDetail()
+    {
+        _selectedRow = null;
+        _selectedTraceId = null;
+    }
+
+    private async Task Unsave(SavedTraceSummary trace)
+    {
+        try
+        {
+            await InspectionService.UnsaveTraceAsync(trace.Id);
+        }
+        catch (Exception ex)
+        {
+            _error = $"Failed to unsave: {ex.Message}";
+        }
+    }
+
+    private async Task SaveNote(string? note)
+    {
+        if (_selectedTraceId is null)
+            return;
+
+        await ApiClient.UpdateSavedTraceNoteAsync(_selectedTraceId, note);
+
+        var summary = _traces.FirstOrDefault(t => t.Id == _selectedTraceId);
+        if (summary is not null)
+            summary.Note = note;
+        ApplyFilter();
+    }
+
+    private async void OnSavedTracesChanged()
+    {
+        await InvokeAsync(async () =>
+        {
+            await LoadTraces();
+            if (_selectedTraceId is not null && _traces.All(t => t.Id != _selectedTraceId))
+                CloseDetail();
+            StateHasChanged();
+        });
+    }
+
+    internal static InspectionRow ToInspectionRow(SavedTraceData data, int rowId) => new()
+    {
+        Id = rowId,
+        Method = data.Method,
+        Url = data.Url,
+        StatusCode = data.StatusCode,
+        Duration = data.DurationMs.HasValue ? TimeSpan.FromMilliseconds(data.DurationMs.Value) : null,
+        Timestamp = data.Timestamp,
+        RequestHeaders = data.RequestHeaders ?? new List<KeyValuePair<string, string>>(),
+        ResponseHeaders = data.ResponseHeaders ?? new List<KeyValuePair<string, string>>(),
+        RequestBody = data.RequestBody,
+        ResponseBody = data.ResponseBody,
+        ResponseBodyBase64 = data.ResponseBodyBase64,
+        ResponseContentType = data.ResponseContentType,
+        ResponseBodySize = data.ResponseBodyBase64 != null
+            ? (long)(data.ResponseBodyBase64.Length * 3 / 4)
+            : data.ResponseBody != null
+                ? System.Text.Encoding.UTF8.GetByteCount(data.ResponseBody)
+                : null,
+        IsWebSocket = data.IsWebSocket,
+        WebSocketClosed = data.WebSocketClosed,
+        WebSocketFrames = data.WebSocketFrames ?? new List<WebSocketFrameInfo>(),
+        Origin = RowOrigin.Loaded,
+        SavedTraceId = data.Id,
+        Timing = data.TimingSendMs.HasValue
+            ? new TimingInfo
+            {
+                ConnectMs = data.TimingConnectMs,
+                TlsMs = data.TimingTlsMs,
+                SendMs = data.TimingSendMs.Value,
+                WaitMs = data.TimingWaitMs ?? 0,
+                ReceiveMs = data.TimingReceiveMs ?? 0,
+                Reused = data.TimingConnectionReused ?? false
+            }
+            : null
+    };
+
+    private static string FirstLine(string note)
+    {
+        var newlineIndex = note.IndexOfAny(['\r', '\n']);
+        var line = newlineIndex >= 0 ? note[..newlineIndex] : note;
+        return line.Length > 60 ? line[..60] + "…" : line;
+    }
+
+    private static string GetStatusClass(int statusCode) => statusCode switch
+    {
+        >= 200 and < 300 => "success",
+        >= 300 and < 400 => "redirect",
+        >= 400 and < 500 => "client-error",
+        >= 500 => "server-error",
+        _ => "unknown"
+    };
+
+    private static string FormatSize(long? bytes)
+    {
+        if (bytes is null) return "-";
+        return bytes.Value switch
+        {
+            < 1024 => $"{bytes.Value} B",
+            < 1024 * 1024 => $"{bytes.Value / 1024.0:F1} KB",
+            _ => $"{bytes.Value / (1024.0 * 1024.0):F1} MB"
+        };
+    }
+
+    public void Dispose()
+    {
+        InspectionService.OnSavedTracesChanged -= OnSavedTracesChanged;
+    }
+}
+
+<style>
+.saved-traces-container {
+    width: 100%;
+    height: 100%;
+    padding: 0 1rem;
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+}
+
+.filters {
+    display: flex;
+    gap: 1rem;
+    margin-bottom: 1rem;
+    align-items: flex-end;
+    flex-wrap: wrap;
+    flex-shrink: 0;
+}
+
+.row-count {
+    font-size: 0.8rem;
+    color: var(--neutral-foreground-hint);
+    font-family: monospace;
+    white-space: nowrap;
+    align-self: center;
+}
+
+.load-error {
+    color: #cb2431;
+    font-size: 0.85rem;
+    margin-bottom: 0.5rem;
+    flex-shrink: 0;
+}
+
+.scroll-container {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    border: 1px solid var(--neutral-stroke-rest);
+    border-radius: calc(var(--control-corner-radius) * 1px);
+}
+
+.saved-traces-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: var(--type-ramp-minus-1-font-size);
+    table-layout: fixed;
+}
+
+.col-saved-at { width: 9rem; }
+.col-time { width: 9rem; }
+.col-method { width: 6rem; }
+.col-status { width: 4rem; }
+.col-size { width: 5rem; }
+.col-duration { width: 5rem; }
+.col-note { width: 14rem; }
+.col-actions { width: 2.5rem; }
+
+.saved-traces-table thead {
+    position: sticky;
+    top: 0;
+    background: var(--neutral-layer-2);
+    z-index: 1;
+}
+
+.saved-traces-table th {
+    text-align: left;
+    padding: 8px 12px;
+    font-weight: 600;
+    border-bottom: 2px solid var(--neutral-stroke-rest);
+    color: var(--neutral-foreground-rest);
+}
+
+.saved-traces-table td {
+    padding: 6px 12px;
+    border-bottom: 1px solid var(--neutral-stroke-divider-rest);
+    color: var(--neutral-foreground-rest);
+}
+
+.clickable-row {
+    cursor: pointer;
+}
+
+.clickable-row:hover {
+    background: var(--neutral-layer-3);
+}
+
+.selected-row {
+    background: var(--neutral-layer-3);
+}
+
+.time-cell {
+    font-family: monospace;
+    font-size: 0.75rem;
+    white-space: nowrap;
+    color: var(--neutral-foreground-hint);
+}
+
+.url-cell {
+    max-width: 500px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.size-cell {
+    white-space: nowrap;
+}
+
+.note-cell {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.note-indicator {
+    margin-right: 4px;
+}
+
+.note-preview {
+    font-size: 0.8rem;
+    color: var(--neutral-foreground-hint);
+}
+
+.actions-cell {
+    text-align: center;
+}
+
+.unsave-button {
+    background: none;
+    border: none;
+    color: var(--neutral-foreground-hint);
+    cursor: pointer;
+    font-size: 1.1rem;
+    padding: 2px 6px;
+    border-radius: calc(var(--control-corner-radius) * 1px);
+    line-height: 1;
+}
+
+.unsave-button:hover {
+    background: rgba(200, 0, 0, 0.1);
+    color: #cb2431;
+}
+
+.method-badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: calc(var(--control-corner-radius) * 1px);
+    font-weight: 600;
+    font-size: 0.75rem;
+}
+
+.method-get { background: rgba(0, 128, 0, 0.15); color: #22863a; }
+.method-post { background: rgba(0, 100, 200, 0.15); color: #0366d6; }
+.method-put { background: rgba(200, 150, 0, 0.15); color: #b08800; }
+.method-delete { background: rgba(200, 0, 0, 0.15); color: #cb2431; }
+.method-patch { background: rgba(128, 0, 200, 0.15); color: #6f42c1; }
+
+.status-badge {
+    display: inline-block;
+    padding: 2px 6px;
+    border-radius: calc(var(--control-corner-radius) * 1px);
+    font-weight: 600;
+    font-size: 0.7rem;
+    font-family: monospace;
+}
+
+.status-success { background: rgba(0, 128, 0, 0.15); color: #22863a; }
+.status-redirect { background: rgba(0, 100, 200, 0.15); color: #0366d6; }
+.status-client-error { background: rgba(200, 150, 0, 0.15); color: #b08800; }
+.status-server-error { background: rgba(200, 0, 0, 0.15); color: #cb2431; }
+.status-unknown { background: rgba(128, 128, 128, 0.15); color: #6a737d; }
+
+.ws-table-badge {
+    display: inline-block;
+    padding: 1px 5px;
+    border-radius: calc(var(--control-corner-radius) * 1px);
+    font-weight: 600;
+    font-size: 0.65rem;
+    background: rgba(130, 80, 220, 0.15);
+    color: #6f42c1;
+    margin-left: 4px;
+    vertical-align: middle;
+}
+
+.empty-state {
+    text-align: center;
+    padding: 2rem;
+    color: var(--neutral-foreground-hover);
+}
+</style>

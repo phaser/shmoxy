@@ -99,6 +99,11 @@ window.keyboardShortcuts = {
                 self._dotnetRef.invokeMethodAsync('OnShortcut', 'resend');
                 return;
             }
+            if (e.key === 's' && !isInput && !e.ctrlKey && !e.metaKey) {
+                e.preventDefault();
+                self._dotnetRef.invokeMethodAsync('OnShortcut', 'save-trace');
+                return;
+            }
         };
         document.addEventListener('keydown', this._handler);
     },

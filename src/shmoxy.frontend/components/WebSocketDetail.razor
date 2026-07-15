@@ -1,5 +1,6 @@
 @inject IJSRuntime JS
 @inject FrontendSettings FrontendSettings
+@inject InspectionDataService InspectionService
 @using shmoxy.frontend.services
 
 <div class="detail-overlay" @onclick="OnClose" @onkeydown="HandleKeyDown" tabindex="0" @ref="overlayRef">
@@ -16,9 +17,21 @@
                 </span>
                 <span class="detail-time">@Row.Timestamp.ToLocalTime().ToString("HH:mm:ss.fff")</span>
                 <span class="ws-frame-count">@Row.WebSocketFrames.Count frames</span>
+                <button class="save-trace-button @(Row.SavedTraceId is not null ? "active" : "")"
+                        @onclick="OnSaveTraceClick"
+                        title="@(Row.SavedTraceId is not null ? "Saved — click to unsave (S)" : "Save trace for later review (S)")">
+                    @(Row.SavedTraceId is not null ? "Saved ★" : "Save ☆")
+                </button>
             </div>
             <button class="close-button" @onclick="OnClose" title="Close (Esc)">&times;</button>
         </div>
+
+        @if (EnableNote)
+        {
+            <div class="detail-note">
+                <TraceNoteEditor Note="@Note" OnNoteSaved="@OnNoteSaved" />
+            </div>
+        }
 
         <div class="ws-headers-section">
             <button class="ws-headers-toggle" @onclick="ToggleHeaders">
@@ -102,8 +115,30 @@
     [Parameter]
     public EventCallback<InspectionRow> OnNavigate { get; set; }
 
+    [Parameter]
+    public bool EnableNote { get; set; }
+
+    [Parameter]
+    public string? Note { get; set; }
+
+    [Parameter]
+    public EventCallback<string?> OnNoteSaved { get; set; }
+
     private ElementReference overlayRef;
     private bool showHeaders;
+
+    private async Task OnSaveTraceClick()
+    {
+        try
+        {
+            await InspectionService.ToggleSaveTraceAsync(Row);
+        }
+        catch
+        {
+            // Save state is reflected by the button; failures leave it unchanged
+        }
+        StateHasChanged();
+    }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
@@ -290,6 +325,32 @@
     font-family: monospace;
     font-size: 0.8rem;
     color: var(--neutral-foreground-hint);
+}
+
+.save-trace-button {
+    background: transparent;
+    color: var(--neutral-foreground-rest);
+    border: 1px solid var(--neutral-stroke-rest);
+    border-radius: 4px;
+    padding: 4px 12px;
+    cursor: pointer;
+    font-size: 0.8rem;
+}
+
+.save-trace-button:hover:enabled {
+    border-color: #d4a017;
+    color: #d4a017;
+}
+
+.save-trace-button.active {
+    background: #d4a017;
+    color: white;
+    border-color: #d4a017;
+}
+
+.detail-note {
+    padding: 8px 20px;
+    border-bottom: 1px solid var(--neutral-stroke-rest);
 }
 
 .ws-headers-section {

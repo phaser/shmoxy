@@ -42,6 +42,7 @@ public partial class Program
             builder.Services.AddSqliteDbContext(connectionString);
             builder.Services.AddRemoteProxyRegistry();
             builder.Services.AddSessionRepository();
+            builder.Services.AddSavedTraceRepository();
         }
 
         builder.Services.AddControllers()

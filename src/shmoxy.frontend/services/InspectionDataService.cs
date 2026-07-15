@@ -49,6 +49,7 @@ public class InspectionDataService : IDisposable
 
     public event Action? OnRowsChanged;
     public event Action? OnConnectionStateChanged;
+    public event Action? OnSavedTracesChanged;
 
     public InspectionDataService(ApiClient apiClient, IHostApplicationLifetime? lifetime = null)
     {
@@ -120,6 +121,68 @@ public class InspectionDataService : IDisposable
         ActiveSessionName = sessionName;
         OnRowsChanged?.Invoke();
     }
+
+    /// <summary>
+    /// A trace can be saved once its exchange is complete: it has a response,
+    /// is a WebSocket exchange, or is otherwise terminal (duration recorded).
+    /// Passthrough rows carry no captured data and cannot be saved.
+    /// </summary>
+    public static bool CanSaveTrace(InspectionRow row) =>
+        !row.IsPassthrough && (row.StatusCode.HasValue || row.IsWebSocket || row.Duration is not null);
+
+    public async Task ToggleSaveTraceAsync(InspectionRow row)
+    {
+        if (row.SavedTraceId is not null)
+        {
+            await UnsaveTraceAsync(row.SavedTraceId);
+            return;
+        }
+
+        if (!CanSaveTrace(row))
+            return;
+
+        var summary = await _apiClient.SaveTraceAsync(ToSavedTraceData(row));
+        row.SavedTraceId = summary.Id;
+        OnSavedTracesChanged?.Invoke();
+    }
+
+    public async Task UnsaveTraceAsync(string traceId)
+    {
+        await _apiClient.DeleteSavedTraceAsync(traceId);
+        lock (_lock)
+        {
+            foreach (var row in _rows)
+            {
+                if (row.SavedTraceId == traceId)
+                    row.SavedTraceId = null;
+            }
+        }
+        OnSavedTracesChanged?.Invoke();
+    }
+
+    internal static SavedTraceData ToSavedTraceData(InspectionRow row) => new()
+    {
+        Method = row.Method,
+        Url = row.Url,
+        StatusCode = row.StatusCode,
+        DurationMs = row.Duration.HasValue ? (long)row.Duration.Value.TotalMilliseconds : null,
+        Timestamp = row.Timestamp,
+        RequestHeaders = row.RequestHeaders.Count > 0 ? row.RequestHeaders.ToList() : null,
+        ResponseHeaders = row.ResponseHeaders.Count > 0 ? row.ResponseHeaders.ToList() : null,
+        RequestBody = row.RequestBody,
+        ResponseBody = row.ResponseBody,
+        ResponseBodyBase64 = row.ResponseBodyBase64,
+        ResponseContentType = row.ResponseContentType,
+        IsWebSocket = row.IsWebSocket,
+        WebSocketClosed = row.WebSocketClosed,
+        WebSocketFrames = row.WebSocketFrames.Count > 0 ? row.WebSocketFrames.ToList() : null,
+        TimingConnectMs = row.Timing?.ConnectMs,
+        TimingTlsMs = row.Timing?.TlsMs,
+        TimingSendMs = row.Timing?.SendMs,
+        TimingWaitMs = row.Timing?.WaitMs,
+        TimingReceiveMs = row.Timing?.ReceiveMs,
+        TimingConnectionReused = row.Timing?.Reused
+    };
 
     private async Task ConsumeStreamAsync(CancellationToken ct)
     {
@@ -393,4 +456,5 @@ public class InspectionRow
     public TimingInfo? Timing { get; set; }
     public List<WebSocketFrameInfo> WebSocketFrames { get; set; } = new();
     public bool WebSocketClosed { get; set; }
+    public string? SavedTraceId { get; set; }
 }

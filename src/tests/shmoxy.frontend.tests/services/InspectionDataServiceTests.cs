@@ -1004,6 +1004,135 @@ public class InspectionDataServiceTests
         Assert.Equal(10_000, InspectionDataService.MaxRows);
     }
 
+    [Fact]
+    public void CanSaveTrace_TrueForCompletedRequest()
+    {
+        var row = new InspectionRow { Method = "GET", Url = "https://example.com", StatusCode = 200 };
+
+        Assert.True(InspectionDataService.CanSaveTrace(row));
+    }
+
+    [Fact]
+    public void CanSaveTrace_TrueForWebSocket()
+    {
+        var row = new InspectionRow { Method = "GET", Url = "wss://example.com", IsWebSocket = true };
+
+        Assert.True(InspectionDataService.CanSaveTrace(row));
+    }
+
+    [Fact]
+    public void CanSaveTrace_TrueForTerminalRowWithoutStatus()
+    {
+        var row = new InspectionRow { Method = "GET", Url = "https://example.com", Duration = TimeSpan.FromMilliseconds(50) };
+
+        Assert.True(InspectionDataService.CanSaveTrace(row));
+    }
+
+    [Fact]
+    public void CanSaveTrace_FalseForPendingRequest()
+    {
+        var row = new InspectionRow { Method = "GET", Url = "https://example.com" };
+
+        Assert.False(InspectionDataService.CanSaveTrace(row));
+    }
+
+    [Fact]
+    public void CanSaveTrace_FalseForPassthrough()
+    {
+        var row = new InspectionRow { Method = "CONNECT", Url = "example.com:443", IsPassthrough = true };
+
+        Assert.False(InspectionDataService.CanSaveTrace(row));
+    }
+
+    [Fact]
+    public async Task ToggleSaveTraceAsync_SavesRow_AndRaisesEvent()
+    {
+        var handler = new SavedTraceApiHandler();
+        var httpClient = new HttpClient(handler) { BaseAddress = new Uri("http://localhost") };
+        using var service = new InspectionDataService(new ApiClient(httpClient));
+        var row = new InspectionRow { Method = "GET", Url = "https://example.com", StatusCode = 200 };
+        var changed = false;
+        service.OnSavedTracesChanged += () => changed = true;
+
+        await service.ToggleSaveTraceAsync(row);
+
+        Assert.Equal("trace-1", row.SavedTraceId);
+        Assert.True(changed);
+        Assert.Equal(1, handler.SaveCount);
+    }
+
+    [Fact]
+    public async Task ToggleSaveTraceAsync_DoesNothing_ForPendingRow()
+    {
+        var handler = new SavedTraceApiHandler();
+        var httpClient = new HttpClient(handler) { BaseAddress = new Uri("http://localhost") };
+        using var service = new InspectionDataService(new ApiClient(httpClient));
+        var row = new InspectionRow { Method = "GET", Url = "https://example.com" };
+
+        await service.ToggleSaveTraceAsync(row);
+
+        Assert.Null(row.SavedTraceId);
+        Assert.Equal(0, handler.SaveCount);
+    }
+
+    [Fact]
+    public async Task ToggleSaveTraceAsync_UnsavesRow_WhenAlreadySaved()
+    {
+        var handler = new SavedTraceApiHandler();
+        var httpClient = new HttpClient(handler) { BaseAddress = new Uri("http://localhost") };
+        using var service = new InspectionDataService(new ApiClient(httpClient));
+        var row = new InspectionRow { Method = "GET", Url = "https://example.com", StatusCode = 200, SavedTraceId = "trace-1" };
+
+        await service.ToggleSaveTraceAsync(row);
+
+        Assert.Equal(1, handler.DeleteCount);
+    }
+
+    [Fact]
+    public async Task UnsaveTraceAsync_ClearsSavedTraceId_OnMatchingRows()
+    {
+        var handler = new SavedTraceApiHandler();
+        var httpClient = new HttpClient(handler) { BaseAddress = new Uri("http://localhost") };
+        using var service = new InspectionDataService(new ApiClient(httpClient));
+        var now = DateTime.UtcNow;
+        service.ProcessEvent(new InspectionEventDto(now, "request", "GET", "https://example.com/1", null, CorrelationId: "corr-1"));
+        service.ProcessEvent(new InspectionEventDto(now.AddMilliseconds(10), "response", "", "", 200, CorrelationId: "corr-1"));
+        var row = service.GetRows()[0];
+        await service.ToggleSaveTraceAsync(row);
+        Assert.Equal("trace-1", row.SavedTraceId);
+
+        await service.UnsaveTraceAsync("trace-1");
+
+        Assert.Null(service.GetRows()[0].SavedTraceId);
+        Assert.Equal(1, handler.DeleteCount);
+    }
+
+    private class SavedTraceApiHandler : HttpMessageHandler
+    {
+        public int SaveCount { get; private set; }
+        public int DeleteCount { get; private set; }
+
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            if (request.Method == HttpMethod.Post)
+            {
+                SaveCount++;
+                return Task.FromResult(new HttpResponseMessage(System.Net.HttpStatusCode.Created)
+                {
+                    Content = new StringContent("{\"id\":\"trace-1\"}", System.Text.Encoding.UTF8, "application/json")
+                });
+            }
+
+            if (request.Method == HttpMethod.Delete)
+            {
+                DeleteCount++;
+                return Task.FromResult(new HttpResponseMessage(System.Net.HttpStatusCode.NoContent));
+            }
+
+            return Task.FromResult(new HttpResponseMessage(System.Net.HttpStatusCode.NotFound));
+        }
+    }
+
     private class TestHostApplicationLifetime : IHostApplicationLifetime
     {
         private readonly CancellationTokenSource _stoppingCts = new();

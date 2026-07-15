@@ -42,6 +42,10 @@
                     <FluentIcon Value="@(new Icons.Regular.Size20.PauseCircle())" />
                     <span>Breakpoints</span>
                 </NavLink>
+                <NavLink href="/saved-traces" Match="NavLinkMatch.Prefix" class="nav-item" title="Saved Traces">
+                    <FluentIcon Value="@(new Icons.Regular.Size20.Bookmark())" />
+                    <span>Saved</span>
+                </NavLink>
                 @if (FrontendSettings.EnableCyberChef)
                 {
                     <NavLink href="/cyberchef" Match="NavLinkMatch.Prefix" class="nav-item" title="CyberChef">
@@ -103,6 +107,7 @@
                     <tr><td class="shortcut-key"><kbd>Tab</kbd></td><td>Switch Request/Response tab</td></tr>
                     <tr><td class="shortcut-key"><kbd>B</kbd></td><td>Toggle breakpoint on selected request</td></tr>
                     <tr><td class="shortcut-key"><kbd>R</kbd></td><td>Open resend for selected request</td></tr>
+                    <tr><td class="shortcut-key"><kbd>S</kbd></td><td>Save/unsave selected trace</td></tr>
                     <tr><td class="shortcut-key"><kbd>?</kbd></td><td>Show this help</td></tr>
                 </table>
             </FluentDialogBody>

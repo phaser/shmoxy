@@ -212,7 +212,7 @@
                 else
                 {
                     <Virtualize Items="filteredRows" Context="row" ItemSize="36" OverscanCount="20">
-                        <tr class="clickable-row @(selectedRow?.Id == row.Id ? "selected-row" : "") @(row.Origin == RowOrigin.Loaded ? "loaded-row" : "") @GetRowColorClass(row)"
+                        <tr class="clickable-row @(selectedRow?.Id == row.Id ? "selected-row" : "") @(row.Origin == RowOrigin.Loaded ? "loaded-row" : "") @(row.SavedTraceId is not null ? "row-saved" : "") @GetRowColorClass(row)"
                             @onclick="() => SelectRow(row)">
                             <td>@row.Id</td>
                             <td class="time-cell">@row.Timestamp.ToLocalTime().ToString("HH:mm:ss.fff")</td>
@@ -223,7 +223,13 @@
                                     <span class="ws-table-badge">WS</span>
                                 }
                             </td>
-                            <td class="url-cell"><ColorizedUrl Url="@row.Url" /></td>
+                            <td class="url-cell">
+                                @if (row.SavedTraceId is not null)
+                                {
+                                    <span class="saved-star" title="Saved trace">&#9733;</span>
+                                }
+                                <ColorizedUrl Url="@row.Url" />
+                            </td>
                             <td>
                                 @if (row.IsWebSocket)
                                 {
@@ -294,8 +300,14 @@
         InspectionService.StartCapture();
         InspectionService.OnRowsChanged += OnRowsChanged;
         InspectionService.OnConnectionStateChanged += OnConnectionStateChanged;
+        InspectionService.OnSavedTracesChanged += OnSavedTracesChanged;
         KeyboardShortcuts.OnShortcutTriggered += OnShortcut;
         ApplyFilters();
+    }
+
+    private async void OnSavedTracesChanged()
+    {
+        await InvokeAsync(StateHasChanged);
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -555,6 +567,20 @@
                         KeyboardShortcuts.RequestResend();
                     }
                     break;
+                case "save-trace":
+                    if (selectedRow != null)
+                    {
+                        try
+                        {
+                            await InspectionService.ToggleSaveTraceAsync(selectedRow);
+                        }
+                        catch
+                        {
+                            // Saved state is reflected by the row marker; failures leave it unchanged
+                        }
+                        StateHasChanged();
+                    }
+                    break;
             }
         });
     }
@@ -789,6 +815,7 @@
     {
         InspectionService.OnRowsChanged -= OnRowsChanged;
         InspectionService.OnConnectionStateChanged -= OnConnectionStateChanged;
+        InspectionService.OnSavedTracesChanged -= OnSavedTracesChanged;
         KeyboardShortcuts.OnShortcutTriggered -= OnShortcut;
         try
         {
@@ -905,6 +932,16 @@
 
 .loaded-row {
     border-left: 3px solid var(--accent-foreground-rest);
+}
+
+.row-saved {
+    border-left: 3px solid #d4a017;
+}
+
+.saved-star {
+    color: #d4a017;
+    font-size: 0.75rem;
+    margin-right: 4px;
 }
 
 .row-server-error {
