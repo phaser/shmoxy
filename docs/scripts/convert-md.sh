@@ -9,9 +9,6 @@
 #
 #   First-time setup for mermaid-cli:
 #     npx puppeteer browsers install chrome-headless-shell
-#
-#   Nix:
-#     nix-shell -p pandoc mermaid-cli librsvg texlive.combined.scheme
 
 set -e
 

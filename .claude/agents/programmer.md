@@ -33,8 +33,7 @@ Use this to run parallel tasks (e.g., building in one pane while running tests i
 4. **Generate a TODO task list** before starting implementation work.
 5. **Write tests** — if you add or change functionality, add or update tests following the project's mirrored test structure.
 6. **Build and test** — run `dotnet build` (zero warnings) and `dotnet test` (all pass) before committing.
-7. **Verify Nix build** — run `nix build .#shmoxy` to ensure cross-platform compatibility.
-8. **Commit with clear messages** — explain the why, not just the what.
+7. **Commit with clear messages** — explain the why, not just the what.
 
 ## Technical Expertise
 

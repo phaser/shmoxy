@@ -147,16 +147,6 @@ Maintain a /knowledge/INDEX.md that routes to each domain folder. Create the str
 
 When a hypothesis gets confirmed 5+ times, promote it to a rule. When a rule gets contradicted by new data, demote it back to hypothesis.
 
-## Nix Build Verification
-
-The project uses Nix for reproducible builds across platforms. After any code change, verify the Nix build works:
-
-```bash
-nix build .#shmoxy
-```
-
-If the build fails, fix the Nix configuration (`flake.nix`) or the source code to ensure cross-platform compatibility.
-
 ## PR Workflow
 
 All development must follow this isolated PR workflow:
