@@ -13,12 +13,6 @@ obj/
 *.userosscache
 *.sln.docstates
 
-# Nix build artifacts
-result*
-.nix-defexpr/
-.nix-profile/
-.drv/
-
 # Generated docs
 docs/proxy-server-architecture.html
 docs/proxy-server-architecture.pdf

@@ -379,7 +379,7 @@ public class ProxyProcessManager : IProxyProcessManager, IDisposable
             return (configuredPath, string.Empty);
         }
 
-        // 2. Try native executable on PATH (e.g., "shmoxy" after nix build)
+        // 2. Try native executable on PATH (e.g., an installed "shmoxy" binary)
         var executableName = configuredPath ?? "shmoxy";
         if (await TryRunAsync(executableName, "--version", ct))
         {
