@@ -3,6 +3,7 @@
 @inject NavigationManager NavigationManager
 @inject ApiClient ApiClient
 @inject KeyboardShortcutService KeyboardShortcuts
+@inject InspectionDataService InspectionService
 @using shmoxy.frontend.services
 @using shmoxy.shared
 @using shmoxy.shared.ipc
@@ -90,6 +91,13 @@
             }
         </div>
 
+        @if (EnableNote)
+        {
+            <div class="detail-note">
+                <TraceNoteEditor Note="@Note" OnNoteSaved="@OnNoteSaved" />
+            </div>
+        }
+
         <div class="detail-tabs">
             <button class="tab @(activeTab == "request" ? "active" : "")" @onclick='() => SetTab("request")'>Request</button>
             <button class="tab @(activeTab == "response" ? "active" : "")" @onclick='() => SetTab("response")'>Response</button>
@@ -100,6 +108,12 @@
                 <button class="resend-button" @onclick="OpenResendEditor">Resend</button>
                 <button class="break-button @(_breakConfirmed ? "active" : "")" @onclick="OnBreakClick" title="Break on requests matching this URL">
                     @(_breakConfirmed ? "Breaking" : "Break")
+                </button>
+                <button class="save-trace-button @(Row.SavedTraceId is not null ? "active" : "")"
+                        @onclick="OnSaveTraceClick"
+                        disabled="@(Row.SavedTraceId is null && !InspectionDataService.CanSaveTrace(Row))"
+                        title="@GetSaveButtonTitle()">
+                    @(Row.SavedTraceId is not null ? "Saved ★" : "Save ☆")
                 </button>
             </div>
         </div>
@@ -416,6 +430,15 @@
     [Parameter]
     public EventCallback<InspectionRow> OnNavigate { get; set; }
 
+    [Parameter]
+    public bool EnableNote { get; set; }
+
+    [Parameter]
+    public string? Note { get; set; }
+
+    [Parameter]
+    public EventCallback<string?> OnNoteSaved { get; set; }
+
     private string activeTab = "request";
     private ElementReference overlayRef;
     private HashSet<string> jwtExpanded = new();
@@ -727,6 +750,28 @@
         if (_resendResponse == null || _resendResponse.IsBase64)
             return null;
         return _resendResponse.Body;
+    }
+
+    private async Task OnSaveTraceClick()
+    {
+        try
+        {
+            await InspectionService.ToggleSaveTraceAsync(Row);
+        }
+        catch
+        {
+            // Save state is reflected by the button; failures leave it unchanged
+        }
+        StateHasChanged();
+    }
+
+    private string GetSaveButtonTitle()
+    {
+        if (Row.SavedTraceId is not null)
+            return "Saved — click to unsave (S)";
+        return InspectionDataService.CanSaveTrace(Row)
+            ? "Save trace for later review (S)"
+            : "Trace can be saved once the exchange completes";
     }
 
     // Quick-break state
@@ -1121,6 +1166,37 @@
     color: white;
     border-color: var(--error);
     cursor: default;
+}
+
+.save-trace-button {
+    background: transparent;
+    color: var(--neutral-foreground-rest);
+    border: 1px solid var(--neutral-stroke-rest);
+    border-radius: 4px;
+    padding: 4px 12px;
+    cursor: pointer;
+    font-size: 0.8rem;
+}
+
+.save-trace-button:hover:enabled {
+    border-color: #d4a017;
+    color: #d4a017;
+}
+
+.save-trace-button.active {
+    background: #d4a017;
+    color: white;
+    border-color: #d4a017;
+}
+
+.save-trace-button:disabled {
+    opacity: 0.5;
+    cursor: default;
+}
+
+.detail-note {
+    padding: 8px 20px;
+    border-bottom: 1px solid var(--neutral-stroke-rest);
 }
 
 .resend-editor {

@@ -98,6 +98,36 @@ public class SessionRetentionServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task CleanupExpiredSessions_LeavesSavedTracesUntouched()
+    {
+        using var scope = _scopeFactory.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ProxiesDbContext>();
+
+        db.InspectionSessions.Add(new InspectionSession { Name = "old", CreatedAt = DateTime.UtcNow.AddDays(-60) });
+        db.SavedTraces.Add(new SavedTrace
+        {
+            Method = "GET",
+            Url = "https://example.com",
+            Timestamp = DateTime.UtcNow.AddDays(-60),
+            SavedAt = DateTime.UtcNow.AddDays(-60)
+        });
+        await db.SaveChangesAsync();
+
+        await SessionRetentionService.SaveRetentionPolicyAsync(db, new RetentionPolicyDto
+        {
+            Enabled = true,
+            MaxAgeDays = 30,
+            MaxCount = 0
+        });
+
+        var service = new SessionRetentionService(_scopeFactory, NullLogger<SessionRetentionService>.Instance);
+        await service.CleanupExpiredSessionsAsync();
+
+        Assert.Equal(0, await db.InspectionSessions.CountAsync());
+        Assert.Equal(1, await db.SavedTraces.CountAsync());
+    }
+
+    [Fact]
     public async Task SaveAndLoad_RetentionPolicy_RoundTrips()
     {
         using var scope = _scopeFactory.CreateScope();

@@ -77,6 +77,12 @@ public static class ServiceCollectionExtensions
         return services;
     }
 
+    public static IServiceCollection AddSavedTraceRepository(this IServiceCollection services)
+    {
+        services.AddScoped<ISavedTraceRepository, SavedTraceRepository>();
+        return services;
+    }
+
     public static IServiceCollection AddSqliteDbContext(this IServiceCollection services, string connectionString)
     {
         services.AddDbContext<ProxiesDbContext>(options =>

@@ -1,0 +1,148 @@
+<div class="trace-note-editor">
+    <div class="note-header">
+        <span class="note-label">Note</span>
+        <div class="note-actions">
+            <button class="note-save-button" @onclick="SaveNote" disabled="@(_saving || !HasChanges)">
+                @(_saving ? "Saving..." : _saved ? "Saved" : "Save note")
+            </button>
+            <button class="note-clear-button" @onclick="ClearNote" disabled="@(_saving || (string.IsNullOrEmpty(_text) && string.IsNullOrEmpty(Note)))">
+                Clear
+            </button>
+        </div>
+    </div>
+    <textarea class="note-textarea" rows="2" placeholder="Add a note about this trace..."
+              @bind="_text" @bind:event="oninput"></textarea>
+    @if (_error is not null)
+    {
+        <span class="note-error">@_error</span>
+    }
+</div>
+
+@code {
+    [Parameter]
+    public string? Note { get; set; }
+
+    [Parameter]
+    public EventCallback<string?> OnNoteSaved { get; set; }
+
+    private string _text = "";
+    private string? _lastNoteParameter;
+    private bool _saving;
+    private bool _saved;
+    private string? _error;
+
+    private bool HasChanges => _text != (Note ?? "");
+
+    protected override void OnParametersSet()
+    {
+        // Reset the editor only when the incoming note actually changed
+        // (e.g. arrow-navigation to another trace), preserving unsaved edits
+        // across unrelated re-renders.
+        if (_lastNoteParameter != Note)
+        {
+            _lastNoteParameter = Note;
+            _text = Note ?? "";
+            _saved = false;
+            _error = null;
+        }
+    }
+
+    private async Task SaveNote()
+    {
+        await PersistNote(string.IsNullOrWhiteSpace(_text) ? null : _text);
+    }
+
+    private async Task ClearNote()
+    {
+        _text = "";
+        await PersistNote(null);
+    }
+
+    private async Task PersistNote(string? note)
+    {
+        _saving = true;
+        _saved = false;
+        _error = null;
+        try
+        {
+            await OnNoteSaved.InvokeAsync(note);
+            _saved = true;
+        }
+        catch (Exception ex)
+        {
+            _error = $"Failed to save note: {ex.Message}";
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+}
+
+<style>
+.trace-note-editor {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    width: 100%;
+}
+
+.note-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.note-label {
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--neutral-foreground-hint);
+}
+
+.note-actions {
+    display: flex;
+    gap: 4px;
+}
+
+.note-save-button,
+.note-clear-button {
+    background: var(--neutral-layer-3);
+    border: 1px solid var(--neutral-stroke-rest);
+    color: var(--neutral-foreground-rest);
+    padding: 2px 10px;
+    border-radius: calc(var(--control-corner-radius) * 1px);
+    cursor: pointer;
+    font-size: 0.7rem;
+}
+
+.note-save-button:hover:enabled,
+.note-clear-button:hover:enabled {
+    background: var(--neutral-layer-2);
+}
+
+.note-save-button:disabled,
+.note-clear-button:disabled {
+    opacity: 0.5;
+    cursor: default;
+}
+
+.note-textarea {
+    width: 100%;
+    background: var(--neutral-fill-rest);
+    color: var(--neutral-foreground-rest);
+    border: 1px solid var(--neutral-stroke-rest);
+    border-radius: calc(var(--control-corner-radius) * 1px);
+    padding: 6px 8px;
+    font-size: 0.8rem;
+    font-family: inherit;
+    resize: vertical;
+    box-sizing: border-box;
+}
+
+.note-error {
+    color: #cb2431;
+    font-size: 0.75rem;
+}
+</style>

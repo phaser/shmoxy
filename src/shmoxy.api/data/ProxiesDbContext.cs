@@ -16,6 +16,8 @@ public class ProxiesDbContext : DbContext
     public DbSet<InspectionSessionLogEntry> InspectionSessionLogEntries => Set<InspectionSessionLogEntry>();
     public DbSet<InspectionSessionWebSocketFrame> InspectionSessionWebSocketFrames => Set<InspectionSessionWebSocketFrame>();
     public DbSet<AppSetting> AppSettings => Set<AppSetting>();
+    public DbSet<SavedTrace> SavedTraces => Set<SavedTrace>();
+    public DbSet<SavedTraceWebSocketFrame> SavedTraceWebSocketFrames => Set<SavedTraceWebSocketFrame>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -79,6 +81,26 @@ public class ProxiesDbContext : DbContext
             entity.HasKey(e => e.Key);
             entity.Property(e => e.Key).IsRequired().HasMaxLength(128);
             entity.Property(e => e.Value).IsRequired();
+        });
+
+        modelBuilder.Entity<SavedTrace>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => e.SavedAt);
+            entity.Property(e => e.Method).IsRequired().HasMaxLength(16);
+            entity.Property(e => e.Url).IsRequired();
+            entity.HasMany(e => e.WebSocketFrames)
+                .WithOne(f => f.SavedTrace)
+                .HasForeignKey(f => f.SavedTraceId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<SavedTraceWebSocketFrame>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => e.SavedTraceId);
+            entity.Property(e => e.Direction).IsRequired().HasMaxLength(16);
+            entity.Property(e => e.FrameType).IsRequired().HasMaxLength(32);
         });
     }
 }

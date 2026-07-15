@@ -149,6 +149,41 @@ public class ApiClient(HttpClient httpClient)
         await EnsureSuccessOrThrowWithBody(response);
     }
 
+    public async Task<SavedTraceSummary> SaveTraceAsync(SavedTraceData trace)
+    {
+        var response = await _httpClient.PostAsJsonAsync("/api/saved-traces", trace);
+        await EnsureSuccessOrThrowWithBody(response);
+        return await response.Content.ReadFromJsonAsync<SavedTraceSummary>()
+            ?? throw new HttpRequestException("Failed to save trace");
+    }
+
+    public async Task<List<SavedTraceSummary>> ListSavedTracesAsync()
+    {
+        var response = await _httpClient.GetAsync("/api/saved-traces");
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<List<SavedTraceSummary>>() ?? [];
+    }
+
+    public async Task<SavedTraceData> GetSavedTraceAsync(string traceId)
+    {
+        var response = await _httpClient.GetAsync($"/api/saved-traces/{traceId}");
+        await EnsureSuccessOrThrowWithBody(response);
+        return await response.Content.ReadFromJsonAsync<SavedTraceData>()
+            ?? throw new HttpRequestException("Failed to load saved trace");
+    }
+
+    public async Task UpdateSavedTraceNoteAsync(string traceId, string? note)
+    {
+        var response = await _httpClient.PatchAsJsonAsync($"/api/saved-traces/{traceId}", new { Note = note });
+        await EnsureSuccessOrThrowWithBody(response);
+    }
+
+    public async Task DeleteSavedTraceAsync(string traceId)
+    {
+        var response = await _httpClient.DeleteAsync($"/api/saved-traces/{traceId}");
+        await EnsureSuccessOrThrowWithBody(response);
+    }
+
     public async Task<List<SessionLogEntryData>> DrainSessionLogAsync()
     {
         var response = await _httpClient.PostAsync("/api/proxies/local/session-log/drain", null);
