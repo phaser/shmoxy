@@ -11,6 +11,13 @@
         <FluentTextField Placeholder="Search saved traces..." @bind-Value="_searchQuery"
                          @bind-Value:after="ApplyFilter" />
         <span class="row-count">@_filteredTraces.Count traces@(_filteredTraces.Count != _traces.Count ? $" / {_traces.Count} total" : "")</span>
+        <div class="toolbar-spacer"></div>
+        <FluentButton Appearance="Appearance.Outline"
+                      Disabled="@(!CanCompare)"
+                      Title="@CompareHint"
+                      OnClick="@OpenComparison">
+            Compare (@_checkedIds.Count/2)
+        </FluentButton>
     </div>
 
     @if (_error is not null)
@@ -22,6 +29,7 @@
         <table class="saved-traces-table">
             <thead>
                 <tr>
+                    <th class="col-select"></th>
                     <th class="col-saved-at">Saved at</th>
                     <th class="col-time">Captured at</th>
                     <th class="col-method">Method</th>
@@ -37,13 +45,13 @@
                 @if (_loading)
                 {
                     <tr>
-                        <td colspan="9" class="empty-state">Loading saved traces...</td>
+                        <td colspan="10" class="empty-state">Loading saved traces...</td>
                     </tr>
                 }
                 else if (_filteredTraces.Count == 0)
                 {
                     <tr>
-                        <td colspan="9" class="empty-state">
+                        <td colspan="10" class="empty-state">
                             @(_traces.Count == 0
                                 ? "No saved traces yet. Save a trace from the Inspection page with the Save button in the detail panel or the S shortcut."
                                 : "No saved traces match the search.")
@@ -55,6 +63,12 @@
                     <Virtualize Items="_filteredTraces" Context="trace" ItemSize="36" OverscanCount="20">
                         <tr class="clickable-row @(_selectedTraceId == trace.Id ? "selected-row" : "")"
                             @onclick="() => OpenDetail(trace)">
+                            <td class="select-cell" @onclick:stopPropagation="true">
+                                <input type="checkbox" class="compare-checkbox"
+                                       checked="@_checkedIds.Contains(trace.Id)"
+                                       title="Select for comparison"
+                                       @onchange="() => ToggleChecked(trace.Id)" />
+                            </td>
                             <td class="time-cell">@trace.SavedAt.ToLocalTime().ToString("MMM d, HH:mm:ss")</td>
                             <td class="time-cell">@trace.Timestamp.ToLocalTime().ToString("MMM d, HH:mm:ss")</td>
                             <td>
@@ -96,6 +110,11 @@
     </div>
 </div>
 
+@if (_compareLeft is not null && _compareRight is not null)
+{
+    <TraceComparison Left="_compareLeft" Right="_compareRight" OnClose="CloseComparison" />
+}
+
 @if (_selectedRow is not null)
 {
     @if (_selectedRow.IsWebSocket)
@@ -123,6 +142,28 @@
     private InspectionRow? _selectedRow;
     private string? _selectedTraceId;
 
+    private readonly HashSet<string> _checkedIds = new();
+    private SavedTraceData? _compareLeft;
+    private SavedTraceData? _compareRight;
+
+    private bool CanCompare =>
+        _checkedIds.Count == 2 && CheckedSummaries().All(t => !t.IsWebSocket);
+
+    private string CompareHint
+    {
+        get
+        {
+            if (_checkedIds.Count != 2)
+                return "Select exactly two traces to compare";
+            if (CheckedSummaries().Any(t => t.IsWebSocket))
+                return "WebSocket traces cannot be compared";
+            return "Compare the two selected traces";
+        }
+    }
+
+    private IEnumerable<SavedTraceSummary> CheckedSummaries() =>
+        _traces.Where(t => _checkedIds.Contains(t.Id));
+
     private string? SelectedNote =>
         _traces.FirstOrDefault(t => t.Id == _selectedTraceId)?.Note;
 
@@ -149,6 +190,7 @@
         {
             _loading = false;
         }
+        _checkedIds.RemoveWhere(id => _traces.All(t => t.Id != id));
         ApplyFilter();
     }
 
@@ -214,6 +256,38 @@
     {
         _selectedRow = null;
         _selectedTraceId = null;
+    }
+
+    private void ToggleChecked(string traceId)
+    {
+        if (!_checkedIds.Remove(traceId))
+            _checkedIds.Add(traceId);
+    }
+
+    private async Task OpenComparison()
+    {
+        if (!CanCompare)
+            return;
+
+        try
+        {
+            var selected = CheckedSummaries().OrderBy(t => t.Timestamp).ToList();
+            var older = await ApiClient.GetSavedTraceAsync(selected[0].Id);
+            var newer = await ApiClient.GetSavedTraceAsync(selected[1].Id);
+            _compareLeft = older;
+            _compareRight = newer;
+            _error = null;
+        }
+        catch (Exception ex)
+        {
+            _error = $"Failed to load traces for comparison: {ex.Message}";
+        }
+    }
+
+    private void CloseComparison()
+    {
+        _compareLeft = null;
+        _compareRight = null;
     }
 
     private async Task Unsave(SavedTraceSummary trace)
@@ -349,6 +423,18 @@
     align-self: center;
 }
 
+.toolbar-spacer {
+    flex: 1;
+}
+
+.select-cell {
+    text-align: center;
+}
+
+.compare-checkbox {
+    cursor: pointer;
+}
+
 .load-error {
     color: #cb2431;
     font-size: 0.85rem;
@@ -371,6 +457,7 @@
     table-layout: fixed;
 }
 
+.col-select { width: 2rem; }
 .col-saved-at { width: 9rem; }
 .col-time { width: 9rem; }
 .col-method { width: 6rem; }

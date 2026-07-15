@@ -1,0 +1,598 @@
+@using shmoxy.frontend.models
+@using shmoxy.frontend.services
+
+<div class="compare-overlay" @onclick="OnClose" @onkeydown="HandleKeyDown" tabindex="0" @ref="overlayRef">
+    <div class="compare-panel" @onclick:stopPropagation="true">
+        <div class="compare-header">
+            <h3 class="compare-title">Compare traces</h3>
+            <div class="compare-side-labels">
+                <div class="compare-side-label">
+                    <span class="side-tag side-left">A</span>
+                    <span class="method-badge method-@DisplayLeft.Method.ToLowerInvariant()">@DisplayLeft.Method</span>
+                    <span class="side-time" title="Captured at">@DisplayLeft.Timestamp.ToLocalTime().ToString("MMM d, HH:mm:ss.fff")</span>
+                </div>
+                <button class="swap-button" @onclick="SwapSides" title="Swap sides">&#8646; Swap</button>
+                <div class="compare-side-label">
+                    <span class="side-tag side-right">B</span>
+                    <span class="method-badge method-@DisplayRight.Method.ToLowerInvariant()">@DisplayRight.Method</span>
+                    <span class="side-time" title="Captured at">@DisplayRight.Timestamp.ToLocalTime().ToString("MMM d, HH:mm:ss.fff")</span>
+                </div>
+            </div>
+            <button class="close-button" @onclick="OnClose" title="Close (Esc)">&times;</button>
+        </div>
+
+        <div class="compare-body">
+            <div class="compare-section">
+                <h4>URL</h4>
+                <div class="url-diff">
+                    <div class="url-base @(_urlDiff.BaseChanged ? "cell-changed" : "")">@_urlDiff.LeftBase</div>
+                    <div class="url-base @(_urlDiff.BaseChanged ? "cell-changed" : "")">@_urlDiff.RightBase</div>
+                </div>
+                @if (_urlDiff.QueryParams.Count > 0)
+                {
+                    <table class="align-table">
+                        <thead>
+                            <tr><th>Query parameter</th><th>A</th><th>B</th></tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var p in _urlDiff.QueryParams)
+                            {
+                                <tr class="row-@p.Kind.ToString().ToLowerInvariant()">
+                                    <td class="align-name">@p.Name</td>
+                                    <td>@(p.LeftValue ?? "—")</td>
+                                    <td>@(p.RightValue ?? "—")</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                }
+            </div>
+
+            <div class="compare-section">
+                <h4>Response</h4>
+                <table class="align-table">
+                    <tbody>
+                        <tr class="@(DisplayLeft.StatusCode != DisplayRight.StatusCode ? "row-changed" : "row-unchanged")">
+                            <td class="align-name">Status</td>
+                            <td>@(DisplayLeft.StatusCode?.ToString() ?? "—")</td>
+                            <td>@(DisplayRight.StatusCode?.ToString() ?? "—")</td>
+                        </tr>
+                        <tr class="row-unchanged">
+                            <td class="align-name">Duration</td>
+                            <td>@FormatMs(DisplayLeft.DurationMs)</td>
+                            <td>@FormatMs(DisplayRight.DurationMs)@Delta(DisplayLeft.DurationMs, DisplayRight.DurationMs)</td>
+                        </tr>
+                        <tr class="row-unchanged">
+                            <td class="align-name">Response size</td>
+                            <td>@FormatSize(_responseBodyDiff.LeftSize)</td>
+                            <td>@FormatSize(_responseBodyDiff.RightSize)@Delta(_responseBodyDiff.LeftSize, _responseBodyDiff.RightSize)</td>
+                        </tr>
+                        @foreach (var (label, leftValue, rightValue) in TimingRows())
+                        {
+                            <tr class="row-unchanged">
+                                <td class="align-name">@label</td>
+                                <td>@FormatMs(leftValue)</td>
+                                <td>@FormatMs(rightValue)@Delta(leftValue, rightValue)</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+
+            @RenderHeaderSection("Request headers", _requestHeaderDiff, "req")
+            @RenderHeaderSection("Response headers", _responseHeaderDiff, "resp")
+            @RenderBodySection("Request body", _requestBodyDiff)
+            @RenderBodySection("Response body", _responseBodyDiff)
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired]
+    public SavedTraceData Left { get; set; } = default!;
+
+    [Parameter, EditorRequired]
+    public SavedTraceData Right { get; set; } = default!;
+
+    [Parameter]
+    public EventCallback OnClose { get; set; }
+
+    private ElementReference overlayRef;
+    private bool _swapped;
+    private readonly HashSet<string> _expandedUnchanged = new();
+
+    private SavedTraceData DisplayLeft => _swapped ? Right : Left;
+    private SavedTraceData DisplayRight => _swapped ? Left : Right;
+
+    private UrlDiff _urlDiff = default!;
+    private List<NamedValueDiff> _requestHeaderDiff = new();
+    private List<NamedValueDiff> _responseHeaderDiff = new();
+    private BodyDiff _requestBodyDiff = default!;
+    private BodyDiff _responseBodyDiff = default!;
+
+    private SavedTraceData? _computedLeft;
+    private SavedTraceData? _computedRight;
+
+    protected override void OnParametersSet()
+    {
+        if (!ReferenceEquals(_computedLeft, DisplayLeft) || !ReferenceEquals(_computedRight, DisplayRight))
+            ComputeDiffs();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            try
+            {
+                await overlayRef.FocusAsync();
+            }
+            catch (JSDisconnectedException) { }
+        }
+    }
+
+    private void ComputeDiffs()
+    {
+        var left = DisplayLeft;
+        var right = DisplayRight;
+
+        _urlDiff = DiffService.DiffUrls(left.Url, right.Url);
+        _requestHeaderDiff = DiffService.DiffNamedValues(
+            left.RequestHeaders, right.RequestHeaders, StringComparer.OrdinalIgnoreCase);
+        _responseHeaderDiff = DiffService.DiffNamedValues(
+            left.ResponseHeaders, right.ResponseHeaders, StringComparer.OrdinalIgnoreCase);
+        _requestBodyDiff = DiffService.DiffBody(
+            left.RequestBody, null, GetContentType(left.RequestHeaders),
+            right.RequestBody, null, GetContentType(right.RequestHeaders));
+        _responseBodyDiff = DiffService.DiffBody(
+            left.ResponseBody, left.ResponseBodyBase64, left.ResponseContentType,
+            right.ResponseBody, right.ResponseBodyBase64, right.ResponseContentType);
+
+        _computedLeft = left;
+        _computedRight = right;
+    }
+
+    private void SwapSides()
+    {
+        _swapped = !_swapped;
+        ComputeDiffs();
+    }
+
+    private async Task HandleKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape")
+            await OnClose.InvokeAsync();
+    }
+
+    private void ToggleUnchanged(string key)
+    {
+        if (!_expandedUnchanged.Remove(key))
+            _expandedUnchanged.Add(key);
+    }
+
+    private RenderFragment RenderHeaderSection(string title, List<NamedValueDiff> diff, string key) => __builder =>
+    {
+        var changed = diff.Where(d => d.Kind != DiffKind.Unchanged).ToList();
+        var unchanged = diff.Where(d => d.Kind == DiffKind.Unchanged).ToList();
+        var expanded = _expandedUnchanged.Contains(key);
+
+        <div class="compare-section">
+            <h4>@title</h4>
+            @if (diff.Count == 0)
+            {
+                <p class="no-data">No headers on either side</p>
+            }
+            else
+            {
+                <table class="align-table">
+                    <thead>
+                        <tr><th>Header</th><th>A</th><th>B</th></tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var h in changed)
+                        {
+                            <tr class="row-@h.Kind.ToString().ToLowerInvariant()">
+                                <td class="align-name">@h.Name</td>
+                                <td>@(h.LeftValue ?? "—")</td>
+                                <td>@(h.RightValue ?? "—")</td>
+                            </tr>
+                        }
+                        @if (expanded)
+                        {
+                            @foreach (var h in unchanged)
+                            {
+                                <tr class="row-unchanged">
+                                    <td class="align-name">@h.Name</td>
+                                    <td>@h.LeftValue</td>
+                                    <td>@h.RightValue</td>
+                                </tr>
+                            }
+                        }
+                    </tbody>
+                </table>
+                @if (changed.Count == 0)
+                {
+                    <p class="all-unchanged-note">All @diff.Count headers identical</p>
+                }
+                @if (unchanged.Count > 0)
+                {
+                    <button class="toggle-unchanged" @onclick="() => ToggleUnchanged(key)">
+                        @(expanded ? "Hide" : "Show") @unchanged.Count unchanged
+                    </button>
+                }
+            }
+        </div>
+    };
+
+    private RenderFragment RenderBodySection(string title, BodyDiff diff) => __builder =>
+    {
+        <div class="compare-section">
+            <h4>
+                @title
+                @if (diff.Kind != BodyDiffKind.Empty)
+                {
+                    <span class="body-verdict @(diff.Identical ? "verdict-identical" : "verdict-different")">
+                        @(diff.Identical ? "identical" : "different")
+                    </span>
+                }
+            </h4>
+            @switch (diff.Kind)
+            {
+                case BodyDiffKind.Empty:
+                    <p class="no-data">No body on either side</p>
+                    break;
+                case BodyDiffKind.Binary:
+                    <p class="no-data">
+                        Binary content — @(diff.LeftContentType ?? "unknown type"), @FormatSize(diff.LeftSize)
+                        vs @(diff.RightContentType ?? "unknown type"), @FormatSize(diff.RightSize)
+                    </p>
+                    break;
+                case BodyDiffKind.TooLarge:
+                    <p class="no-data">
+                        Bodies too large to diff — @FormatSize(diff.LeftSize) vs @FormatSize(diff.RightSize)
+                    </p>
+                    break;
+                case BodyDiffKind.Text:
+                    @if (diff.Identical)
+                    {
+                        <p class="no-data">Bodies are identical (@FormatSize(diff.LeftSize))</p>
+                    }
+                    else
+                    {
+                        <div class="line-diff">
+                            <table class="line-diff-table">
+                                <tbody>
+                                    @foreach (var row in diff.Rows!)
+                                    {
+                                        <tr class="row-@row.Kind.ToString().ToLowerInvariant()">
+                                            <td class="diff-cell @(row.LeftLine is null ? "cell-missing" : "")"><pre>@(row.LeftLine ?? "")</pre></td>
+                                            <td class="diff-cell @(row.RightLine is null ? "cell-missing" : "")"><pre>@(row.RightLine ?? "")</pre></td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+                    break;
+            }
+        </div>
+    };
+
+    private IEnumerable<(string Label, double? Left, double? Right)> TimingRows()
+    {
+        var left = DisplayLeft;
+        var right = DisplayRight;
+        if (left.TimingSendMs is null && right.TimingSendMs is null)
+            yield break;
+
+        yield return ("Connect", left.TimingConnectMs, right.TimingConnectMs);
+        yield return ("TLS", left.TimingTlsMs, right.TimingTlsMs);
+        yield return ("Send", left.TimingSendMs, right.TimingSendMs);
+        yield return ("Wait (TTFB)", left.TimingWaitMs, right.TimingWaitMs);
+        yield return ("Receive", left.TimingReceiveMs, right.TimingReceiveMs);
+    }
+
+    private static string? GetContentType(List<KeyValuePair<string, string>>? headers) =>
+        headers?.FirstOrDefault(h => h.Key.Equals("Content-Type", StringComparison.OrdinalIgnoreCase)).Value;
+
+    private static string FormatMs(long? ms) => ms.HasValue ? $"{ms.Value} ms" : "—";
+
+    private static string FormatMs(double? ms) => ms.HasValue ? $"{ms.Value:F1} ms" : "—";
+
+    private static MarkupString Delta(long? left, long? right)
+    {
+        if (left is null || right is null || left == right)
+            return new MarkupString("");
+        var delta = right.Value - left.Value;
+        return new MarkupString($"<span class=\"delta {(delta > 0 ? "delta-up" : "delta-down")}\">{(delta > 0 ? "+" : "")}{delta}</span>");
+    }
+
+    private static MarkupString Delta(double? left, double? right)
+    {
+        if (left is null || right is null || Math.Abs(left.Value - right.Value) < 0.05)
+            return new MarkupString("");
+        var delta = right.Value - left.Value;
+        return new MarkupString($"<span class=\"delta {(delta > 0 ? "delta-up" : "delta-down")}\">{(delta > 0 ? "+" : "")}{delta:F1}</span>");
+    }
+
+    private static string FormatSize(long bytes) => bytes switch
+    {
+        < 1024 => $"{bytes} B",
+        < 1024 * 1024 => $"{bytes / 1024.0:F1} KB",
+        _ => $"{bytes / (1024.0 * 1024.0):F1} MB"
+    };
+}
+
+<style>
+.compare-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 100;
+    display: flex;
+    justify-content: center;
+}
+
+.compare-panel {
+    width: 1400px;
+    max-width: 96vw;
+    height: 100vh;
+    background: var(--neutral-layer-1);
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 0 20px rgba(0, 0, 0, 0.3);
+    overflow: hidden;
+}
+
+.compare-header {
+    padding: 12px 20px;
+    border-bottom: 1px solid var(--neutral-stroke-rest);
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    position: relative;
+}
+
+.compare-title {
+    margin: 0;
+    font-size: 1rem;
+}
+
+.compare-side-labels {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.compare-side-label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 1;
+    min-width: 0;
+}
+
+.side-tag {
+    display: inline-block;
+    font-weight: 700;
+    font-size: 0.75rem;
+    padding: 2px 8px;
+    border-radius: calc(var(--control-corner-radius) * 1px);
+}
+
+.side-left { background: rgba(0, 100, 200, 0.15); color: #0366d6; }
+.side-right { background: rgba(128, 0, 200, 0.15); color: #6f42c1; }
+
+.side-time {
+    font-family: monospace;
+    font-size: 0.75rem;
+    color: var(--neutral-foreground-hint);
+    white-space: nowrap;
+}
+
+.swap-button {
+    background: transparent;
+    color: var(--neutral-foreground-rest);
+    border: 1px solid var(--neutral-stroke-rest);
+    border-radius: 4px;
+    padding: 4px 12px;
+    cursor: pointer;
+    font-size: 0.8rem;
+    white-space: nowrap;
+}
+
+.swap-button:hover {
+    background: var(--neutral-layer-3);
+}
+
+.close-button {
+    position: absolute;
+    top: 8px;
+    right: 12px;
+    background: none;
+    border: none;
+    color: var(--neutral-foreground-rest);
+    font-size: 1.5rem;
+    cursor: pointer;
+    padding: 4px 8px;
+    border-radius: calc(var(--control-corner-radius) * 1px);
+    line-height: 1;
+}
+
+.close-button:hover {
+    background: var(--neutral-layer-3);
+}
+
+.method-badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: calc(var(--control-corner-radius) * 1px);
+    font-weight: 600;
+    font-size: 0.75rem;
+}
+
+.method-get { background: rgba(0, 128, 0, 0.15); color: #22863a; }
+.method-post { background: rgba(0, 100, 200, 0.15); color: #0366d6; }
+.method-put { background: rgba(200, 150, 0, 0.15); color: #b08800; }
+.method-delete { background: rgba(200, 0, 0, 0.15); color: #cb2431; }
+.method-patch { background: rgba(128, 0, 200, 0.15); color: #6f42c1; }
+
+.compare-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px 20px;
+}
+
+.compare-section {
+    margin-bottom: 24px;
+}
+
+.compare-section h4 {
+    margin: 0 0 8px 0;
+    font-size: 0.875rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--neutral-foreground-rest);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.url-diff {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+
+.url-base {
+    font-family: monospace;
+    font-size: 0.8rem;
+    word-break: break-all;
+    padding: 4px 8px;
+    border-radius: calc(var(--control-corner-radius) * 1px);
+    background: var(--neutral-layer-2);
+}
+
+.align-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.8rem;
+    table-layout: fixed;
+}
+
+.align-table th {
+    text-align: left;
+    padding: 4px 8px;
+    font-weight: 600;
+    border-bottom: 1px solid var(--neutral-stroke-rest);
+    color: var(--neutral-foreground-hint);
+}
+
+.align-table th:first-child {
+    width: 220px;
+}
+
+.align-table td {
+    padding: 4px 8px;
+    border-bottom: 1px solid var(--neutral-stroke-divider-rest);
+    font-family: monospace;
+    word-break: break-all;
+    vertical-align: top;
+}
+
+.align-name {
+    font-weight: 600;
+    color: var(--accent-foreground-rest);
+}
+
+.row-added { background: rgba(0, 128, 0, 0.10); }
+.row-removed { background: rgba(200, 0, 0, 0.10); }
+.row-changed { background: rgba(200, 150, 0, 0.10); }
+.cell-changed { background: rgba(200, 150, 0, 0.15); }
+
+.toggle-unchanged {
+    background: none;
+    border: none;
+    color: var(--accent-foreground-rest);
+    cursor: pointer;
+    font-size: 0.75rem;
+    padding: 4px 0;
+}
+
+.toggle-unchanged:hover {
+    text-decoration: underline;
+}
+
+.all-unchanged-note {
+    font-size: 0.75rem;
+    color: var(--neutral-foreground-hint);
+    font-style: italic;
+    margin: 4px 0 0 0;
+}
+
+.no-data {
+    color: var(--neutral-foreground-hint);
+    font-style: italic;
+    font-size: 0.85rem;
+    margin: 0;
+}
+
+.body-verdict {
+    font-size: 0.7rem;
+    font-weight: 600;
+    padding: 1px 8px;
+    border-radius: 10px;
+    text-transform: none;
+    letter-spacing: normal;
+}
+
+.verdict-identical { background: rgba(0, 128, 0, 0.15); color: #22863a; }
+.verdict-different { background: rgba(200, 150, 0, 0.2); color: #b08800; }
+
+.line-diff {
+    max-height: 500px;
+    overflow: auto;
+    border: 1px solid var(--neutral-stroke-rest);
+    border-radius: calc(var(--control-corner-radius) * 1px);
+}
+
+.line-diff-table {
+    width: 100%;
+    border-collapse: collapse;
+    table-layout: fixed;
+}
+
+.diff-cell {
+    width: 50%;
+    padding: 0 8px;
+    vertical-align: top;
+    border-right: 1px solid var(--neutral-stroke-divider-rest);
+}
+
+.diff-cell pre {
+    margin: 0;
+    font-family: monospace;
+    font-size: 0.75rem;
+    line-height: 1.5;
+    white-space: pre-wrap;
+    word-break: break-all;
+}
+
+.cell-missing {
+    background: var(--neutral-layer-2);
+}
+
+.delta {
+    margin-left: 6px;
+    font-size: 0.7rem;
+    font-weight: 600;
+}
+
+.delta-up { color: #cb2431; }
+.delta-down { color: #22863a; }
+</style>

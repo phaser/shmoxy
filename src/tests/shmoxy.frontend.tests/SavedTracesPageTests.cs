@@ -29,7 +29,7 @@ public class SavedTracesPageTests
 
         var headers = page.Locator(".saved-traces-table th");
         var count = await headers.CountAsync();
-        Assert.Equal(9, count);
+        Assert.Equal(10, count);
 
         var headerTexts = new List<string>();
         for (var i = 0; i < count; i++)
@@ -38,14 +38,15 @@ public class SavedTracesPageTests
             headerTexts.Add(text.Trim());
         }
 
-        Assert.Equal("Saved at", headerTexts[0]);
-        Assert.Equal("Captured at", headerTexts[1]);
-        Assert.Equal("Method", headerTexts[2]);
-        Assert.Equal("URL", headerTexts[3]);
-        Assert.Equal("Status", headerTexts[4]);
-        Assert.Equal("Size", headerTexts[5]);
-        Assert.Equal("Duration", headerTexts[6]);
-        Assert.Equal("Note", headerTexts[7]);
+        Assert.Equal("", headerTexts[0]);
+        Assert.Equal("Saved at", headerTexts[1]);
+        Assert.Equal("Captured at", headerTexts[2]);
+        Assert.Equal("Method", headerTexts[3]);
+        Assert.Equal("URL", headerTexts[4]);
+        Assert.Equal("Status", headerTexts[5]);
+        Assert.Equal("Size", headerTexts[6]);
+        Assert.Equal("Duration", headerTexts[7]);
+        Assert.Equal("Note", headerTexts[8]);
     }
 
     [Fact]
@@ -177,5 +178,100 @@ public class SavedTracesPageTests
         {
             await client.DeleteAsync($"/api/saved-traces/{summary!.Id}");
         }
+    }
+
+    [Fact]
+    public async Task SavedTracesPage_CompareTwoTraces_Flow()
+    {
+        var marker = Guid.NewGuid().ToString("N");
+        using var client = new HttpClient { BaseAddress = new Uri(_fixture.BaseUrl) };
+
+        // Seed two captures of the same endpoint with differing query/status/body/headers
+        var older = await SeedTrace(client, new SavedTraceData
+        {
+            Method = "GET",
+            Url = $"https://compare-test.example.com/{marker}?page=1&size=10",
+            StatusCode = 200,
+            DurationMs = 100,
+            Timestamp = DateTime.UtcNow.AddMinutes(-10),
+            RequestHeaders = [new("Host", "compare-test.example.com"), new("Accept", "application/json")],
+            ResponseHeaders = [new("Content-Type", "application/json")],
+            ResponseBody = "{\"status\":\"ok\",\"count\":1}",
+            ResponseContentType = "application/json"
+        });
+        var newer = await SeedTrace(client, new SavedTraceData
+        {
+            Method = "GET",
+            Url = $"https://compare-test.example.com/{marker}?page=2&filter=active",
+            StatusCode = 500,
+            DurationMs = 250,
+            Timestamp = DateTime.UtcNow,
+            RequestHeaders = [new("Host", "compare-test.example.com"), new("Authorization", "Bearer x")],
+            ResponseHeaders = [new("Content-Type", "application/json")],
+            ResponseBody = "{\"status\":\"error\",\"count\":1}",
+            ResponseContentType = "application/json"
+        });
+
+        try
+        {
+            var page = await _fixture.CreatePageAsync();
+            await page.GotoAsync($"{_fixture.BaseUrl}/saved-traces", new PageGotoOptions
+            {
+                WaitUntil = WaitUntilState.NetworkIdle,
+                Timeout = 30000
+            });
+            await page.WaitForTimeoutAsync(2000);
+
+            // Compare is disabled until exactly two traces are selected
+            var compareButton = page.Locator("fluent-button", new PageLocatorOptions { HasText = "Compare" });
+            Assert.NotNull(await compareButton.GetAttributeAsync("disabled"));
+
+            var rows = page.Locator(".saved-traces-table tbody tr").Filter(new LocatorFilterOptions { HasText = marker });
+            await rows.First.WaitForAsync(new LocatorWaitForOptions { Timeout = 10000 });
+            Assert.Equal(2, await rows.CountAsync());
+
+            await rows.Nth(0).Locator(".compare-checkbox").CheckAsync();
+            await rows.Nth(1).Locator(".compare-checkbox").CheckAsync();
+            await page.WaitForTimeoutAsync(500);
+
+            Assert.Null(await compareButton.GetAttributeAsync("disabled"));
+            await compareButton.ClickAsync();
+
+            await page.WaitForSelectorAsync(".compare-overlay", new PageWaitForSelectorOptions { Timeout = 10000 });
+
+            // Structural URL diff: page changed, size removed, filter added
+            var queryTable = page.Locator(".compare-overlay .align-table").First;
+            Assert.Contains("page", await queryTable.InnerTextAsync());
+
+            // Header diff shows the added Authorization header
+            Assert.Contains("Authorization", await page.Locator(".compare-overlay").InnerTextAsync());
+
+            // Body diff renders side-by-side rows with a changed line
+            var changedRows = page.Locator(".compare-overlay .line-diff-table tr.row-changed");
+            Assert.True(await changedRows.CountAsync() > 0);
+
+            // Swap sides still renders
+            await page.ClickAsync(".swap-button");
+            await page.WaitForTimeoutAsync(500);
+            Assert.True(await page.Locator(".compare-overlay").IsVisibleAsync());
+
+            // Close via the × button
+            await page.ClickAsync(".compare-overlay .close-button");
+            await page.WaitForTimeoutAsync(500);
+            Assert.Equal(0, await page.Locator(".compare-overlay").CountAsync());
+        }
+        finally
+        {
+            await client.DeleteAsync($"/api/saved-traces/{older}");
+            await client.DeleteAsync($"/api/saved-traces/{newer}");
+        }
+    }
+
+    private static async Task<string> SeedTrace(HttpClient client, SavedTraceData trace)
+    {
+        var response = await client.PostAsJsonAsync("/api/saved-traces", trace);
+        response.EnsureSuccessStatusCode();
+        var summary = await response.Content.ReadFromJsonAsync<SavedTraceSummary>();
+        return summary!.Id;
     }
 }
