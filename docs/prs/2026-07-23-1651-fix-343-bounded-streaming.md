@@ -2,6 +2,7 @@
 
 **Created:** 2026-07-23 16:51:30
 **Branch:** pr/fix-343-bounded-streaming
+**Pull request:** https://github.com/phaser/shmoxy/pull/344
 **Worktree Location:** /Users/cristian.bidea/projects/shmoxy/../shmoxy-worktrees/fix-343-bounded-streaming
 
 ## Description
