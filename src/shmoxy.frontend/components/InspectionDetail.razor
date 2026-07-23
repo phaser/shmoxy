@@ -206,6 +206,16 @@
                     </div>
                     @if (!string.IsNullOrEmpty(Row.RequestBody))
                     {
+                        @if (Row.RequestBodyTruncated)
+                        {
+                            <p class="no-data">
+                                Showing a bounded preview of @FormatBytes(Row.RequestBodySize ?? 0)
+                                @if (!string.IsNullOrEmpty(Row.RequestContentEncoding))
+                                {
+                                    <span> (@Row.RequestContentEncoding encoded)</span>
+                                }
+                            </p>
+                        }
                         var (formatted, lang) = FormatBody(Row.RequestBody, Row.RequestHeaders);
                         <pre class="code-block"><code id="request-body-code" class="language-@lang">@formatted</code></pre>
                     }
@@ -311,6 +321,16 @@
                     }
                     else if (!string.IsNullOrEmpty(Row.ResponseBody))
                     {
+                        @if (Row.ResponseBodyTruncated)
+                        {
+                            <p class="no-data">
+                                Showing a bounded preview of @FormatBytes(Row.ResponseBodySize ?? 0)
+                                @if (!string.IsNullOrEmpty(Row.ResponseContentEncoding))
+                                {
+                                    <span> (@Row.ResponseContentEncoding encoded)</span>
+                                }
+                            </p>
+                        }
                         var (formatted, lang) = FormatBody(Row.ResponseBody, Row.ResponseHeaders);
                         <pre class="code-block"><code id="response-body-code" class="language-@lang">@formatted</code></pre>
                     }
@@ -556,7 +576,7 @@
             && ImageContentTypeDetector.IsImageContentType(Row.ResponseContentType);
     }
 
-    private static string FormatBytes(int bytes)
+    private static string FormatBytes(long bytes)
     {
         return bytes switch
         {

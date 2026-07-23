@@ -5,6 +5,7 @@ using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using Microsoft.Extensions.Logging;
 using shmoxy.server;
+using shmoxy.server.hooks;
 using shmoxy.shared.ipc;
 
 namespace shmoxy.tests.server;
@@ -75,27 +76,13 @@ public class ProxyServerTests : IClassFixture<ProxyTestFixture>, IDisposable
         var port = _fixture.Server.ListeningPort;
         Assert.True(_fixture.Server.IsListening, "Fixture server should be running");
 
-        // Act — send an HTTP request through the proxy
-        var proxy = new WebProxy($"http://localhost:{port}");
-        using var handler = new HttpClientHandler { Proxy = proxy, UseProxy = true };
-        using var client = new HttpClient(handler) { Timeout = HttpRequestTimeout };
-
-        // Send a simple HTTP GET through the proxy to httpbin
-        // The proxy should accept the connection and attempt to forward it.
-        // We consider any non-exception result (even a proxy error) as the
-        // server successfully handling the connection.
-        HttpResponseMessage? response = null;
-        try
-        {
-            response = await client.GetAsync("http://httpbin.org/get");
-        }
-        catch (HttpRequestException)
-        {
-            // The proxy may fail to fully forward but the key assertion is that
-            // it accepted and handled the connection (didn't crash or refuse).
-        }
+        // Act — send a direct HTTP request for the proxy's local info page
+        using var client = new TcpClient();
+        await client.ConnectAsync(IPAddress.Loopback, port);
+        var response = await SendProxyInfoRequestAsync(client.GetStream(), port);
 
         // Assert — server should still be running after handling the request
+        Assert.StartsWith("HTTP/1.1 200", response);
         Assert.True(_fixture.Server.IsListening, "Server should still be listening after handling a request");
     }
 
@@ -106,10 +93,25 @@ public class ProxyServerTests : IClassFixture<ProxyTestFixture>, IDisposable
     [Fact]
     public async Task Integration_ShouldForwardRequestsToTargetSites()
     {
-        // Arrange — use a dedicated server for integration testing
+        var upstreamListener = new TcpListener(IPAddress.Loopback, 0);
+        upstreamListener.Start();
+        var upstreamPort = ((IPEndPoint)upstreamListener.LocalEndpoint).Port;
+        var upstreamTask = Task.Run(async () =>
+        {
+            using var upstreamClient = await upstreamListener.AcceptTcpClientAsync();
+            await using var stream = upstreamClient.GetStream();
+            _ = await ReadHeadersOneByteAtATimeAsync(stream);
+            const string responseBody = "local upstream";
+            var response = System.Text.Encoding.Latin1.GetBytes(
+                $"HTTP/1.1 200 OK\r\nContent-Length: {responseBody.Length}\r\nConnection: close\r\n\r\n{responseBody}");
+            await stream.WriteAsync(response);
+            await stream.FlushAsync();
+        });
+
         var config = new ProxyConfig
         {
             Port = 0,
+            ConnectionPoolSizePerHost = 0,
             LogLevel = ProxyConfig.LogLevelEnum.Warn
         };
         using var testServer = new ProxyServer(config);
@@ -128,38 +130,21 @@ public class ProxyServerTests : IClassFixture<ProxyTestFixture>, IDisposable
         using var handler = new HttpClientHandler { Proxy = proxy, UseProxy = true };
         using var client = new HttpClient(handler) { Timeout = HttpRequestTimeout };
 
-        // Sites to test
-        var sites = new[]
-        {
-            ("http://httpbin.org/get", "httpbin"),
-            ("http://example.com", "Example"),
-            ("http://info.cern.ch", "CERN")
-        };
-
         try
         {
-            foreach (var (url, name) in sites)
-            {
-                await TestSiteAsync(client, url, name);
-            }
+            using var response = await client.GetAsync($"http://127.0.0.1:{upstreamPort}/get");
+            var body = await response.Content.ReadAsStringAsync();
+            await upstreamTask;
+
+            Assert.True(response.IsSuccessStatusCode);
+            Assert.Equal("local upstream", body);
         }
         finally
         {
+            upstreamListener.Stop();
             await testServer.StopAsync();
             cts.Cancel();
         }
-    }
-
-    private static async Task TestSiteAsync(HttpClient client, string url, string name)
-    {
-        // Act — send request through the proxy
-        var response = await client.GetAsync(url);
-        var body = await response.Content.ReadAsStringAsync();
-
-        // Assert
-        Assert.True(response.IsSuccessStatusCode,
-            $"{name} ({url}) should return a success status code, got {response.StatusCode}");
-        Assert.True(body.Length > 0, $"{name} should return content");
     }
 
     [Fact]
@@ -649,30 +634,12 @@ public class ProxyServerTests : IClassFixture<ProxyTestFixture>, IDisposable
                 (_, _, _, _) => true); // Accept self-signed cert
             await sslStream.AuthenticateAsClientAsync("localhost");
 
-            // Send an HTTP request through the HTTPS listener to an external host.
-            // The proxy will attempt to forward it (and may fail upstream), but the
-            // key assertion is that it handled the TLS connection and parsed the HTTP
-            // request — we just need any HTTP response back.
-            var requestStr = $"GET http://httpbin.org/get HTTP/1.1\r\nHost: httpbin.org\r\nConnection: close\r\n\r\n";
-            await sslStream.WriteAsync(System.Text.Encoding.ASCII.GetBytes(requestStr));
-            await sslStream.FlushAsync();
-
-            // Read response
-            var buffer = new byte[8192];
-            var totalRead = 0;
-            using var readCts = new CancellationTokenSource(HttpRequestTimeout);
-            try
-            {
-                int read;
-                while ((read = await sslStream.ReadAsync(buffer.AsMemory(totalRead), readCts.Token)) > 0)
-                    totalRead += read;
-            }
-            catch (IOException) { /* Connection closed by proxy after response */ }
+            var responseText = await SendProxyInfoRequestAsync(
+                sslStream,
+                server.HttpsListeningPort);
 
             // Assert — should receive an HTTP response from the proxy
-            Assert.True(totalRead > 0, "Should receive a response from the HTTPS listener");
-            var responseText = System.Text.Encoding.ASCII.GetString(buffer, 0, totalRead);
-            Assert.StartsWith("HTTP/1.1", responseText);
+            Assert.StartsWith("HTTP/1.1 200", responseText);
 
             await server.StopAsync();
             cts.Cancel();
@@ -775,21 +742,14 @@ public class ProxyServerTests : IClassFixture<ProxyTestFixture>, IDisposable
             Assert.True(server.HttpsListeningPort > 0);
             Assert.NotEqual(server.ListeningPort, server.HttpsListeningPort);
 
-            // Act — connect to HTTP listener (use as a standard proxy with absolute URL)
-            var httpProxy = new WebProxy($"http://localhost:{server.ListeningPort}");
-            using var httpHandler = new HttpClientHandler { Proxy = httpProxy, UseProxy = true };
-            using var httpTestClient = new HttpClient(httpHandler) { Timeout = HttpRequestTimeout };
-            HttpResponseMessage? httpResponse = null;
-            try
-            {
-                httpResponse = await httpTestClient.GetAsync("http://httpbin.org/get");
-            }
-            catch (HttpRequestException)
-            {
-                // Proxy accepted and handled the connection even if upstream failed
-            }
+            // Act — connect to HTTP listener and request the proxy's local info page.
+            using var httpClient = new TcpClient();
+            await httpClient.ConnectAsync(IPAddress.Loopback, server.ListeningPort);
+            var httpResponse = await SendProxyInfoRequestAsync(
+                httpClient.GetStream(),
+                server.ListeningPort);
 
-            // The proxy should still be running after handling the HTTP request
+            Assert.StartsWith("HTTP/1.1 200", httpResponse);
             Assert.True(server.IsListening, "Server should still be listening after HTTP request");
 
             // Act — connect to HTTPS listener (TLS) and send an HTTP request through
@@ -798,22 +758,10 @@ public class ProxyServerTests : IClassFixture<ProxyTestFixture>, IDisposable
             using var sslStream = new SslStream(httpsClient.GetStream(), false,
                 (_, _, _, _) => true);
             await sslStream.AuthenticateAsClientAsync("localhost");
-            var httpsRequestStr = "GET http://httpbin.org/get HTTP/1.1\r\nHost: httpbin.org\r\nConnection: close\r\n\r\n";
-            await sslStream.WriteAsync(System.Text.Encoding.ASCII.GetBytes(httpsRequestStr));
-            await sslStream.FlushAsync();
-            var httpsBuffer = new byte[8192];
-            var httpsRead = 0;
-            using var readCts = new CancellationTokenSource(HttpRequestTimeout);
-            try
-            {
-                int read;
-                while ((read = await sslStream.ReadAsync(httpsBuffer.AsMemory(httpsRead), readCts.Token)) > 0)
-                    httpsRead += read;
-            }
-            catch (IOException) { /* Connection closed */ }
-            Assert.True(httpsRead > 0, "HTTPS listener should respond");
-            var httpsResponse = System.Text.Encoding.ASCII.GetString(httpsBuffer, 0, httpsRead);
-            Assert.StartsWith("HTTP/1.1", httpsResponse);
+            var httpsResponse = await SendProxyInfoRequestAsync(
+                sslStream,
+                server.HttpsListeningPort);
+            Assert.StartsWith("HTTP/1.1 200", httpsResponse);
 
             await server.StopAsync();
             cts.Cancel();
@@ -835,6 +783,387 @@ public class ProxyServerTests : IClassFixture<ProxyTestFixture>, IDisposable
         var port = ((IPEndPoint)listener.LocalEndpoint).Port;
         listener.Stop();
         return port;
+    }
+
+    private static async Task<string> SendProxyInfoRequestAsync(Stream stream, int port)
+    {
+        var request = $"GET / HTTP/1.1\r\nHost: localhost:{port}\r\nConnection: close\r\n\r\n";
+        await stream.WriteAsync(System.Text.Encoding.ASCII.GetBytes(request));
+        await stream.FlushAsync();
+
+        using var response = new MemoryStream();
+        var buffer = new byte[8192];
+        using var readCts = new CancellationTokenSource(HttpRequestTimeout);
+        int read;
+        while ((read = await stream.ReadAsync(buffer, readCts.Token)) > 0)
+            response.Write(buffer, 0, read);
+
+        return System.Text.Encoding.ASCII.GetString(response.ToArray());
+    }
+
+    [Theory]
+    [InlineData("content-length")]
+    [InlineData("chunked")]
+    [InlineData("close")]
+    public async Task LargeResponse_StreamsWithBoundedInspectionPreview(string framing)
+    {
+        const int bodyLength = 2 * 1024 * 1024;
+        const int captureLimit = 32 * 1024;
+        var upstreamListener = new TcpListener(IPAddress.Loopback, 0);
+        upstreamListener.Start();
+        var upstreamPort = ((IPEndPoint)upstreamListener.LocalEndpoint).Port;
+
+        var upstreamTask = Task.Run(async () =>
+        {
+            using var upstreamClient = await upstreamListener.AcceptTcpClientAsync();
+            await using var stream = upstreamClient.GetStream();
+            _ = await ReadHeadersOneByteAtATimeAsync(stream);
+
+            var responseHeaders = framing switch
+            {
+                "content-length" =>
+                    $"HTTP/1.1 200 OK\r\nContent-Length: {bodyLength}\r\nConnection: close\r\n\r\n",
+                "chunked" =>
+                    "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\nConnection: close\r\n\r\n",
+                "close" =>
+                    "HTTP/1.1 200 OK\r\nConnection: close\r\n\r\n",
+                _ => throw new InvalidOperationException($"Unknown framing '{framing}'.")
+            };
+            await stream.WriteAsync(System.Text.Encoding.Latin1.GetBytes(responseHeaders));
+
+            var buffer = new byte[8192];
+            Array.Fill(buffer, (byte)'r');
+            var remaining = bodyLength;
+            while (remaining > 0)
+            {
+                var count = Math.Min(remaining, buffer.Length);
+                if (framing == "chunked")
+                {
+                    await stream.WriteAsync(
+                        System.Text.Encoding.Latin1.GetBytes($"{count:x}\r\n"));
+                }
+
+                await stream.WriteAsync(buffer.AsMemory(0, count));
+                if (framing == "chunked")
+                    await stream.WriteAsync("\r\n"u8.ToArray());
+
+                remaining -= count;
+            }
+
+            if (framing == "chunked")
+                await stream.WriteAsync("0\r\nX-Test-Trailer: complete\r\n\r\n"u8.ToArray());
+
+            await stream.FlushAsync();
+        });
+
+        var hook = new InspectionHook();
+        var config = new ProxyConfig
+        {
+            Port = 0,
+            ConnectionPoolSizePerHost = 0,
+            InspectionCaptureLimitBytes = captureLimit,
+            LogLevel = ProxyConfig.LogLevelEnum.Warn
+        };
+        await using var proxyServer = new ProxyServer(config, hook);
+        using var serverCts = new CancellationTokenSource();
+        var proxyTask = proxyServer.StartAsync(serverCts.Token);
+        await WaitForListeningAsync(proxyServer);
+
+        try
+        {
+            var webProxy = new WebProxy($"http://127.0.0.1:{proxyServer.ListeningPort}");
+            using var handler = new HttpClientHandler { Proxy = webProxy, UseProxy = true };
+            using var client = new HttpClient(handler) { Timeout = HttpRequestTimeout };
+            using var response = await client.GetAsync(
+                $"http://127.0.0.1:{upstreamPort}/large",
+                HttpCompletionOption.ResponseHeadersRead);
+            await using var sink = new CountingSinkStream();
+
+            await response.Content.CopyToAsync(sink);
+            await upstreamTask;
+
+            var events = DrainInspectionEvents(hook);
+            var responseEvent = Assert.Single(events, evt => evt.EventType == "response");
+            Assert.Equal(bodyLength, sink.BytesWritten);
+            Assert.Equal(bodyLength, responseEvent.BodyLength);
+            Assert.Equal(captureLimit, responseEvent.Body?.Length);
+            Assert.True(responseEvent.BodyTruncated);
+        }
+        finally
+        {
+            upstreamListener.Stop();
+            await proxyServer.StopAsync();
+            serverCts.Cancel();
+            await proxyTask;
+        }
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task LargeRequest_StreamsWithBoundedInspectionPreview(bool chunked)
+    {
+        const int bodyLength = 2 * 1024 * 1024;
+        const int captureLimit = 32 * 1024;
+        var upstreamListener = new TcpListener(IPAddress.Loopback, 0);
+        upstreamListener.Start();
+        var upstreamPort = ((IPEndPoint)upstreamListener.LocalEndpoint).Port;
+
+        var upstreamTask = Task.Run(async () =>
+        {
+            using var upstreamClient = await upstreamListener.AcceptTcpClientAsync();
+            await using var stream = upstreamClient.GetStream();
+            var headers = await ReadHeadersOneByteAtATimeAsync(stream);
+            long received;
+            if (headers.Contains("Transfer-Encoding: chunked", StringComparison.OrdinalIgnoreCase))
+            {
+                received = await ReadChunkedPayloadLengthAsync(stream);
+            }
+            else
+            {
+                var contentLength = ProxyServer.ParseContentLengthFromHeaders(headers);
+                received = await ReadExactPayloadLengthAsync(stream, contentLength);
+            }
+
+            await stream.WriteAsync(
+                "HTTP/1.1 204 No Content\r\nConnection: close\r\n\r\n"u8.ToArray());
+            await stream.FlushAsync();
+            return received;
+        });
+
+        var hook = new InspectionHook();
+        var config = new ProxyConfig
+        {
+            Port = 0,
+            ConnectionPoolSizePerHost = 0,
+            InspectionCaptureLimitBytes = captureLimit,
+            LogLevel = ProxyConfig.LogLevelEnum.Warn
+        };
+        await using var proxyServer = new ProxyServer(config, hook);
+        using var serverCts = new CancellationTokenSource();
+        var proxyTask = proxyServer.StartAsync(serverCts.Token);
+        await WaitForListeningAsync(proxyServer);
+
+        try
+        {
+            var webProxy = new WebProxy($"http://127.0.0.1:{proxyServer.ListeningPort}");
+            using var handler = new HttpClientHandler { Proxy = webProxy, UseProxy = true };
+            using var client = new HttpClient(handler) { Timeout = HttpRequestTimeout };
+            using var request = new HttpRequestMessage(
+                HttpMethod.Post,
+                $"http://127.0.0.1:{upstreamPort}/upload")
+            {
+                Content = new GeneratedHttpContent(bodyLength, reportLength: !chunked)
+            };
+            if (chunked)
+                request.Headers.TransferEncodingChunked = true;
+
+            using var response = await client.SendAsync(request);
+            var received = await upstreamTask;
+
+            Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+            Assert.Equal(bodyLength, received);
+
+            var events = DrainInspectionEvents(hook);
+            var requestEvent = events.Last(evt =>
+                evt.EventType is "request" or "request_body" &&
+                evt.BodyLength == bodyLength);
+            Assert.Equal(captureLimit, requestEvent.Body?.Length);
+            Assert.True(requestEvent.BodyTruncated);
+        }
+        finally
+        {
+            upstreamListener.Stop();
+            await proxyServer.StopAsync();
+            serverCts.Cancel();
+            await proxyTask;
+        }
+    }
+
+    [Fact]
+    public void DecompressForInspection_StopsAtConfiguredExpansionLimit()
+    {
+        const int expandedLength = 2 * 1024 * 1024;
+        const int captureLimit = 32 * 1024;
+        using var compressed = new MemoryStream();
+        using (var gzip = new System.IO.Compression.GZipStream(
+                   compressed,
+                   System.IO.Compression.CompressionLevel.Fastest,
+                   leaveOpen: true))
+        {
+            var block = new byte[8192];
+            for (var written = 0; written < expandedLength; written += block.Length)
+                gzip.Write(block);
+        }
+
+        var headers = new List<KeyValuePair<string, string>>
+        {
+            new("Content-Encoding", "gzip")
+        };
+
+        var result = ProxyServer.DecompressForInspection(
+            compressed.ToArray(),
+            headers,
+            captureLimit,
+            Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance,
+            out var decompressed,
+            out var truncated);
+
+        Assert.True(decompressed);
+        Assert.True(truncated);
+        Assert.Equal(captureLimit, result.Length);
+    }
+
+    private static async Task WaitForListeningAsync(ProxyServer server)
+    {
+        var deadline = DateTime.UtcNow + ServerStartTimeout;
+        while (!server.IsListening && DateTime.UtcNow < deadline)
+            await Task.Delay(10);
+
+        Assert.True(server.IsListening, "Proxy server did not start within the test timeout.");
+    }
+
+    private static async Task<string> ReadHeadersOneByteAtATimeAsync(Stream stream)
+    {
+        using var headers = new MemoryStream();
+        var lastFour = new Queue<byte>(4);
+        var oneByte = new byte[1];
+        while (true)
+        {
+            var read = await stream.ReadAsync(oneByte);
+            if (read == 0)
+                break;
+
+            headers.WriteByte(oneByte[0]);
+            if (lastFour.Count == 4)
+                lastFour.Dequeue();
+            lastFour.Enqueue(oneByte[0]);
+            if (lastFour.SequenceEqual("\r\n\r\n"u8.ToArray()))
+                break;
+        }
+
+        return System.Text.Encoding.Latin1.GetString(headers.ToArray());
+    }
+
+    private static async Task<long> ReadExactPayloadLengthAsync(Stream stream, long length)
+    {
+        long total = 0;
+        var buffer = new byte[8192];
+        while (total < length)
+        {
+            var read = await stream.ReadAsync(
+                buffer.AsMemory(0, checked((int)Math.Min(buffer.Length, length - total))));
+            if (read == 0)
+                break;
+            total += read;
+        }
+        return total;
+    }
+
+    private static async Task<long> ReadChunkedPayloadLengthAsync(Stream stream)
+    {
+        long total = 0;
+        while (true)
+        {
+            var sizeLine = (await ReadLineOneByteAtATimeAsync(stream)).Trim();
+            var extensionIndex = sizeLine.IndexOf(';');
+            if (extensionIndex >= 0)
+                sizeLine = sizeLine[..extensionIndex];
+            var size = long.Parse(
+                sizeLine,
+                System.Globalization.NumberStyles.HexNumber,
+                System.Globalization.CultureInfo.InvariantCulture);
+            if (size == 0)
+            {
+                while ((await ReadLineOneByteAtATimeAsync(stream)).Length > 2)
+                {
+                }
+                return total;
+            }
+
+            total += await ReadExactPayloadLengthAsync(stream, size);
+            _ = await ReadExactPayloadLengthAsync(stream, 2);
+        }
+    }
+
+    private static async Task<string> ReadLineOneByteAtATimeAsync(Stream stream)
+    {
+        var line = new System.Text.StringBuilder();
+        var previous = '\0';
+        var oneByte = new byte[1];
+        while (await stream.ReadAsync(oneByte) > 0)
+        {
+            var value = (char)oneByte[0];
+            line.Append(value);
+            if (previous == '\r' && value == '\n')
+                break;
+            previous = value;
+        }
+        return line.ToString();
+    }
+
+    private static List<shmoxy.shared.ipc.InspectionEvent> DrainInspectionEvents(
+        InspectionHook hook)
+    {
+        var events = new List<shmoxy.shared.ipc.InspectionEvent>();
+        var reader = hook.GetReader();
+        while (reader.TryRead(out var evt))
+            events.Add(evt);
+        return events;
+    }
+
+    private sealed class GeneratedHttpContent(long length, bool reportLength) : HttpContent
+    {
+        protected override async Task SerializeToStreamAsync(
+            Stream stream,
+            TransportContext? context)
+        {
+            var buffer = new byte[8192];
+            Array.Fill(buffer, (byte)'u');
+            long remaining = length;
+            while (remaining > 0)
+            {
+                var count = checked((int)Math.Min(remaining, buffer.Length));
+                await stream.WriteAsync(buffer.AsMemory(0, count));
+                remaining -= count;
+            }
+        }
+
+        protected override bool TryComputeLength(out long computedLength)
+        {
+            computedLength = length;
+            return reportLength;
+        }
+    }
+
+    private sealed class CountingSinkStream : Stream
+    {
+        public long BytesWritten { get; private set; }
+
+        public override ValueTask WriteAsync(
+            ReadOnlyMemory<byte> buffer,
+            CancellationToken cancellationToken = default)
+        {
+            BytesWritten += buffer.Length;
+            return ValueTask.CompletedTask;
+        }
+
+        public override void Write(byte[] buffer, int offset, int count) =>
+            BytesWritten += count;
+
+        public override bool CanRead => false;
+        public override bool CanSeek => false;
+        public override bool CanWrite => true;
+        public override long Length => BytesWritten;
+        public override long Position
+        {
+            get => BytesWritten;
+            set => throw new NotSupportedException();
+        }
+        public override void Flush() { }
+        public override int Read(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+        public override void SetLength(long value) => throw new NotSupportedException();
     }
 
     public void Dispose()

@@ -12,6 +12,9 @@ public record InspectionEvent
     public int? StatusCode { get; init; }
     public List<KeyValuePair<string, string>> Headers { get; init; } = new();
     public byte[]? Body { get; init; }
+    public long? BodyLength { get; init; }
+    public bool BodyTruncated { get; init; }
+    public string? ContentEncoding { get; init; }
     public string? CorrelationId { get; init; }
     public string? FrameType { get; init; }
     public string? Direction { get; init; }

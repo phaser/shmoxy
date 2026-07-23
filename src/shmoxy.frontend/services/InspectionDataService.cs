@@ -267,7 +267,10 @@ public class InspectionDataService : IDisposable
                 Url = evt.Url,
                 Timestamp = evt.Timestamp,
                 RequestHeaders = evt.Headers ?? new List<KeyValuePair<string, string>>(),
-                RequestBody = DecodeBody(evt.Body)
+                RequestBody = DecodeBody(evt.Body),
+                RequestBodySize = evt.BodyLength ?? evt.Body?.LongLength,
+                RequestBodyTruncated = evt.BodyTruncated,
+                RequestContentEncoding = evt.ContentEncoding
             };
             _rows.Add(row);
 
@@ -292,6 +295,21 @@ public class InspectionDataService : IDisposable
                     _pendingRequests.Remove(key);
                 foreach (var (key, value) in updated)
                     _pendingRequests[key] = value;
+            }
+        }
+        else if (string.Equals(evt.EventType, "request_body", StringComparison.OrdinalIgnoreCase))
+        {
+            if (!string.IsNullOrEmpty(evt.CorrelationId) &&
+                _pendingRequests.TryGetValue(evt.CorrelationId, out var pending))
+            {
+                var (rowIndex, _) = pending;
+                if (rowIndex < _rows.Count)
+                {
+                    _rows[rowIndex].RequestBody = DecodeBody(evt.Body);
+                    _rows[rowIndex].RequestBodySize = evt.BodyLength ?? evt.Body?.LongLength;
+                    _rows[rowIndex].RequestBodyTruncated = evt.BodyTruncated;
+                    _rows[rowIndex].RequestContentEncoding = evt.ContentEncoding;
+                }
             }
         }
         else if (string.Equals(evt.EventType, "passthrough", StringComparison.OrdinalIgnoreCase))
@@ -324,10 +342,14 @@ public class InspectionDataService : IDisposable
                     _rows[rowIndex].StatusCode = evt.StatusCode;
                     _rows[rowIndex].ResponseHeaders = headers;
                     _rows[rowIndex].ResponseContentType = contentType;
-                    _rows[rowIndex].ResponseBodySize = evt.Body?.Length;
+                    _rows[rowIndex].ResponseBodySize = evt.BodyLength ?? evt.Body?.LongLength;
+                    _rows[rowIndex].ResponseBodyTruncated = evt.BodyTruncated;
+                    _rows[rowIndex].ResponseContentEncoding = evt.ContentEncoding;
                     _rows[rowIndex].Timing = evt.Timing;
 
-                    if (ImageContentTypeDetector.IsImageContentType(contentType) && evt.Body is { Length: > 0 })
+                    if (!evt.BodyTruncated &&
+                        ImageContentTypeDetector.IsImageContentType(contentType) &&
+                        evt.Body is { Length: > 0 })
                     {
                         _rows[rowIndex].ResponseBodyBase64 = Convert.ToBase64String(evt.Body);
                         _rows[rowIndex].ResponseBody = $"[Image: {contentType}, {evt.Body.Length} bytes]";
@@ -446,9 +468,14 @@ public class InspectionRow
     public List<KeyValuePair<string, string>> RequestHeaders { get; set; } = new();
     public List<KeyValuePair<string, string>> ResponseHeaders { get; set; } = new();
     public string? RequestBody { get; set; }
+    public long? RequestBodySize { get; set; }
+    public bool RequestBodyTruncated { get; set; }
+    public string? RequestContentEncoding { get; set; }
     public string? ResponseBody { get; set; }
     public string? ResponseBodyBase64 { get; set; }
     public long? ResponseBodySize { get; set; }
+    public bool ResponseBodyTruncated { get; set; }
+    public string? ResponseContentEncoding { get; set; }
     public string? ResponseContentType { get; set; }
     public RowOrigin Origin { get; set; } = RowOrigin.Live;
     public bool IsPassthrough { get; set; }

@@ -10,10 +10,28 @@ namespace shmoxy.server.interfaces;
 public interface IInterceptHook
 {
     /// <summary>
+    /// Returns whether this hook needs a bounded request body preview.
+    /// Hooks that only observe metadata should return false.
+    /// </summary>
+    bool RequiresRequestBodyCapture(InterceptedRequest request) => true;
+
+    /// <summary>
+    /// Returns whether this hook needs a bounded response body preview.
+    /// Hooks that only observe metadata should return false.
+    /// </summary>
+    bool RequiresResponseBodyCapture(InterceptedResponse response) => true;
+
+    /// <summary>
     /// Called when a request is intercepted before forwarding to the target server.
     /// Return null or Cancel=true to stop processing.
     /// </summary>
     Task<InterceptedRequest?> OnRequestAsync(InterceptedRequest request);
+
+    /// <summary>
+    /// Called after a streaming request body has been transferred and its final
+    /// byte count and bounded preview are known.
+    /// </summary>
+    Task OnRequestBodyTransferredAsync(InterceptedRequest request) => Task.CompletedTask;
 
     /// <summary>
     /// Called when a response is intercepted after receiving it from the target server.

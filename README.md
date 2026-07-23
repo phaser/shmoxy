@@ -48,6 +48,9 @@ dotnet test --filter "FullyQualifiedName!~Integration"
 ```bash
 # Run the API with Blazor frontend
 dotnet run --project src/shmoxy.api
+
+# Or run only the proxy engine (no API or frontend)
+dotnet run --project src/shmoxy -- --port 8080
 ```
 
 ## Blazor Frontend
@@ -81,6 +84,14 @@ curl -x https://localhost:8080 https://news.ycombinator.com
 | `--cert` | | Path to TLS certificate (future use) | - |
 | `--key` | | Path to TLS private key (future use) | - |
 | `--log-level` | `-l` | Logging: Debug, Info, Warn, Error | Info |
+| `--inspection-capture-limit` | | Maximum retained body-preview bytes; `0` disables body capture | 1048576 |
+| `--ipc-socket` | | Optional Unix socket for the control/inspection API | - |
+| `--admin-port` | | Optional authenticated TCP control API port | - |
+
+The proxy engine has no frontend dependency. Without a control endpoint it runs
+with a no-op interception hook and streams traffic directly. Supplying an IPC
+socket or admin port enables the optional inspection and breakpoint adapters
+used by the API/frontend.
 
 ## Architecture
 

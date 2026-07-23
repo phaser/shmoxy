@@ -23,6 +23,12 @@ public class InterceptHookChain : IInterceptHook, IDisposable
         return this;
     }
 
+    public bool RequiresRequestBodyCapture(InterceptedRequest request) =>
+        _hooks.Any(hook => hook.RequiresRequestBodyCapture(request));
+
+    public bool RequiresResponseBodyCapture(InterceptedResponse response) =>
+        _hooks.Any(hook => hook.RequiresResponseBodyCapture(response));
+
     /// <summary>
     /// Called when a request is intercepted. All hooks are executed in sequence.
     /// </summary>
@@ -41,6 +47,12 @@ public class InterceptHookChain : IInterceptHook, IDisposable
                 request = result;
         }
         return request;
+    }
+
+    public async Task OnRequestBodyTransferredAsync(InterceptedRequest request)
+    {
+        foreach (var hook in _hooks)
+            await hook.OnRequestBodyTransferredAsync(request);
     }
 
     /// <summary>

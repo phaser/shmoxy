@@ -124,7 +124,18 @@
                             @if (!string.IsNullOrEmpty(req.Body))
                             {
                                 <h4>Body</h4>
-                                <textarea class="body-editor" @bind="editedBodies[req.CorrelationId]" rows="6"></textarea>
+                                @if (req.BodyTruncated)
+                                {
+                                    <p class="no-data">
+                                        Preview limited to @req.Body.Length of
+                                        @(req.BodyLength?.ToString() ?? "unknown") bytes.
+                                        Large streaming bodies cannot be edited.
+                                    </p>
+                                }
+                                <textarea class="body-editor"
+                                          @bind="editedBodies[req.CorrelationId]"
+                                          readonly="@req.BodyTruncated"
+                                          rows="6"></textarea>
                             }
                         </div>
                     }
@@ -267,7 +278,9 @@
         try
         {
             string? modifiedBody = null;
-            if (editedBodies.TryGetValue(req.CorrelationId, out var edited) && edited != req.Body)
+            if (!req.BodyTruncated &&
+                editedBodies.TryGetValue(req.CorrelationId, out var edited) &&
+                edited != req.Body)
             {
                 modifiedBody = edited;
             }

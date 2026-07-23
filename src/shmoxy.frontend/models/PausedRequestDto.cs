@@ -7,5 +7,8 @@ public class PausedRequestDto
     public string? Url { get; set; }
     public List<KeyValuePair<string, string>> Headers { get; set; } = new();
     public string? Body { get; set; }
+    public long? BodyLength { get; set; }
+    public bool BodyTruncated { get; set; }
+    public string? ContentEncoding { get; set; }
     public DateTime PausedAt { get; set; }
 }

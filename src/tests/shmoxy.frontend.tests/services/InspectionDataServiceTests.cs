@@ -243,6 +243,72 @@ public class InspectionDataServiceTests
     }
 
     [Fact]
+    public void ProcessEvent_RequestBodyCompletion_UpdatesPreviewMetadata()
+    {
+        using var service = CreateService();
+        var now = DateTime.UtcNow;
+
+        service.ProcessEvent(new InspectionEventDto(
+            now,
+            "request",
+            "POST",
+            "https://example.com/upload",
+            null,
+            Body: "initial"u8.ToArray(),
+            CorrelationId: "corr-stream",
+            BodyTruncated: true,
+            ContentEncoding: "gzip"));
+        service.ProcessEvent(new InspectionEventDto(
+            now.AddMilliseconds(10),
+            "request_body",
+            "",
+            "",
+            null,
+            Body: "preview"u8.ToArray(),
+            CorrelationId: "corr-stream",
+            BodyLength: 2_000_000,
+            BodyTruncated: true,
+            ContentEncoding: "gzip"));
+
+        var row = Assert.Single(service.GetRows());
+        Assert.Equal("preview", row.RequestBody);
+        Assert.Equal(2_000_000, row.RequestBodySize);
+        Assert.True(row.RequestBodyTruncated);
+        Assert.Equal("gzip", row.RequestContentEncoding);
+    }
+
+    [Fact]
+    public void ProcessEvent_Response_UsesTransferredSizeInsteadOfPreviewSize()
+    {
+        using var service = CreateService();
+        var now = DateTime.UtcNow;
+
+        service.ProcessEvent(new InspectionEventDto(
+            now,
+            "request",
+            "GET",
+            "https://example.com/download",
+            null,
+            CorrelationId: "corr-response"));
+        service.ProcessEvent(new InspectionEventDto(
+            now.AddMilliseconds(20),
+            "response",
+            "",
+            "",
+            200,
+            Body: "preview"u8.ToArray(),
+            CorrelationId: "corr-response",
+            BodyLength: 5_000_000,
+            BodyTruncated: true,
+            ContentEncoding: "br"));
+
+        var row = Assert.Single(service.GetRows());
+        Assert.Equal(5_000_000, row.ResponseBodySize);
+        Assert.True(row.ResponseBodyTruncated);
+        Assert.Equal("br", row.ResponseContentEncoding);
+    }
+
+    [Fact]
     public void ProcessEvent_PairsOutOfOrderResponses_Correctly()
     {
         using var service = CreateService();

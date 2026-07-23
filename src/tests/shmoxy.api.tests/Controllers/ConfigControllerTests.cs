@@ -199,4 +199,18 @@ public class ConfigControllerTests
 
         Assert.IsType<OkObjectResult>(result.Result);
     }
+
+    [Fact]
+    public async Task UpdateConfig_NegativeInspectionCaptureLimit_Returns400()
+    {
+        var config = new ProxyConfig
+        {
+            Port = 8080,
+            InspectionCaptureLimitBytes = -1
+        };
+
+        var result = await _controller.UpdateConfig("local", config, CancellationToken.None);
+
+        Assert.IsType<BadRequestObjectResult>(result.Result);
+    }
 }

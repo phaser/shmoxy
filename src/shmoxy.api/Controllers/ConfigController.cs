@@ -195,6 +195,12 @@ public class ConfigController : ControllerBase
             return false;
         }
 
+        if (config.InspectionCaptureLimitBytes < 0)
+        {
+            errorMessage = "Inspection capture limit cannot be negative";
+            return false;
+        }
+
         errorMessage = string.Empty;
         return true;
     }
