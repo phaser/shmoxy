@@ -33,8 +33,9 @@ Resolve #343 by streaming HTTP bodies with bounded inspection capture, while kee
 
 ### Verification
 
-- [x] `dotnet build src/shmoxy.slnx --no-restore` — 0 compiler errors/warnings;
-  existing NuGet audit warnings remain for Microsoft.OpenApi and SQLitePCLRaw.
+- [x] `dotnet list src/shmoxy.slnx package --vulnerable
+  --include-transitive --no-restore` — no vulnerable packages.
+- [x] `dotnet build src/shmoxy.slnx --no-restore` — 0 errors, 0 warnings.
 - [x] Proxy tests — 229 passed.
 - [x] API tests — 227 passed.
 - [x] Frontend tests — 370 passed.
