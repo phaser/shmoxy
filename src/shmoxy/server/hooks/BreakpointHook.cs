@@ -34,6 +34,11 @@ public class BreakpointHook : IInterceptHook
     public IReadOnlyCollection<BreakpointRule> GetRules() =>
         _rules.Values.ToList().AsReadOnly();
 
+    public bool RequiresRequestBodyCapture(InterceptedRequest request) =>
+        _enabled && MatchesAnyRule(request);
+
+    public bool RequiresResponseBodyCapture(InterceptedResponse response) => false;
+
     private static readonly TimeSpan RegexMatchTimeout = TimeSpan.FromSeconds(1);
 
     public BreakpointRule AddRule(string? method, string urlPattern, bool isRegex = false)

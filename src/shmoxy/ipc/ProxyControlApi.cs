@@ -56,6 +56,7 @@ public static class ProxyControlApi
             config.LogLevel = newConfig.LogLevel;
             config.PassthroughHosts = newConfig.PassthroughHosts;
             config.ClientCertificates = newConfig.ClientCertificates;
+            config.InspectionCaptureLimitBytes = newConfig.InspectionCaptureLimitBytes;
 
             // Sync session logging setting
             config.SessionLoggingEnabled = newConfig.SessionLoggingEnabled;
@@ -247,6 +248,9 @@ public static class ProxyControlApi
                     Url = p.Request.Url?.ToString(),
                     Headers = p.Request.Headers,
                     Body = p.Request.Body != null ? System.Text.Encoding.UTF8.GetString(p.Request.Body) : null,
+                    p.Request.BodyLength,
+                    p.Request.BodyTruncated,
+                    p.Request.ContentEncoding,
                     p.PausedAt
                 });
 

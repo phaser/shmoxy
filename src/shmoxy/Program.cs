@@ -36,6 +36,11 @@ class Program
             aliases: new[] { "--admin-port" },
             description: "TCP port for HTTP admin API (optional, requires X-API-Key authentication)");
 
+        var inspectionCaptureLimitOption = new Option<int>(
+            aliases: new[] { "--inspection-capture-limit" },
+            description: "Maximum body preview bytes retained for interception (default: 1048576; 0 disables body capture)",
+            getDefaultValue: () => 1_048_576);
+
         RootCommand rootCommand = new RootCommand("Shmoxy HTTP/HTTPS Intercepting Proxy");
         rootCommand.AddOption(portOption);
         rootCommand.AddOption(certPathOption);
@@ -43,12 +48,26 @@ class Program
         rootCommand.AddOption(logLevelOption);
         rootCommand.AddOption(ipcSocketOption);
         rootCommand.AddOption(adminPortOption);
+        rootCommand.AddOption(inspectionCaptureLimitOption);
 
-        rootCommand.SetHandler(async (port, certPath, keyPath, logLevel, ipcSocket, adminPort) =>
+        rootCommand.SetHandler(async (
+            port,
+            certPath,
+            keyPath,
+            logLevel,
+            ipcSocket,
+            adminPort,
+            inspectionCaptureLimit) =>
         {
             if ((certPath != null && keyPath == null) || (certPath == null && keyPath != null))
             {
                 Console.Error.WriteLine("Error: Both --cert and --key must be specified together");
+                Environment.Exit(1);
+            }
+
+            if (inspectionCaptureLimit < 0)
+            {
+                Console.Error.WriteLine("Error: --inspection-capture-limit cannot be negative");
                 Environment.Exit(1);
             }
 
@@ -62,6 +81,7 @@ class Program
                     { "ProxyConfig:CertPath", certPath },
                     { "ProxyConfig:KeyPath", keyPath },
                     { "ProxyConfig:LogLevel", logLevel.ToString() },
+                    { "ProxyConfig:InspectionCaptureLimitBytes", inspectionCaptureLimit.ToString() },
                     { "IpcOptions:SocketPath", ipcSocket },
                     { "IpcOptions:AdminPort", adminPort?.ToString() },
                 }!);
@@ -82,7 +102,14 @@ class Program
 
             var host = builder.Build();
             await host.RunAsync();
-        }, portOption, certPathOption, keyPathOption, logLevelOption, ipcSocketOption, adminPortOption);
+        },
+        portOption,
+        certPathOption,
+        keyPathOption,
+        logLevelOption,
+        ipcSocketOption,
+        adminPortOption,
+        inspectionCaptureLimitOption);
 
         return await rootCommand.InvokeAsync(args);
     }

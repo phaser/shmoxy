@@ -318,6 +318,38 @@ public class MyCustomHook : IInterceptHook
 }
 ```
 
+## Bounded body streaming
+
+The forwarding path does not retain complete payloads by default:
+
+- `Content-Length` bodies are copied with an 8 KiB transfer buffer.
+- Chunked bodies preserve their wire framing and trailers while inspection counts
+  and captures only decoded chunk payload bytes.
+- Close-delimited responses stream until upstream EOF.
+- `ProxyConfig.InspectionCaptureLimitBytes` bounds request and response previews;
+  inspection events also expose total payload bytes, truncation, and the original
+  content encoding.
+- Compressed response previews are expanded only up to the same configured limit.
+- A request interceptor may replace a body only when the complete body fit inside
+  the configured capture limit. Attempts to modify a truncated preview fail
+  explicitly.
+
+## Optional control plane and frontend
+
+The `shmoxy` engine project does not reference `shmoxy.frontend`. When the engine
+starts without `--ipc-socket` or `--admin-port`, it uses `NoOpInterceptHook` and
+runs without inspection, breakpoint, API, or frontend services.
+
+Supplying a control endpoint adds `InspectionHook` and `BreakpointHook` as
+adapters. The API consumes those adapters over IPC, and the Blazor frontend
+consumes the API. The dependency direction is therefore:
+
+```text
+frontend -> API/IPC -> optional hooks -> proxy engine
+```
+
+The proxy engine remains independently runnable at the right-hand boundary.
+
 ### Hook Chain
 
 Multiple hooks can be chained:

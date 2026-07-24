@@ -112,6 +112,13 @@ public class ProxyServer : IAsyncDisposable, IDisposable
     public ProxyServer(ProxyConfig config, IInterceptHook interceptor, ILogger<ProxyServer> logger)
     {
         _config = config ?? throw new ArgumentNullException(nameof(config));
+        if (config.InspectionCaptureLimitBytes < 0)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(config),
+                "Inspection capture limit cannot be negative.");
+        }
+
         _interceptor = interceptor ?? throw new ArgumentNullException(nameof(interceptor));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _listener = TcpListener.Create(config.Port);
@@ -176,6 +183,13 @@ public class ProxyServer : IAsyncDisposable, IDisposable
         try
         {
             _listener.Start();
+            if (_httpsListener != null)
+            {
+                _httpsListener.Start();
+                _logger.LogInformation("HTTPS proxy listener started on port {HttpsPort}",
+                    ((System.Net.IPEndPoint)_httpsListener.LocalEndpoint).Port);
+            }
+
             _isListening = true;
             _logger.LogInformation("Proxy server started on port {Port}", _config.Port);
 
@@ -183,9 +197,6 @@ public class ProxyServer : IAsyncDisposable, IDisposable
 
             if (_httpsListener != null)
             {
-                _httpsListener.Start();
-                _logger.LogInformation("HTTPS proxy listener started on port {HttpsPort}",
-                    ((System.Net.IPEndPoint)_httpsListener.LocalEndpoint).Port);
                 var httpsTask = AcceptConnectionsAsync(_httpsListener, isTls: true, combinedCts.Token);
                 await Task.WhenAll(httpTask, httpsTask);
             }
@@ -315,14 +326,28 @@ public class ProxyServer : IAsyncDisposable, IDisposable
     /// </summary>
     private async Task HandleConnectionOnStreamAsync(TcpClient client, Stream clientStream)
     {
-        // Read until the full HTTP headers are received (\r\n\r\n terminator).
-        // A single ReadAsync cannot be relied upon — TCP may deliver data
-        // across multiple segments.
         var clientEndpoint = client.Client.RemoteEndPoint?.ToString();
-        var headerResult = await ReadUntilHeadersCompleteAsync(clientStream, _logger, clientEndpoint);
-        if (headerResult == null) return;
+        using var bufferedClientStream = new BufferedReadStream(clientStream, leaveOpen: true);
+        byte[]? buffer;
+        try
+        {
+            buffer = await bufferedClientStream.ReadHeadersAsync(
+                MaxHeaderSize,
+                _cts?.Token ?? CancellationToken.None);
+        }
+        catch (InvalidDataException ex)
+        {
+            _logger.LogWarning(
+                "Client {Client}: {ErrorMessage}",
+                clientEndpoint ?? "unknown",
+                ex.Message);
+            return;
+        }
 
-        var (buffer, bytesRead) = headerResult.Value;
+        if (buffer == null)
+            return;
+
+        var bytesRead = buffer.Length;
 
         var requestLine = Encoding.Latin1.GetString(buffer, 0, bytesRead).Split('\r')[0];
         var parts = requestLine.Split(' ');
@@ -337,11 +362,11 @@ public class ProxyServer : IAsyncDisposable, IDisposable
 
         if (method.Equals("CONNECT", StringComparison.OrdinalIgnoreCase))
         {
-            await HandleConnectAsync(client, clientStream, buffer, bytesRead);
+            await HandleConnectAsync(client, bufferedClientStream, buffer, bytesRead);
         }
         else
         {
-            await HandleHttpRequestAsync(clientStream, method, parts[1], buffer, bytesRead);
+            await HandleHttpRequestAsync(bufferedClientStream, method, parts[1], buffer, bytesRead);
         }
     }
 
@@ -540,18 +565,6 @@ public class ProxyServer : IAsyncDisposable, IDisposable
                 }
             }
 
-            // Parse body from the already-read buffer, then read remaining if needed
-            var headerEndIndex = request.IndexOf("\r\n\r\n");
-            byte[]? body = null;
-            if (headerEndIndex >= 0 && headerEndIndex + 4 < bytesRead)
-            {
-                body = new byte[bytesRead - (headerEndIndex + 4)];
-                Buffer.BlockCopy(buffer, headerEndIndex + 4, body, 0, body.Length);
-            }
-
-            body = await ReadFullBodyAsync(clientStream, body, headersDict);
-
-            // Intercept request
             var interceptedRequest = new InterceptedRequest
             {
                 Method = method,
@@ -560,15 +573,17 @@ public class ProxyServer : IAsyncDisposable, IDisposable
                 Port = port,
                 Path = relativePath,
                 Headers = headersDict,
-                Body = body,
-                CorrelationId = Guid.NewGuid().ToString()
+                CorrelationId = Guid.NewGuid().ToString(),
+                ContentEncoding = headersDict.GetHeaderValue("Content-Encoding")
             };
+
+            var bodyPlan = await PrepareRequestBodyAsync(clientStream, interceptedRequest);
 
             var result = await _interceptor.OnRequestAsync(interceptedRequest);
             if (result == null || result.Cancel) return;
 
             // Forward the request to the target server via a new TCP connection
-            await ForwardHttpRequestAsync(clientStream, result, host, port);
+            await ForwardHttpRequestAsync(clientStream, result, host, port, bodyPlan);
         }
         catch (Exception ex) when (ex is not OperationCanceledException and not IOException)
         {
@@ -694,12 +709,381 @@ public class ProxyServer : IAsyncDisposable, IDisposable
         await SendResponseAsync(clientStream, response);
     }
 
+    private sealed record RequestBodyPlan(
+        long? ContentLength,
+        string? TransferEncoding,
+        byte[] OriginalPreview,
+        bool IsComplete,
+        int CaptureLimit,
+        Http1BodyTransfer.ChunkedPrefix? ChunkedPrefix)
+    {
+        public bool IsChunked => ChunkedPrefix != null;
+    }
+
+    private async Task<RequestBodyPlan> PrepareRequestBodyAsync(
+        Stream clientStream,
+        InterceptedRequest request)
+    {
+        var captureLimit = _interceptor.RequiresRequestBodyCapture(request)
+            ? _config.InspectionCaptureLimitBytes
+            : 0;
+        var transferEncoding = request.Headers.GetHeaderValue("Transfer-Encoding");
+        var isChunked = transferEncoding?.Contains(
+            "chunked",
+            StringComparison.OrdinalIgnoreCase) == true;
+        var expectsContinue = request.Headers.Any(
+            h => h.Key.Equals("Expect", StringComparison.OrdinalIgnoreCase) &&
+                 h.Value.Contains("100-continue", StringComparison.OrdinalIgnoreCase));
+
+        using var readCts = new CancellationTokenSource(UpstreamReadTimeoutMs);
+        if (isChunked)
+        {
+            if (expectsContinue)
+                await SendResponseAsync(clientStream, "HTTP/1.1 100 Continue\r\n\r\n");
+
+            var chunkedPrefix = await Http1BodyTransfer.ReadChunkedPrefixAsync(
+                clientStream,
+                captureLimit,
+                readCts,
+                UpstreamReadTimeoutMs);
+            request.Body = chunkedPrefix.Preview.Length == 0 ? null : chunkedPrefix.Preview;
+            request.BodyLength = chunkedPrefix.Completed ? chunkedPrefix.PayloadBytes : null;
+            request.BodyTruncated = !chunkedPrefix.Completed;
+
+            return new RequestBodyPlan(
+                ContentLength: null,
+                TransferEncoding: transferEncoding,
+                OriginalPreview: chunkedPrefix.Preview.ToArray(),
+                IsComplete: chunkedPrefix.Completed,
+                CaptureLimit: captureLimit,
+                ChunkedPrefix: chunkedPrefix);
+        }
+
+        var contentLengthHeader = request.Headers.GetHeaderValue("Content-Length");
+        if (contentLengthHeader != null)
+        {
+            if (!long.TryParse(contentLengthHeader, out var contentLength) || contentLength < 0)
+                throw new InvalidDataException($"Invalid Content-Length '{contentLengthHeader}'.");
+
+            if (expectsContinue && contentLength > 0)
+                await SendResponseAsync(clientStream, "HTTP/1.1 100 Continue\r\n\r\n");
+
+            var prefix = await Http1BodyTransfer.ReadPrefixAsync(
+                clientStream,
+                contentLength,
+                captureLimit,
+                readCts,
+                UpstreamReadTimeoutMs);
+            request.Body = prefix.Length == 0 ? null : prefix;
+            request.BodyLength = contentLength;
+            request.BodyTruncated = prefix.LongLength < contentLength;
+
+            return new RequestBodyPlan(
+                ContentLength: contentLength,
+                TransferEncoding: null,
+                OriginalPreview: prefix.ToArray(),
+                IsComplete: prefix.LongLength == contentLength,
+                CaptureLimit: captureLimit,
+                ChunkedPrefix: null);
+        }
+
+        request.Body = null;
+        request.BodyLength = 0;
+        request.BodyTruncated = false;
+        return new RequestBodyPlan(
+            ContentLength: null,
+            TransferEncoding: null,
+            OriginalPreview: Array.Empty<byte>(),
+            IsComplete: true,
+            CaptureLimit: captureLimit,
+            ChunkedPrefix: null);
+    }
+
+    private static bool IsRequestBodyModified(
+        InterceptedRequest request,
+        RequestBodyPlan bodyPlan)
+    {
+        if (request.Body == null)
+            return bodyPlan.OriginalPreview.Length != 0;
+
+        return !request.Body.AsSpan().SequenceEqual(bodyPlan.OriginalPreview);
+    }
+
+    private StringBuilder BuildOutgoingRequest(
+        InterceptedRequest request,
+        string host,
+        bool useKeepAlive,
+        RequestBodyPlan bodyPlan,
+        bool bodyModified)
+    {
+        var outgoing = new StringBuilder();
+        outgoing.Append($"{request.Method} {request.Path} HTTP/1.1\r\n");
+        outgoing.Append($"Host: {host}\r\n");
+
+        foreach (var header in request.Headers
+            .Where(h => !h.Key.Equals("Host", StringComparison.OrdinalIgnoreCase)
+                     && !h.Key.Equals("Connection", StringComparison.OrdinalIgnoreCase)
+                     && !h.Key.Equals("Proxy-Connection", StringComparison.OrdinalIgnoreCase)
+                     && !h.Key.Equals("Content-Length", StringComparison.OrdinalIgnoreCase)
+                     && !h.Key.Equals("Transfer-Encoding", StringComparison.OrdinalIgnoreCase)
+                     && !(h.Key.Equals("Expect", StringComparison.OrdinalIgnoreCase) &&
+                          h.Value.Contains("100-continue", StringComparison.OrdinalIgnoreCase))
+                     && !(_config.DisableCaching && IsCachingHeader(h.Key))))
+        {
+            outgoing.Append($"{header.Key}: {header.Value}\r\n");
+        }
+
+        if (_config.DisableCaching)
+            outgoing.Append("Cache-Control: no-cache\r\n");
+
+        outgoing.Append(useKeepAlive ? "Connection: keep-alive\r\n" : "Connection: close\r\n");
+
+        if (bodyModified)
+        {
+            outgoing.Append($"Content-Length: {request.Body?.Length ?? 0}\r\n");
+        }
+        else if (bodyPlan.IsChunked)
+        {
+            outgoing.Append($"Transfer-Encoding: {bodyPlan.TransferEncoding ?? "chunked"}\r\n");
+        }
+        else if (bodyPlan.ContentLength.HasValue)
+        {
+            outgoing.Append($"Content-Length: {bodyPlan.ContentLength.Value}\r\n");
+        }
+
+        outgoing.Append("\r\n");
+        return outgoing;
+    }
+
+    private async Task<Http1BodyTransfer.TransferResult> WriteRequestBodyAsync(
+        Stream clientStream,
+        Stream targetStream,
+        InterceptedRequest request,
+        RequestBodyPlan bodyPlan,
+        bool bodyModified,
+        CancellationTokenSource transferCts)
+    {
+        using var capture = new BodyPreviewCapture(bodyPlan.CaptureLimit);
+        Http1BodyTransfer.TransferResult transferResult;
+
+        if (bodyModified)
+        {
+            var modifiedBody = request.Body ?? Array.Empty<byte>();
+            if (modifiedBody.Length > 0)
+                await targetStream.WriteAsync(modifiedBody, transferCts.Token);
+
+            capture.Append(modifiedBody);
+            transferResult = new Http1BodyTransfer.TransferResult(
+                modifiedBody.LongLength,
+                Completed: true);
+        }
+        else if (bodyPlan.ChunkedPrefix != null)
+        {
+            capture.Append(bodyPlan.ChunkedPrefix.Preview);
+            transferResult = await Http1BodyTransfer.CopyChunkedAsync(
+                clientStream,
+                targetStream,
+                bodyPlan.ChunkedPrefix,
+                capture,
+                transferCts,
+                UpstreamReadTimeoutMs);
+        }
+        else if (bodyPlan.ContentLength.HasValue)
+        {
+            capture.Append(bodyPlan.OriginalPreview);
+            transferResult = await Http1BodyTransfer.CopyFixedLengthAsync(
+                clientStream,
+                targetStream,
+                bodyPlan.ContentLength.Value,
+                bodyPlan.OriginalPreview,
+                capture,
+                transferCts,
+                UpstreamReadTimeoutMs);
+        }
+        else
+        {
+            transferResult = new Http1BodyTransfer.TransferResult(0, Completed: true);
+        }
+
+        request.Body = capture.CapturedLength == 0 ? null : capture.ToArray();
+        request.BodyLength = transferResult.PayloadBytes;
+        request.BodyTruncated = capture.IsTruncated;
+        await _interceptor.OnRequestBodyTransferredAsync(request);
+        return transferResult;
+    }
+
+    private sealed record ResponseTransferResult(
+        int StatusCode,
+        List<KeyValuePair<string, string>> Headers,
+        byte[] BodyPreview,
+        long BodyLength,
+        bool BodyTruncated,
+        string? ContentEncoding,
+        bool Completed,
+        bool KeepAlive,
+        double WaitMs,
+        double ReceiveMs);
+
+    private async Task<ResponseTransferResult?> ReadStreamingHttpResponseAsync(
+        BufferedReadStream targetStream,
+        Stream clientStream,
+        string requestMethod,
+        Stopwatch stopwatch,
+        double responseStart)
+    {
+        using var transferCts = new CancellationTokenSource(UpstreamReadTimeoutMs);
+        byte[]? headerBytes;
+        try
+        {
+            headerBytes = await targetStream.ReadHeadersAsync(MaxHeaderSize, transferCts.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            return null;
+        }
+        catch (IOException)
+        {
+            return null;
+        }
+
+        if (headerBytes == null || FindHeaderEndIndex(headerBytes) < 0)
+            return null;
+
+        await clientStream.WriteAsync(headerBytes, transferCts.Token);
+        var headerReceivedAt = stopwatch.Elapsed.TotalMilliseconds;
+        var headerText = Encoding.Latin1.GetString(headerBytes);
+        var headerLines = headerText[..^4].Split("\r\n");
+        var statusParts = headerLines[0].Split(' ');
+        var statusCode = statusParts.Length >= 2 &&
+                         int.TryParse(statusParts[1], out var parsedStatusCode)
+            ? parsedStatusCode
+            : 0;
+        var headers = ParseHeaders(headerLines.Skip(1));
+        var responseHead = new InterceptedResponse
+        {
+            StatusCode = statusCode,
+            Headers = headers
+        };
+        var captureLimit = _interceptor.RequiresResponseBodyCapture(responseHead)
+            ? _config.InspectionCaptureLimitBytes
+            : 0;
+        using var capture = new BodyPreviewCapture(captureLimit);
+
+        Http1BodyTransfer.TransferResult bodyTransfer;
+        if (!ResponseCanHaveBody(requestMethod, statusCode))
+        {
+            bodyTransfer = new Http1BodyTransfer.TransferResult(0, Completed: true);
+        }
+        else if (headers.TryGetHeaderValue("Transfer-Encoding", out var transferEncoding) &&
+                 transferEncoding.Contains("chunked", StringComparison.OrdinalIgnoreCase))
+        {
+            var emptyPrefix = new Http1BodyTransfer.ChunkedPrefix(
+                Array.Empty<byte>(),
+                Array.Empty<byte>(),
+                0,
+                Completed: false,
+                PendingChunkBytes: 0);
+            bodyTransfer = await Http1BodyTransfer.CopyChunkedAsync(
+                targetStream,
+                clientStream,
+                emptyPrefix,
+                capture,
+                transferCts,
+                UpstreamReadTimeoutMs);
+        }
+        else if (headers.TryGetHeaderValue("Content-Length", out var contentLengthHeader))
+        {
+            if (!long.TryParse(contentLengthHeader, out var contentLength) || contentLength < 0)
+                throw new InvalidDataException($"Invalid Content-Length '{contentLengthHeader}'.");
+
+            bodyTransfer = await Http1BodyTransfer.CopyFixedLengthAsync(
+                targetStream,
+                clientStream,
+                contentLength,
+                ReadOnlyMemory<byte>.Empty,
+                capture,
+                transferCts,
+                UpstreamReadTimeoutMs);
+        }
+        else if (ResponseIsCloseDelimited(headerLines[0], headers))
+        {
+            bodyTransfer = await Http1BodyTransfer.CopyUntilEofAsync(
+                targetStream,
+                clientStream,
+                capture,
+                transferCts,
+                UpstreamReadTimeoutMs);
+        }
+        else
+        {
+            bodyTransfer = new Http1BodyTransfer.TransferResult(0, Completed: true);
+        }
+
+        await clientStream.FlushAsync();
+        var wirePreview = capture.ToArray();
+        var contentEncoding = headers.GetHeaderValue("Content-Encoding");
+        var inspectionBody = DecompressForInspection(
+            wirePreview,
+            headers,
+            captureLimit,
+            _logger,
+            out var decompressed,
+            out var decompressionTruncated);
+        var inspectionHeaders = new List<KeyValuePair<string, string>>(headers);
+        if (decompressed)
+        {
+            inspectionHeaders.RemoveAll(
+                h => h.Key.Equals("Content-Encoding", StringComparison.OrdinalIgnoreCase));
+        }
+
+        var keepAlive = bodyTransfer.Completed &&
+                        !ResponseIsCloseDelimited(headerLines[0], headers);
+        return new ResponseTransferResult(
+            statusCode,
+            inspectionHeaders,
+            inspectionBody,
+            bodyTransfer.PayloadBytes,
+            capture.IsTruncated || decompressionTruncated || !bodyTransfer.Completed,
+            contentEncoding,
+            bodyTransfer.Completed,
+            keepAlive,
+            WaitMs: headerReceivedAt - responseStart,
+            ReceiveMs: stopwatch.Elapsed.TotalMilliseconds - headerReceivedAt);
+    }
+
+    private static bool ResponseCanHaveBody(string requestMethod, int statusCode) =>
+        !requestMethod.Equals("HEAD", StringComparison.OrdinalIgnoreCase) &&
+        statusCode is not (>= 100 and < 200) and not 204 and not 304;
+
+    private static bool ResponseIsCloseDelimited(
+        string statusLine,
+        List<KeyValuePair<string, string>> headers)
+    {
+        if (headers.TryGetHeaderValue("Connection", out var connection))
+            return connection.Contains("close", StringComparison.OrdinalIgnoreCase);
+
+        return statusLine.StartsWith("HTTP/1.0", StringComparison.OrdinalIgnoreCase);
+    }
+
     /// <summary>
     /// Forwards an intercepted HTTP request to the target server and relays the response back to the client.
     /// Opens a new TCP connection to the target rather than reusing the client connection.
     /// </summary>
-    private async Task ForwardHttpRequestAsync(Stream clientStream, InterceptedRequest request, string host, int port)
+    private async Task ForwardHttpRequestAsync(
+        Stream clientStream,
+        InterceptedRequest request,
+        string host,
+        int port,
+        RequestBodyPlan bodyPlan)
     {
+        var bodyModified = IsRequestBodyModified(request, bodyPlan);
+        if (!bodyPlan.IsComplete && bodyModified)
+        {
+            throw new InvalidOperationException(
+                $"Cannot modify a request body larger than the configured " +
+                $"{_config.InspectionCaptureLimitBytes}-byte capture limit.");
+        }
+
         PooledConnection? pooledConn = null;
         TcpClient? ownedClient = null;
         Stream targetStream;
@@ -728,108 +1112,43 @@ public class ProxyServer : IAsyncDisposable, IDisposable
 
         try
         {
-            // Build the outgoing HTTP request with a relative path
-            var outgoing = new StringBuilder();
-            outgoing.Append($"{request.Method} {request.Path} HTTP/1.1\r\n");
-            outgoing.Append($"Host: {host}\r\n");
-
-            foreach (var header in request.Headers
-                .Where(h => !h.Key.Equals("Host", StringComparison.OrdinalIgnoreCase)
-                         && !h.Key.Equals("Connection", StringComparison.OrdinalIgnoreCase)
-                         && !h.Key.Equals("Proxy-Connection", StringComparison.OrdinalIgnoreCase)
-                         && !h.Key.Equals("Content-Length", StringComparison.OrdinalIgnoreCase)
-                         && !(_config.DisableCaching && IsCachingHeader(h.Key))))
-            {
-                outgoing.Append($"{header.Key}: {header.Value}\r\n");
-            }
-
-            if (_config.DisableCaching)
-                outgoing.Append("Cache-Control: no-cache\r\n");
-
             var clientWantsClose = request.Headers.Any(h =>
                 h.Key.Equals("Connection", StringComparison.OrdinalIgnoreCase) &&
                 h.Value.Contains("close", StringComparison.OrdinalIgnoreCase));
             var useKeepAlive = pooledConn != null && !clientWantsClose;
-            outgoing.Append(useKeepAlive ? "Connection: keep-alive\r\n" : "Connection: close\r\n");
-
-            if (request.Body != null && request.Body.Length > 0)
-                outgoing.Append($"Content-Length: {request.Body.Length}\r\n");
-
-            outgoing.Append("\r\n");
+            var outgoing = BuildOutgoingRequest(
+                request,
+                host,
+                useKeepAlive,
+                bodyPlan,
+                bodyModified);
 
             // --- Timing: send phase ---
             var sendStart = sw.Elapsed.TotalMilliseconds;
             var requestBytes = Encoding.Latin1.GetBytes(outgoing.ToString());
             await targetStream.WriteAsync(requestBytes, 0, requestBytes.Length);
 
-            if (request.Body != null && request.Body.Length > 0)
-                await targetStream.WriteAsync(request.Body, 0, request.Body.Length);
+            using var transferCts = new CancellationTokenSource(UpstreamReadTimeoutMs);
+            var requestTransfer = await WriteRequestBodyAsync(
+                clientStream,
+                targetStream,
+                request,
+                bodyPlan,
+                bodyModified,
+                transferCts);
 
             await targetStream.FlushAsync();
             var sendMs = sw.Elapsed.TotalMilliseconds - sendStart;
 
-            // Stream the response from the target back to the client
-            byte[] responseBytes;
-            var success = false;
-            double waitMs;
-            double receiveMs;
-
             // --- Timing: wait (TTFB) + receive phases ---
             var responseStart = sw.Elapsed.TotalMilliseconds;
-
-            if (useKeepAlive)
-            {
-                // ReadFramedHttpResponseAsync reads the entire response; treat as wait+receive combined
-                using var readCts = new CancellationTokenSource(UpstreamReadTimeoutMs);
-                responseBytes = await ReadFramedHttpResponseAsync(targetStream, clientStream, readCts, UpstreamReadTimeoutMs);
-                success = responseBytes.Length > 0 && !readCts.IsCancellationRequested;
-                waitMs = sw.Elapsed.TotalMilliseconds - responseStart;
-                receiveMs = 0;
-            }
-            else
-            {
-                using var ms = new MemoryStream();
-                var responseBuffer = new byte[8192];
-                int read;
-                var firstByteReceived = false;
-                double firstByteTime = 0;
-                using var readCts = new CancellationTokenSource(UpstreamReadTimeoutMs);
-                try
-                {
-                    while ((read = await targetStream.ReadAsync(responseBuffer, 0, responseBuffer.Length, readCts.Token)) > 0)
-                    {
-                        if (!firstByteReceived)
-                        {
-                            firstByteTime = sw.Elapsed.TotalMilliseconds;
-                            firstByteReceived = true;
-                        }
-                        await clientStream.WriteAsync(responseBuffer, 0, read);
-                        ms.Write(responseBuffer, 0, read);
-                        readCts.CancelAfter(UpstreamReadTimeoutMs);
-                    }
-                }
-                catch (OperationCanceledException)
-                {
-                    _logger.LogDebug("Upstream read timed out for {Host}:{Port}{Path}", host, port, request.Path);
-                }
-                catch (IOException)
-                {
-                    // Connection closed by server — expected with Connection: close
-                }
-                await clientStream.FlushAsync();
-                responseBytes = ms.ToArray();
-
-                if (firstByteReceived)
-                {
-                    waitMs = firstByteTime - responseStart;
-                    receiveMs = sw.Elapsed.TotalMilliseconds - firstByteTime;
-                }
-                else
-                {
-                    waitMs = sw.Elapsed.TotalMilliseconds - responseStart;
-                    receiveMs = 0;
-                }
-            }
+            using var targetReader = new BufferedReadStream(targetStream, leaveOpen: true);
+            var response = await ReadStreamingHttpResponseAsync(
+                targetReader,
+                clientStream,
+                request.Method,
+                sw,
+                responseStart);
 
             // Build timing info (no TLS for plain HTTP)
             var timing = new TimingInfo
@@ -837,38 +1156,45 @@ public class ProxyServer : IAsyncDisposable, IDisposable
                 ConnectMs = connectMs,
                 TlsMs = null,
                 SendMs = sendMs,
-                WaitMs = waitMs,
-                ReceiveMs = receiveMs,
+                WaitMs = response?.WaitMs ?? sw.Elapsed.TotalMilliseconds - responseStart,
+                ReceiveMs = response?.ReceiveMs ?? 0,
                 Reused = reused
             };
 
-            // Parse and capture response for inspection
-            if (responseBytes.Length > 0)
+            if (response != null)
             {
-                var (respStatusCode, respHeaders, respBody) = ParseRawHttpResponse(responseBytes);
-
-                // Decompress body for inspection hooks so they see readable content.
-                // The client already received the original compressed bytes above.
-                var inspectionBody = DecompressForInspection(respBody, respHeaders, _logger);
-                var inspectionHeaders = new List<KeyValuePair<string, string>>(respHeaders);
-                if (inspectionBody != respBody)
-                    inspectionHeaders.RemoveAll(h => h.Key.Equals("Content-Encoding", StringComparison.OrdinalIgnoreCase));
-
                 var interceptedResponse = new InterceptedResponse
                 {
-                    StatusCode = respStatusCode,
-                    Headers = inspectionHeaders,
-                    Body = inspectionBody,
+                    StatusCode = response.StatusCode,
+                    Headers = response.Headers,
+                    Body = response.BodyPreview,
+                    BodyLength = response.BodyLength,
+                    BodyTruncated = response.BodyTruncated,
+                    ContentEncoding = response.ContentEncoding,
                     CorrelationId = request.CorrelationId,
                     Timing = timing
                 };
                 await _interceptor.OnResponseAsync(interceptedResponse);
+
+                if (response.StatusCode == 101 && IsWebSocketUpgrade(response.Headers))
+                {
+                    var useDeflate = WebSocketDeflateDecompressor.IsDeflateNegotiated(response.Headers);
+                    await HandleWebSocketRelayAsync(
+                        clientStream,
+                        targetReader,
+                        host,
+                        port,
+                        request.Path,
+                        request.CorrelationId ?? Guid.NewGuid().ToString(),
+                        useDeflate);
+                    return;
+                }
             }
 
             // Return healthy pooled connection for reuse, or dispose
             if (pooledConn != null)
             {
-                if (success && IsKeepAliveResponse(responseBytes))
+                if (requestTransfer.Completed && response is { Completed: true, KeepAlive: true })
                     pooledConn.ReturnToPool();
                 else
                     pooledConn.Dispose();
@@ -888,31 +1214,34 @@ public class ProxyServer : IAsyncDisposable, IDisposable
     /// </summary>
     private async Task HandleTunnelRequestsAsync(Stream clientStream, string host, int port)
     {
+        using var bufferedClientStream = new BufferedReadStream(clientStream, leaveOpen: true);
+
         // Handle multiple requests on the same connection (HTTP keep-alive)
         while (true)
         {
-            // Read until the full HTTP headers are received (\r\n\r\n terminator).
-            (byte[] buf, int read)? headerResult;
+            byte[]? buf;
             try
             {
                 using var idleCts = new CancellationTokenSource(UpstreamReadTimeoutMs);
-                var readTask = ReadUntilHeadersCompleteAsync(clientStream, _logger, $"{host}:{port}");
-                var finished = await Task.WhenAny(readTask, Task.Delay(-1, idleCts.Token));
-                if (finished != readTask)
-                {
-                    break; // Idle timeout — client didn't send a request
-                }
-                headerResult = await readTask;
+                buf = await bufferedClientStream.ReadHeadersAsync(MaxHeaderSize, idleCts.Token);
             }
-            catch (IOException)
+            catch (Exception ex) when (ex is IOException or OperationCanceledException)
             {
                 break;
             }
-            if (headerResult == null) break;
+            catch (InvalidDataException ex)
+            {
+                _logger.LogWarning(
+                    "Client tunnel {Host}:{Port}: {ErrorMessage}",
+                    host,
+                    port,
+                    ex.Message);
+                break;
+            }
+            if (buf == null)
+                break;
 
-            var (buf, read) = headerResult.Value;
-
-            var requestText = Encoding.Latin1.GetString(buf, 0, read);
+            var requestText = Encoding.Latin1.GetString(buf);
             var lines = requestText.Split("\r\n");
             if (lines.Length == 0) break;
 
@@ -940,17 +1269,6 @@ public class ProxyServer : IAsyncDisposable, IDisposable
                 h.Key.Equals("Connection", StringComparison.OrdinalIgnoreCase) &&
                 h.Value.Contains("close", StringComparison.OrdinalIgnoreCase));
 
-            // Parse body from the already-read buffer, then read remaining if needed
-            var headerEnd = requestText.IndexOf("\r\n\r\n");
-            byte[]? body = null;
-            if (headerEnd >= 0 && headerEnd + 4 < read)
-            {
-                body = new byte[read - (headerEnd + 4)];
-                Buffer.BlockCopy(buf, headerEnd + 4, body, 0, body.Length);
-            }
-
-            body = await ReadFullBodyAsync(clientStream, body, headers);
-
             var scheme = port == 443 ? "https" : "http";
 
             _logger.LogInformation("MITM {Method} {Scheme}://{Host}{Path}", method, scheme, host, path);
@@ -965,12 +1283,22 @@ public class ProxyServer : IAsyncDisposable, IDisposable
                 Port = port,
                 Path = path,
                 Headers = headers,
-                Body = body,
-                CorrelationId = correlationId
+                CorrelationId = correlationId,
+                ContentEncoding = headers.GetHeaderValue("Content-Encoding")
             };
+
+            var bodyPlan = await PrepareRequestBodyAsync(bufferedClientStream, interceptedRequest);
 
             var result = await _interceptor.OnRequestAsync(interceptedRequest);
             if (result == null || result.Cancel) break;
+
+            var bodyModified = IsRequestBodyModified(result, bodyPlan);
+            if (!bodyPlan.IsComplete && bodyModified)
+            {
+                throw new InvalidOperationException(
+                    $"Cannot modify a request body larger than the configured " +
+                    $"{_config.InspectionCaptureLimitBytes}-byte capture limit.");
+            }
 
             // Forward to upstream — activate temporary passthrough directly if the connection fails.
             PooledConnection? pooledConn = null;
@@ -1070,142 +1398,79 @@ public class ProxyServer : IAsyncDisposable, IDisposable
 
                 try
                 {
-                    // Build outgoing request
-                    var outgoing = new StringBuilder();
-                    outgoing.Append($"{result.Method} {result.Path} HTTP/1.1\r\n");
-                    outgoing.Append($"Host: {host}\r\n");
-
-                    foreach (var header in result.Headers
-                        .Where(h => !h.Key.Equals("Host", StringComparison.OrdinalIgnoreCase)
-                                 && !h.Key.Equals("Connection", StringComparison.OrdinalIgnoreCase)
-                                 && !h.Key.Equals("Proxy-Connection", StringComparison.OrdinalIgnoreCase)
-                                 && !h.Key.Equals("Content-Length", StringComparison.OrdinalIgnoreCase)
-                                 && !(_config.DisableCaching && IsCachingHeader(h.Key))))
-                    {
-                        outgoing.Append($"{header.Key}: {header.Value}\r\n");
-                    }
-
-                    if (_config.DisableCaching)
-                        outgoing.Append("Cache-Control: no-cache\r\n");
-
-                    outgoing.Append(useKeepAlive ? "Connection: keep-alive\r\n" : "Connection: close\r\n");
-
-                    if (result.Body != null && result.Body.Length > 0)
-                        outgoing.Append($"Content-Length: {result.Body.Length}\r\n");
-
-                    outgoing.Append("\r\n");
+                    var outgoing = BuildOutgoingRequest(
+                        result,
+                        host,
+                        useKeepAlive,
+                        bodyPlan,
+                        bodyModified);
 
                     // --- Timing: send phase ---
                     var sendStart = sw.Elapsed.TotalMilliseconds;
                     var requestBytes = Encoding.Latin1.GetBytes(outgoing.ToString());
                     await targetStream.WriteAsync(requestBytes, 0, requestBytes.Length);
 
-                    if (result.Body != null && result.Body.Length > 0)
-                        await targetStream.WriteAsync(result.Body, 0, result.Body.Length);
+                    using var transferCts = new CancellationTokenSource(UpstreamReadTimeoutMs);
+                    var requestTransfer = await WriteRequestBodyAsync(
+                        bufferedClientStream,
+                        targetStream,
+                        result,
+                        bodyPlan,
+                        bodyModified,
+                        transferCts);
 
                     await targetStream.FlushAsync();
                     var sendMs = sw.Elapsed.TotalMilliseconds - sendStart;
 
-                    // Stream the response back to the client
-                    byte[] responseBytes;
-                    success = false;
-                    double waitMs;
-                    double receiveMs;
-
                     // --- Timing: wait (TTFB) + receive phases ---
                     var responseStart = sw.Elapsed.TotalMilliseconds;
-
-                    if (useKeepAlive)
-                    {
-                        using var readCts = new CancellationTokenSource(UpstreamReadTimeoutMs);
-                        responseBytes = await ReadFramedHttpResponseAsync(targetStream, clientStream, readCts, UpstreamReadTimeoutMs);
-                        success = responseBytes.Length > 0;
-                        waitMs = sw.Elapsed.TotalMilliseconds - responseStart;
-                        receiveMs = 0;
-                    }
-                    else
-                    {
-                        using var ms = new MemoryStream();
-                        var responseBuf = new byte[8192];
-                        int responseRead;
-                        var firstByteReceived = false;
-                        double firstByteTime = 0;
-                        using var readCts = new CancellationTokenSource(UpstreamReadTimeoutMs);
-                        try
-                        {
-                            while ((responseRead = await targetStream.ReadAsync(responseBuf, 0, responseBuf.Length, readCts.Token)) > 0)
-                            {
-                                if (!firstByteReceived)
-                                {
-                                    firstByteTime = sw.Elapsed.TotalMilliseconds;
-                                    firstByteReceived = true;
-                                }
-                                await clientStream.WriteAsync(responseBuf, 0, responseRead);
-                                ms.Write(responseBuf, 0, responseRead);
-                                readCts.CancelAfter(UpstreamReadTimeoutMs);
-                            }
-                        }
-                        catch (OperationCanceledException)
-                        {
-                            _logger.LogDebug("Upstream read timed out for {Host}:{Port}{Path}", host, port, result.Path);
-                        }
-                        catch (IOException)
-                        {
-                            // Connection closed by server — expected with Connection: close
-                        }
-                        await clientStream.FlushAsync();
-                        responseBytes = ms.ToArray();
-
-                        if (firstByteReceived)
-                        {
-                            waitMs = firstByteTime - responseStart;
-                            receiveMs = sw.Elapsed.TotalMilliseconds - firstByteTime;
-                        }
-                        else
-                        {
-                            waitMs = sw.Elapsed.TotalMilliseconds - responseStart;
-                            receiveMs = 0;
-                        }
-                    }
+                    using var targetReader = new BufferedReadStream(targetStream, leaveOpen: true);
+                    var response = await ReadStreamingHttpResponseAsync(
+                        targetReader,
+                        bufferedClientStream,
+                        result.Method,
+                        sw,
+                        responseStart);
+                    success = requestTransfer.Completed && response is { Completed: true };
 
                     var timing = new TimingInfo
                     {
                         ConnectMs = connectMs,
                         TlsMs = tlsMs,
                         SendMs = sendMs,
-                        WaitMs = waitMs,
-                        ReceiveMs = receiveMs,
+                        WaitMs = response?.WaitMs ?? sw.Elapsed.TotalMilliseconds - responseStart,
+                        ReceiveMs = response?.ReceiveMs ?? 0,
                         Reused = reused
                     };
 
-                    // Parse response for intercept hook
-                    if (responseBytes.Length > 0)
+                    if (response != null)
                     {
-                        var (respStatusCode, respHeaders, respBody) = ParseRawHttpResponse(responseBytes);
-
-                        // Decompress body for inspection hooks so they see readable content.
-                        // The client already received the original compressed bytes above.
-                        var inspectionBody = DecompressForInspection(respBody, respHeaders, _logger);
-                        var inspectionHeaders = new List<KeyValuePair<string, string>>(respHeaders);
-                        if (inspectionBody != respBody)
-                            inspectionHeaders.RemoveAll(h => h.Key.Equals("Content-Encoding", StringComparison.OrdinalIgnoreCase));
-
                         var interceptedResponse = new InterceptedResponse
                         {
-                            StatusCode = respStatusCode,
-                            Headers = inspectionHeaders,
-                            Body = inspectionBody,
+                            StatusCode = response.StatusCode,
+                            Headers = response.Headers,
+                            Body = response.BodyPreview,
+                            BodyLength = response.BodyLength,
+                            BodyTruncated = response.BodyTruncated,
+                            ContentEncoding = response.ContentEncoding,
                             CorrelationId = correlationId,
                             Timing = timing
                         };
                         await _interceptor.OnResponseAsync(interceptedResponse);
 
                         // WebSocket upgrade: switch to frame relay
-                        if (respStatusCode == 101 && IsWebSocketUpgrade(respHeaders))
+                        if (response.StatusCode == 101 && IsWebSocketUpgrade(response.Headers))
                         {
-                            var useDeflate = WebSocketDeflateDecompressor.IsDeflateNegotiated(respHeaders);
+                            var useDeflate = WebSocketDeflateDecompressor.IsDeflateNegotiated(response.Headers);
                             _logger.LogInformation("WebSocket upgrade for {Host}:{Port}{Path} (deflate={Deflate})", host, port, result.Path, useDeflate);
-                            await HandleWebSocketRelayAsync(clientStream, targetStream, host, port, result.Path, correlationId, useDeflate);
+                            await HandleWebSocketRelayAsync(
+                                bufferedClientStream,
+                                targetReader,
+                                host,
+                                port,
+                                result.Path,
+                                correlationId,
+                                useDeflate);
                             return;
                         }
                     }
@@ -1213,7 +1478,7 @@ public class ProxyServer : IAsyncDisposable, IDisposable
                     // Return healthy pooled connection for reuse, or dispose
                     if (pooledConn != null)
                     {
-                        if (success && IsKeepAliveResponse(responseBytes))
+                        if (success && response is { KeepAlive: true })
                             pooledConn.ReturnToPool();
                         else
                             pooledConn.Dispose();
@@ -1322,167 +1587,6 @@ public class ProxyServer : IAsyncDisposable, IDisposable
                 return i;
         }
         return -1;
-    }
-
-    /// <summary>
-    /// Reads the full request body from the stream when the initial buffer read was incomplete.
-    /// Checks Content-Length to determine if more bytes need to be read beyond what was
-    /// already captured in the initial 8KB buffer.
-    /// </summary>
-    private static async Task<byte[]?> ReadFullBodyAsync(Stream stream, byte[]? initialBody, List<KeyValuePair<string, string>> headers)
-    {
-        if (!headers.TryGetHeaderValue("Content-Length", out var clHeader) ||
-            !int.TryParse(clHeader, out var contentLength) ||
-            contentLength <= 0)
-        {
-            return initialBody;
-        }
-
-        var alreadyRead = initialBody?.Length ?? 0;
-        if (alreadyRead >= contentLength)
-            return initialBody;
-
-        // Need to read remaining bytes
-        var fullBody = new byte[contentLength];
-        if (initialBody != null)
-            Buffer.BlockCopy(initialBody, 0, fullBody, 0, alreadyRead);
-
-        var remaining = contentLength - alreadyRead;
-        var offset = alreadyRead;
-        while (remaining > 0)
-        {
-            var read = await stream.ReadAsync(fullBody, offset, remaining);
-            if (read == 0)
-                break;
-
-            offset += read;
-            remaining -= read;
-        }
-
-        return fullBody;
-    }
-
-    /// <summary>
-    /// Reads a complete HTTP response from an upstream stream using proper framing
-    /// (Content-Length or chunked Transfer-Encoding). Streams bytes to the client as
-    /// they arrive. Returns all raw bytes for inspection parsing.
-    /// The timeout is reset after each successful read, so slow-but-streaming
-    /// responses can complete as long as data keeps arriving.
-    /// </summary>
-    private static async Task<byte[]> ReadFramedHttpResponseAsync(
-        Stream targetStream, Stream clientStream, CancellationTokenSource cts, int timeoutMs)
-    {
-        using var ms = new MemoryStream();
-        var buffer = new byte[8192];
-
-        // Phase 1: Read until we have the complete header section (\r\n\r\n)
-        var headerEndByteIndex = -1;
-        while (headerEndByteIndex < 0)
-        {
-            cts.CancelAfter(timeoutMs);
-            int read;
-            try
-            {
-                read = await targetStream.ReadAsync(buffer, 0, buffer.Length, cts.Token);
-            }
-            catch (OperationCanceledException) { break; }
-            catch (IOException) { break; }
-
-            if (read == 0) break;
-            await clientStream.WriteAsync(buffer, 0, read, cts.Token);
-            ms.Write(buffer, 0, read);
-
-            // Search for \r\n\r\n in accumulated bytes
-            var accumulated = ms.ToArray();
-            headerEndByteIndex = FindHeaderEndIndex(accumulated);
-        }
-
-        if (headerEndByteIndex < 0)
-            return ms.ToArray();
-
-        // Phase 2: Parse headers to determine body framing
-        var allBytes = ms.ToArray();
-        var headerStr = Encoding.Latin1.GetString(allBytes, 0, headerEndByteIndex);
-        var bodyStartIndex = headerEndByteIndex + 4;
-        var bodyBytesAlreadyRead = allBytes.Length - bodyStartIndex;
-
-        var contentLength = ParseContentLengthFromHeaders(headerStr);
-        var isChunked = headerStr.Contains("Transfer-Encoding: chunked", StringComparison.OrdinalIgnoreCase)
-                     || headerStr.Contains("transfer-encoding: chunked", StringComparison.OrdinalIgnoreCase);
-
-        if (contentLength >= 0)
-        {
-            // Read exact body length
-            var remaining = contentLength - bodyBytesAlreadyRead;
-            while (remaining > 0)
-            {
-                cts.CancelAfter(timeoutMs);
-                var toRead = (int)Math.Min(remaining, buffer.Length);
-                int read;
-                try
-                {
-                    read = await targetStream.ReadAsync(buffer, 0, toRead, cts.Token);
-                }
-                catch (OperationCanceledException) { break; }
-                catch (IOException) { break; }
-                if (read == 0) break;
-                await clientStream.WriteAsync(buffer, 0, read, cts.Token);
-                ms.Write(buffer, 0, read);
-                remaining -= read;
-            }
-        }
-        else if (isChunked)
-        {
-            // Read until the chunk terminator "0\r\n\r\n"
-            while (true)
-            {
-                var data = ms.ToArray();
-                if (EndsWithChunkTerminator(data, bodyStartIndex))
-                    break;
-
-                cts.CancelAfter(timeoutMs);
-                int read;
-                try
-                {
-                    read = await targetStream.ReadAsync(buffer, 0, buffer.Length, cts.Token);
-                }
-                catch (OperationCanceledException) { break; }
-                catch (IOException) { break; }
-                if (read == 0) break;
-                await clientStream.WriteAsync(buffer, 0, read, cts.Token);
-                ms.Write(buffer, 0, read);
-            }
-        }
-        else
-        {
-            // No Content-Length and not chunked.
-            // If the server signals it will close, read until it closes.
-            // Otherwise, RFC 7230 section 3.3.3 requires either Content-Length
-            // or chunked encoding on a persistent connection — without either,
-            // there is no body and the response is complete after the headers.
-            var serverWillClose = headerStr.Contains("Connection: close", StringComparison.OrdinalIgnoreCase)
-                               || headerStr.Contains("connection: close", StringComparison.OrdinalIgnoreCase);
-            if (serverWillClose)
-            {
-                while (true)
-                {
-                    cts.CancelAfter(timeoutMs);
-                    int read;
-                    try
-                    {
-                        read = await targetStream.ReadAsync(buffer, 0, buffer.Length, cts.Token);
-                    }
-                    catch (OperationCanceledException) { break; }
-                    catch (IOException) { break; }
-                    if (read == 0) break;
-                    await clientStream.WriteAsync(buffer, 0, read, cts.Token);
-                    ms.Write(buffer, 0, read);
-                }
-            }
-        }
-
-        await clientStream.FlushAsync(cts.Token);
-        return ms.ToArray();
     }
 
     internal static int FindHeaderEndIndex(byte[] data)
@@ -1639,12 +1743,21 @@ public class ProxyServer : IAsyncDisposable, IDisposable
     }
 
     /// <summary>
-    /// Decompresses a response body for inspection hooks based on Content-Encoding.
-    /// Returns the original body unchanged if no encoding is present or decompression fails.
+    /// Decompresses a response preview for inspection hooks based on Content-Encoding.
+    /// Both input and expanded output remain bounded by the configured capture limit.
     /// </summary>
-    internal static byte[] DecompressForInspection(byte[] body, List<KeyValuePair<string, string>> headers, ILogger logger)
+    internal static byte[] DecompressForInspection(
+        byte[] body,
+        List<KeyValuePair<string, string>> headers,
+        int captureLimit,
+        ILogger logger,
+        out bool decompressed,
+        out bool truncated)
     {
-        if (body.Length == 0)
+        decompressed = false;
+        truncated = false;
+
+        if (body.Length == 0 || captureLimit == 0)
             return body;
 
         if (!headers.TryGetHeaderValue("Content-Encoding", out var encoding))
@@ -1654,7 +1767,6 @@ public class ProxyServer : IAsyncDisposable, IDisposable
         try
         {
             using var input = new MemoryStream(body);
-            using var output = new MemoryStream();
             Stream? decompressionStream = enc switch
             {
                 "gzip" => new System.IO.Compression.GZipStream(input, System.IO.Compression.CompressionMode.Decompress),
@@ -1666,11 +1778,27 @@ public class ProxyServer : IAsyncDisposable, IDisposable
             if (decompressionStream == null)
                 return body;
 
+            using var output = new MemoryStream(Math.Min(captureLimit, 8192));
             using (decompressionStream)
             {
-                decompressionStream.CopyTo(output);
+                var buffer = new byte[8192];
+                while (output.Length < captureLimit)
+                {
+                    var bytesToRead = Math.Min(
+                        buffer.Length,
+                        captureLimit - checked((int)output.Length));
+                    var read = decompressionStream.Read(buffer, 0, bytesToRead);
+                    if (read == 0)
+                        break;
+
+                    output.Write(buffer, 0, read);
+                }
+
+                if (output.Length == captureLimit)
+                    truncated = decompressionStream.ReadByte() >= 0;
             }
 
+            decompressed = true;
             return output.ToArray();
         }
         catch (Exception ex)

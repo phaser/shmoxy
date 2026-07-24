@@ -8,6 +8,7 @@ using Microsoft.Extensions.Options;
 using shmoxy.ipc;
 using shmoxy.server;
 using shmoxy.server.hooks;
+using shmoxy.server.interfaces;
 using shmoxy.shared.ipc;
 
 namespace shmoxy;
@@ -60,6 +61,12 @@ public static class ShmoxyHost
         services.Configure<ProxyConfig>(context.Configuration.GetSection("ProxyConfig"));
         services.Configure<IpcOptions>(context.Configuration.GetSection("IpcOptions"));
 
+        var ipcSocket = context.Configuration["IpcOptions:SocketPath"];
+        var adminPort = context.Configuration["IpcOptions:AdminPort"];
+        var controlApiEnabled =
+            !string.IsNullOrEmpty(ipcSocket) ||
+            (!string.IsNullOrEmpty(adminPort) && int.Parse(adminPort) > 0);
+
         services.AddSingleton<SessionLogBuffer>(sp =>
         {
             var config = sp.GetRequiredService<IOptions<ProxyConfig>>().Value;
@@ -67,43 +74,47 @@ public static class ShmoxyHost
         });
         services.AddSingleton<ILoggerProvider>(sp =>
             new SessionLogBufferProvider(sp.GetRequiredService<SessionLogBuffer>()));
-        services.AddSingleton<InspectionHook>();
-        services.AddSingleton<BreakpointHook>();
-        services.AddSingleton<InterceptHookChain>(sp =>
+
+        if (controlApiEnabled)
         {
-            var inspectionHook = sp.GetRequiredService<InspectionHook>();
-            var breakpointHook = sp.GetRequiredService<BreakpointHook>();
-            return new InterceptHookChain()
-                .Add(inspectionHook)
-                .Add(breakpointHook);
-        });
+            services.AddSingleton<InspectionHook>();
+            services.AddSingleton<BreakpointHook>();
+            services.AddSingleton<InterceptHookChain>(sp =>
+            {
+                var inspectionHook = sp.GetRequiredService<InspectionHook>();
+                var breakpointHook = sp.GetRequiredService<BreakpointHook>();
+                return new InterceptHookChain()
+                    .Add(inspectionHook)
+                    .Add(breakpointHook);
+            });
+        }
 
         services.AddSingleton<ProxyServer>(sp =>
         {
             var config = sp.GetRequiredService<IOptions<ProxyConfig>>().Value;
-            var hookChain = sp.GetRequiredService<InterceptHookChain>();
+            IInterceptHook interceptor = controlApiEnabled
+                ? sp.GetRequiredService<InterceptHookChain>()
+                : new NoOpInterceptHook();
             var logger = sp.GetRequiredService<ILoggerFactory>().CreateLogger<ProxyServer>();
-            return new ProxyServer(config, hookChain, logger);
+            return new ProxyServer(config, interceptor, logger);
         });
 
-        services.AddSingleton<ProxyStateService>(sp =>
+        if (controlApiEnabled)
         {
-            var proxy = sp.GetRequiredService<ProxyServer>();
-            var inspectionHook = sp.GetRequiredService<InspectionHook>();
-            var breakpointHook = sp.GetRequiredService<BreakpointHook>();
-            var logBuffer = sp.GetRequiredService<SessionLogBuffer>();
-            return new ProxyStateService(proxy, inspectionHook, logBuffer, breakpointHook);
-        });
+            services.AddSingleton<ProxyStateService>(sp =>
+            {
+                var proxy = sp.GetRequiredService<ProxyServer>();
+                var inspectionHook = sp.GetRequiredService<InspectionHook>();
+                var breakpointHook = sp.GetRequiredService<BreakpointHook>();
+                var logBuffer = sp.GetRequiredService<SessionLogBuffer>();
+                return new ProxyStateService(proxy, inspectionHook, logBuffer, breakpointHook);
+            });
+        }
 
         services.AddHostedService<ProxyHostedService>();
 
-        var ipcSocket = context.Configuration["IpcOptions:SocketPath"];
-        var adminPort = context.Configuration["IpcOptions:AdminPort"];
-
-        if (!string.IsNullOrEmpty(ipcSocket) || (!string.IsNullOrEmpty(adminPort) && int.Parse(adminPort) > 0))
-        {
+        if (controlApiEnabled)
             services.AddHostedService<IpcHostedService>();
-        }
     }
 
     /// <summary>

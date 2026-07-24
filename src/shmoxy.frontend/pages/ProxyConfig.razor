@@ -19,6 +19,11 @@
 
             <FluentNumberField Label="HTTPS Port (0 = disabled)" Min="0" Max="65535" TValue="int" @bind-Value="config.HttpsPort" />
 
+            <FluentNumberField Label="Inspection preview limit (bytes)"
+                               Min="0"
+                               TValue="int"
+                               @bind-Value="config.InspectionCaptureLimitBytes" />
+
             <FluentSelect TOption="string" @bind-Value="config.LogLevel" Label="Log Level">
                 <FluentOption TOption="string" Value="Debug">Debug</FluentOption>
                 <FluentOption TOption="string" Value="Info">Info</FluentOption>

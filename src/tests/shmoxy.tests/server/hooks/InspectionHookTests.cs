@@ -253,4 +253,57 @@ public class InspectionHookTests
         Assert.Null(evt.Timing.TlsMs);
         Assert.True(evt.Timing.Reused);
     }
+
+    [Fact]
+    public async Task OnRequestBodyTransferredAsync_EmitsFinalStreamingMetadata()
+    {
+        var hook = new InspectionHook();
+        var request = new InterceptedRequest
+        {
+            Method = "POST",
+            Url = new Uri("https://example.com/upload"),
+            CorrelationId = "streaming-request",
+            Body = "prefix"u8.ToArray(),
+            BodyLength = null,
+            BodyTruncated = true,
+            ContentEncoding = "gzip"
+        };
+
+        await hook.OnRequestAsync(request);
+        request.BodyLength = 1_000_000;
+        await hook.OnRequestBodyTransferredAsync(request);
+
+        var reader = hook.GetReader();
+        Assert.True(reader.TryRead(out var initialEvent));
+        Assert.True(reader.TryRead(out var completedEvent));
+        Assert.Equal("request", initialEvent.EventType);
+        Assert.Equal("request_body", completedEvent.EventType);
+        Assert.Equal(1_000_000, completedEvent.BodyLength);
+        Assert.True(completedEvent.BodyTruncated);
+        Assert.Equal("gzip", completedEvent.ContentEncoding);
+    }
+
+    [Fact]
+    public async Task OnResponseAsync_IncludesBoundedBodyMetadata()
+    {
+        var hook = new InspectionHook();
+        var response = new InterceptedResponse
+        {
+            StatusCode = 200,
+            CorrelationId = "bounded-response",
+            Body = new byte[1024],
+            BodyLength = 10_000,
+            BodyTruncated = true,
+            ContentEncoding = "br"
+        };
+
+        await hook.OnResponseAsync(response);
+
+        var reader = hook.GetReader();
+        Assert.True(reader.TryRead(out var evt));
+        Assert.Equal(10_000, evt.BodyLength);
+        Assert.True(evt.BodyTruncated);
+        Assert.Equal("br", evt.ContentEncoding);
+        Assert.Equal(1024, evt.Body?.Length);
+    }
 }

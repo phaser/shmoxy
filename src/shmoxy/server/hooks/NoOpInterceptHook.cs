@@ -8,6 +8,10 @@ namespace shmoxy.server.hooks;
 /// </summary>
 public class NoOpInterceptHook : IInterceptHook
 {
+    public virtual bool RequiresRequestBodyCapture(InterceptedRequest request) => false;
+
+    public virtual bool RequiresResponseBodyCapture(InterceptedResponse response) => false;
+
     public virtual Task<InterceptedRequest?> OnRequestAsync(InterceptedRequest request) =>
         Task.FromResult<InterceptedRequest?>(request);
 

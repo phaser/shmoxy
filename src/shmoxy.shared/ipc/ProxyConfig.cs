@@ -77,6 +77,13 @@ public class ProxyConfig
     public int ConnectionPoolIdleTimeoutSeconds { get; set; } = 60;
 
     /// <summary>
+    /// Maximum request or response body bytes retained for interception and
+    /// inspection. Larger bodies are streamed and expose only a preview.
+    /// Set to 0 to disable body capture. Defaults to 1 MiB.
+    /// </summary>
+    public int InspectionCaptureLimitBytes { get; set; } = 1_048_576;
+
+    /// <summary>
     /// Logging levels.
     /// </summary>
     public enum LogLevelEnum

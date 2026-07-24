@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Text;
 using System.Threading.Channels;
 using shmoxy.models;
@@ -18,6 +19,7 @@ public class InspectionHook : IInterceptHook, IDisposable
 
     private readonly Channel<InspectionEvent> _channel;
     private readonly ChannelReader<InspectionEvent> _reader;
+    private readonly ConcurrentDictionary<string, byte> _streamingRequests = new();
     private bool _enabled;
     private bool _disposed;
 
@@ -39,6 +41,10 @@ public class InspectionHook : IInterceptHook, IDisposable
 
     public ChannelReader<InspectionEvent> GetReader() => _reader;
 
+    public bool RequiresRequestBodyCapture(InterceptedRequest request) => _enabled && !_disposed;
+
+    public bool RequiresResponseBodyCapture(InterceptedResponse response) => _enabled && !_disposed;
+
     public Task<InterceptedRequest?> OnRequestAsync(InterceptedRequest request)
     {
         if (!_enabled || _disposed)
@@ -52,11 +58,47 @@ public class InspectionHook : IInterceptHook, IDisposable
             Url = request.Url?.ToString() ?? string.Empty,
             Headers = request.Headers,
             Body = request.Body,
+            BodyLength = request.BodyLength,
+            BodyTruncated = request.BodyTruncated,
+            ContentEncoding = request.ContentEncoding,
+            CorrelationId = request.CorrelationId
+        };
+
+        if (request.BodyLength == null && request.CorrelationId != null)
+            _streamingRequests.TryAdd(request.CorrelationId, 0);
+
+        _channel.Writer.TryWrite(evt);
+        return Task.FromResult<InterceptedRequest?>(request);
+    }
+
+    public Task OnRequestBodyTransferredAsync(InterceptedRequest request)
+    {
+        if (_disposed)
+            return Task.CompletedTask;
+
+        if (request.CorrelationId == null ||
+            !_streamingRequests.TryRemove(request.CorrelationId, out _))
+        {
+            return Task.CompletedTask;
+        }
+
+        if (!_enabled)
+            return Task.CompletedTask;
+
+        var evt = new InspectionEvent
+        {
+            Timestamp = DateTime.UtcNow,
+            EventType = "request_body",
+            Headers = request.Headers,
+            Body = request.Body,
+            BodyLength = request.BodyLength,
+            BodyTruncated = request.BodyTruncated,
+            ContentEncoding = request.ContentEncoding,
             CorrelationId = request.CorrelationId
         };
 
         _channel.Writer.TryWrite(evt);
-        return Task.FromResult<InterceptedRequest?>(request);
+        return Task.CompletedTask;
     }
 
     public Task<InterceptedResponse?> OnResponseAsync(InterceptedResponse response)
@@ -73,6 +115,9 @@ public class InspectionHook : IInterceptHook, IDisposable
             StatusCode = response.StatusCode,
             Headers = response.Headers,
             Body = response.Body,
+            BodyLength = response.BodyLength,
+            BodyTruncated = response.BodyTruncated,
+            ContentEncoding = response.ContentEncoding,
             CorrelationId = response.CorrelationId,
             Timing = response.Timing
         };

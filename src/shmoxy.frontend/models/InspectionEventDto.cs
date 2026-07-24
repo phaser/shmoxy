@@ -14,5 +14,8 @@ public record InspectionEventDto(
     string? FrameType = null,
     string? Direction = null,
     bool? IsWebSocket = null,
-    TimingInfo? Timing = null
+    TimingInfo? Timing = null,
+    long? BodyLength = null,
+    bool BodyTruncated = false,
+    string? ContentEncoding = null
 );

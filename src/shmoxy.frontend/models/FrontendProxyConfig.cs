@@ -17,6 +17,7 @@ public class FrontendProxyConfig
     public List<ClientCertConfig> ClientCertificates { get; set; } = new();
     public int ConnectionPoolSizePerHost { get; set; } = 4;
     public int ConnectionPoolIdleTimeoutSeconds { get; set; } = 60;
+    public int InspectionCaptureLimitBytes { get; set; } = 1_048_576;
 
     public static FrontendProxyConfig Default => new();
 }
