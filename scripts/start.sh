@@ -49,37 +49,41 @@ if [ "$USE_DOCKER" = "auto" ]; then
     fi
 fi
 
-if [ "$USE_DOCKER" = true ]; then
-    # Resolve the global cert location (matches ProxyConfig.DefaultCertStoragePath)
-    # .NET SpecialFolder.ApplicationData: macOS = ~/Library/Application Support, Linux = ~/.config
-    if [ "$(uname)" = "Darwin" ]; then
-        HOST_CERT_DIR="$HOME/Library/Application Support/shmoxy"
-    else
-        HOST_CERT_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/shmoxy"
-    fi
+# Resolve the global cert/config location (matches ProxyConfig.DefaultCertStoragePath)
+# .NET SpecialFolder.ApplicationData: macOS = ~/Library/Application Support, Linux = ~/.config
+if [ "$(uname)" = "Darwin" ]; then
+    HOST_CERT_DIR="$HOME/Library/Application Support/shmoxy"
+else
+    HOST_CERT_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/shmoxy"
+fi
+CONFIG_FILE="$HOST_CERT_DIR/proxy-config.json"
 
+# The API prefers the persisted proxy config over ApiConfig__ProxyPort, so the persisted
+# value is the port the proxy will really listen on.
+PERSISTED_PORT=""
+if [ -f "$CONFIG_FILE" ]; then
+    PERSISTED_PORT=$(grep -o '"Port":[[:space:]]*[0-9]*' "$CONFIG_FILE" | grep -o '[0-9]*')
+fi
+
+if [ "$USE_DOCKER" = true ]; then
     CERT_MOUNT_ARGS=()
     if [ -f "$HOST_CERT_DIR/shmoxy-root-ca.pfx" ]; then
         echo "Found existing certs in $HOST_CERT_DIR, mounting into container..."
         CERT_MOUNT_ARGS=(-v "$HOST_CERT_DIR:/root/.config/shmoxy")
     fi
 
-    # Read persisted proxy port from config if it exists, otherwise use PROXY_PORT
-    INTERNAL_PROXY_PORT="$PROXY_PORT"
-    CONFIG_FILE="$HOST_CERT_DIR/proxy-config.json"
-    if [ -f "$CONFIG_FILE" ]; then
-        PERSISTED_PORT=$(grep -o '"Port":[[:space:]]*[0-9]*' "$CONFIG_FILE" | grep -o '[0-9]*')
-        if [ -n "$PERSISTED_PORT" ]; then
-            INTERNAL_PROXY_PORT="$PERSISTED_PORT"
-            echo "Persisted proxy config uses port $PERSISTED_PORT, mapping $PROXY_PORT -> $PERSISTED_PORT"
-        fi
+    # Docker can paper over a mismatch by mapping the requested host port onto whatever
+    # port the proxy actually binds inside the container.
+    INTERNAL_PROXY_PORT="${PERSISTED_PORT:-$PROXY_PORT}"
+    if [ -n "$PERSISTED_PORT" ] && [ "$PERSISTED_PORT" != "$PROXY_PORT" ]; then
+        echo "Persisted proxy config uses port $PERSISTED_PORT, mapping $PROXY_PORT -> $PERSISTED_PORT"
     fi
 
     echo "Starting shmoxy via Docker on port $API_PORT (proxy on port $PROXY_PORT)..."
     exec docker run --rm \
         -p "$API_PORT:5000" \
         -p "$PROXY_PORT:$INTERNAL_PROXY_PORT" \
-        -v shmoxy-data:/root/.local/share/shmoxy-api \
+        -v shmoxy-data:/data \
         "${CERT_MOUNT_ARGS[@]}" \
         -e "ASPNETCORE_URLS=http://+:5000" \
         -e "ApiConfig__ProxyPort=$INTERNAL_PROXY_PORT" \
@@ -93,6 +97,17 @@ else
     export ASPNETCORE_URLS="http://localhost:$API_PORT"
     export ApiConfig__ProxyPort="$PROXY_PORT"
 
-    echo "Starting shmoxy API on port $API_PORT (proxy on port $PROXY_PORT)..."
+    # Bare metal has no port mapping to fall back on: if a persisted config exists, the
+    # proxy binds that port and --proxy-port is silently ignored. Say so instead of
+    # printing a port nothing is listening on.
+    EFFECTIVE_PROXY_PORT="${PERSISTED_PORT:-$PROXY_PORT}"
+    if [ -n "$PERSISTED_PORT" ] && [ "$PERSISTED_PORT" != "$PROXY_PORT" ]; then
+        echo "WARNING: persisted proxy config in $CONFIG_FILE sets port $PERSISTED_PORT," >&2
+        echo "         which overrides the requested --proxy-port $PROXY_PORT." >&2
+        echo "         The proxy will listen on $PERSISTED_PORT. Change the port in the UI's" >&2
+        echo "         Proxy tab, or edit that file, to use $PROXY_PORT instead." >&2
+    fi
+
+    echo "Starting shmoxy API on port $API_PORT (proxy on port $EFFECTIVE_PROXY_PORT)..."
     exec dotnet "$API_DLL"
 fi

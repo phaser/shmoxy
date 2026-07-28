@@ -35,10 +35,14 @@ public partial class Program
         builder.Services.AddSingleton<IProxyProcessManager, ProxyProcessManager>();
         builder.Services.AddHostedService<ProxyHostedService>();
 
+        // Everything that must survive a restart lives here: the SQLite database and the
+        // data protection keys. Resolved once so both land in the same place.
+        var dataDirectory = ResolveDataDirectory(config.DataDirectory);
+
         // Only register DbContext if not already registered (allows test overrides)
         if (!builder.Services.Any(s => s.ServiceType == typeof(DbContextOptions<ProxiesDbContext>)))
         {
-            var connectionString = config.ConnectionString ?? GetDefaultConnectionString();
+            var connectionString = config.ConnectionString ?? GetConnectionStringFor(dataDirectory);
             builder.Services.AddSqliteDbContext(connectionString);
             builder.Services.AddRemoteProxyRegistry();
             builder.Services.AddSessionRepository();
@@ -55,7 +59,7 @@ public partial class Program
         builder.Services.AddSwaggerGen();
 
         // Persist data protection keys so antiforgery tokens survive app restarts
-        var keysDir = Path.Combine(GetDefaultDataDirectory(), "keys");
+        var keysDir = Path.Combine(dataDirectory, "keys");
         Directory.CreateDirectory(keysDir);
         builder.Services.AddDataProtection()
             .SetApplicationName("shmoxy")
@@ -146,17 +150,32 @@ public partial class Program
         }
     }
 
-    internal static string GetDefaultDataDirectory()
+    /// <summary>
+    /// Resolves the directory holding API state that must survive a restart -- the data
+    /// protection keys and the SQLite database.
+    ///
+    /// An explicitly configured path always wins, so a container can point this at a
+    /// mounted volume. Without that, this falls back to the platform application-data
+    /// directory, which is correct for a local run but lives in the container's writable
+    /// layer under Docker and is destroyed when the container is recreated.
+    /// </summary>
+    internal static string ResolveDataDirectory(string? configuredDirectory)
     {
-        var appDataPath = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-        var shmoxyDir = Path.Combine(appDataPath, "shmoxy-api");
-        Directory.CreateDirectory(shmoxyDir);
-        return shmoxyDir;
+        var directory = string.IsNullOrWhiteSpace(configuredDirectory)
+            ? Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                "shmoxy-api")
+            : configuredDirectory;
+
+        Directory.CreateDirectory(directory);
+        return directory;
     }
 
-    private static string GetDefaultConnectionString()
+    internal static string GetDefaultDataDirectory() => ResolveDataDirectory(null);
+
+    internal static string GetConnectionStringFor(string dataDirectory)
     {
-        var dbPath = Path.Combine(GetDefaultDataDirectory(), "proxies.db");
+        var dbPath = Path.Combine(dataDirectory, "proxies.db");
         return $"Data Source={dbPath}";
     }
 }

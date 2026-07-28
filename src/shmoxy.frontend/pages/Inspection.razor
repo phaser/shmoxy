@@ -206,7 +206,7 @@
                 @if (filteredRows.Count == 0)
                 {
                     <tr>
-                        <td colspan="7" class="empty-state">Start the proxy to see requests</td>
+                        <td colspan="7" class="empty-state">@EmptyStateMessage</td>
                     </tr>
                 }
                 else
@@ -294,6 +294,28 @@
     private bool showSessionPicker;
     private bool isLoadingSessions;
     private List<SessionSummary> savedSessions = new();
+
+    /// <summary>
+    /// Why the table is empty, rather than a single guess. The old copy always read
+    /// "Start the proxy to see requests", which was wrong whenever the proxy was already
+    /// running and sent people looking at the proxy instead of the stream. The trailing
+    /// code makes the state unambiguous in a bug report.
+    /// </summary>
+    internal static string DescribeEmptyState(StreamConnectionState connectionState, int totalRows) =>
+        connectionState switch
+        {
+            StreamConnectionState.Reconnecting =>
+                "Reconnecting to the event stream... (INSP-RECONNECTING)",
+            StreamConnectionState.Disconnected =>
+                "Not receiving events - click Disconnected above to retry (INSP-DISCONNECTED)",
+            _ when totalRows > 0 =>
+                "No requests match the current filters (INSP-FILTERED)",
+            _ =>
+                "Connected - waiting for traffic through the proxy (INSP-WAITING)"
+        };
+
+    private string EmptyStateMessage =>
+        DescribeEmptyState(InspectionService.ConnectionState, InspectionService.GetRows().Count);
 
     protected override void OnInitialized()
     {

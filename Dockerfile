@@ -44,4 +44,11 @@ EXPOSE 8080
 ENV ASPNETCORE_URLS=http://+:5000
 ENV ApiConfig__ProxyPort=8080
 
+# API state that must outlive the container: SQLite database and data protection keys.
+# scripts/start.sh mounts a volume here. Without an explicit path the app would fall back
+# to the platform application-data directory, which lives in the container's writable
+# layer and is destroyed on every container recreation.
+ENV ApiConfig__DataDirectory=/data
+VOLUME ["/data"]
+
 ENTRYPOINT ["dotnet", "shmoxy.api.dll"]

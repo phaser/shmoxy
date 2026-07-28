@@ -12,4 +12,13 @@ public class ApiConfig
     public bool AutoStartProxy { get; set; } = true;
     public string? ConnectionString { get; set; }
     public int HealthCheckIntervalSeconds { get; set; } = 30;
+
+    /// <summary>
+    /// Directory holding API state that must survive a restart: the data protection
+    /// keys and the SQLite database. Defaults to the platform application-data
+    /// directory. Containers must set this to a path backed by a mounted volume --
+    /// otherwise the database and antiforgery keys live in the container's writable
+    /// layer and are destroyed whenever the container is recreated.
+    /// </summary>
+    public string? DataDirectory { get; set; }
 }
