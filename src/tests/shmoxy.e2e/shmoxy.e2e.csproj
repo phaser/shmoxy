@@ -19,6 +19,9 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\shmoxy\shmoxy.csproj" />
+    <!-- The capture smoke test boots the real API host, which spawns the proxy binary
+         from this project's output directory. -->
+    <ProjectReference Include="..\..\shmoxy.api\shmoxy.api.csproj" />
     <ProjectReference Include="..\..\shmoxy.shared\shmoxy.shared.csproj" />
   </ItemGroup>
 
