@@ -1173,6 +1173,57 @@ public class InspectionDataServiceTests
         Assert.Equal(1, handler.DeleteCount);
     }
 
+    [Fact]
+    public async Task ConsumeStream_ReconnectsAfterHttpClientTimeout()
+    {
+        // Regression: an HttpClient timeout surfaces as TaskCanceledException, which
+        // derives from OperationCanceledException. Treating it as an intentional stop
+        // killed live capture permanently -- no retry, no events, until a page reload.
+        var handler = new TimeoutThenStreamHandler();
+        var httpClient = new HttpClient(handler) { BaseAddress = new Uri("http://localhost") };
+        using var service = new InspectionDataService(new ApiClient(httpClient));
+
+        service.StartCapture();
+
+        var deadline = DateTime.UtcNow.AddSeconds(20);
+        while (service.GetRows().Count == 0 && DateTime.UtcNow < deadline)
+            await Task.Delay(50);
+
+        service.StopCapture();
+
+        Assert.True(handler.Attempts >= 2, $"expected a retry after the timeout, saw {handler.Attempts} attempt(s)");
+        Assert.NotEmpty(service.GetRows());
+    }
+
+    /// <summary>
+    /// Fails the first stream attempt the way HttpClient reports its own timeout -- a
+    /// TaskCanceledException raised while the caller's token is still uncancelled --
+    /// then serves a single SSE event on every later attempt.
+    /// </summary>
+    private class TimeoutThenStreamHandler : HttpMessageHandler
+    {
+        private int _attempts;
+
+        public int Attempts => Volatile.Read(ref _attempts);
+
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            if (Interlocked.Increment(ref _attempts) == 1)
+            {
+                throw new TaskCanceledException(
+                    "The request was canceled due to the configured HttpClient.Timeout");
+            }
+
+            const string payload =
+                "data: {\"EventType\":\"request\",\"Method\":\"GET\",\"Url\":\"https://example.com/retried\",\"CorrelationId\":\"corr-retry\"}\n\n";
+
+            return Task.FromResult(new HttpResponseMessage(System.Net.HttpStatusCode.OK)
+            {
+                Content = new StringContent(payload, System.Text.Encoding.UTF8, "text/event-stream")
+            });
+        }
+    }
+
     private class SavedTraceApiHandler : HttpMessageHandler
     {
         public int SaveCount { get; private set; }

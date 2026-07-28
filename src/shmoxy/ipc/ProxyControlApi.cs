@@ -155,6 +155,14 @@ public static class ProxyControlApi
 
             response.Headers.ContentType = "text/event-stream";
 
+            // Send headers before waiting for the first event. An idle proxy produces no
+            // events, and ASP.NET Core withholds headers until the first write -- so the
+            // consumer's stream request would otherwise never complete, and its HTTP
+            // timeout would fire before the stream was ever established. StartAsync only
+            // commits the headers; they have to be flushed to reach the consumer.
+            await response.StartAsync();
+            await response.Body.FlushAsync();
+
             var reader = stateService.InspectionHook.GetReader();
             var cts = new CancellationTokenSource();
 
