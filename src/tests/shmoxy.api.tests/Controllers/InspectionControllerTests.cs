@@ -1,4 +1,6 @@
+using System.IO.Pipelines;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -216,6 +218,109 @@ public class InspectionControllerTests
         using var reader = new StreamReader(httpContext.Response.Body);
         var body = await reader.ReadToEndAsync();
         Assert.DoesNotContain("data:", body);
+    }
+
+    [Fact]
+    public async Task GetStream_StartsResponse_BeforeFirstEventArrives()
+    {
+        // Regression: an idle proxy emits no events, and ASP.NET Core withholds headers
+        // until the first write. Without starting the response up front the client waits
+        // headerless until its HTTP timeout fires, so the stream is never established.
+        var gate = new TaskCompletionSource();
+
+        _mockProcessManager.Setup(m => m.GetStateAsync())
+            .ReturnsAsync(new ProxyInstanceState { State = ProxyProcessState.Running });
+        _mockIpcClient.Setup(m => m.EnableInspectionAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new EnableInspectionResponse());
+        _mockIpcClient.Setup(m => m.GetInspectionStreamAsync(It.IsAny<CancellationToken>()))
+            .Returns(BlockUntil(gate.Task));
+
+        var httpContext = new DefaultHttpContext();
+        var bodyFeature = new RecordingResponseBodyFeature();
+        httpContext.Features.Set<IHttpResponseBodyFeature>(bodyFeature);
+        _controller.ControllerContext = new ControllerContext { HttpContext = httpContext };
+
+        var streamTask = _controller.GetStream("local", CancellationToken.None);
+
+        // Headers must go out even though no event ever arrives. Starting the response
+        // only commits them, so the flush is what actually reaches the client -- assert
+        // both, or the endpoint can satisfy this test and still strand a real consumer.
+        await bodyFeature.Started.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        await bodyFeature.Flushed.Task.WaitAsync(TimeSpan.FromSeconds(10));
+
+        gate.SetResult();
+        await streamTask;
+    }
+
+    /// <summary>
+    /// Stands in for an idle proxy: yields nothing until the supplied gate completes.
+    /// </summary>
+    private static async IAsyncEnumerable<InspectionEvent> BlockUntil(Task gate)
+    {
+        await gate;
+        yield break;
+    }
+
+    /// <summary>
+    /// Response body feature that records whether the response was explicitly started,
+    /// which is what flushes headers ahead of the first SSE write.
+    /// </summary>
+    private sealed class RecordingResponseBodyFeature : IHttpResponseBodyFeature
+    {
+        private readonly FlushRecordingStream _stream;
+        private readonly PipeWriter _writer;
+
+        public RecordingResponseBodyFeature()
+        {
+            _stream = new FlushRecordingStream(Flushed);
+            _writer = PipeWriter.Create(_stream);
+        }
+
+        public TaskCompletionSource Started { get; } = new();
+        public TaskCompletionSource Flushed { get; } = new();
+
+        public Stream Stream => _stream;
+        public PipeWriter Writer => _writer;
+
+        public Task StartAsync(CancellationToken cancellationToken = default)
+        {
+            Started.TrySetResult();
+            return Task.CompletedTask;
+        }
+
+        public Task CompleteAsync() => Task.CompletedTask;
+
+        public void DisableBuffering()
+        {
+        }
+
+        public Task SendFileAsync(string path, long offset, long? count, CancellationToken cancellationToken = default)
+            => Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// In-memory response stream that signals when the response body is flushed.
+    /// </summary>
+    private sealed class FlushRecordingStream : MemoryStream
+    {
+        private readonly TaskCompletionSource _flushed;
+
+        public FlushRecordingStream(TaskCompletionSource flushed)
+        {
+            _flushed = flushed;
+        }
+
+        public override void Flush()
+        {
+            _flushed.TrySetResult();
+            base.Flush();
+        }
+
+        public override Task FlushAsync(CancellationToken cancellationToken)
+        {
+            _flushed.TrySetResult();
+            return base.FlushAsync(cancellationToken);
+        }
     }
 
     private static async IAsyncEnumerable<InspectionEvent> ToAsyncEnumerable(

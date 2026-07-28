@@ -50,6 +50,13 @@ public class InspectionController : ControllerBase
                 ? GetLocalStream(ct)
                 : GetRemoteStream(proxyId, ct);
 
+            // Send headers before awaiting the first event so that an idle proxy still
+            // establishes the stream; otherwise the client waits headerless until its
+            // HTTP timeout fires. StartAsync only commits the headers -- they have to be
+            // flushed to actually reach the client.
+            await Response.StartAsync(ct);
+            await Response.Body.FlushAsync(ct);
+
             await foreach (var evt in eventStream)
             {
                 var json = JsonSerializer.Serialize(evt);

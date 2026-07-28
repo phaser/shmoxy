@@ -210,7 +210,7 @@ public class InspectionDataService : IDisposable
 
                 // Stream ended normally (server closed) — retry
             }
-            catch (OperationCanceledException)
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
             {
                 // Intentional stop — don't retry
                 SetConnectionState(StreamConnectionState.Disconnected);
@@ -218,7 +218,10 @@ public class InspectionDataService : IDisposable
             }
             catch (Exception)
             {
-                // Unexpected failure — retry with backoff
+                // Unexpected failure — retry with backoff. This includes an HttpClient
+                // timeout, which surfaces as TaskCanceledException (an
+                // OperationCanceledException) even though nobody asked us to stop; it
+                // must not be mistaken for an intentional stop.
             }
 
             if (ct.IsCancellationRequested)
